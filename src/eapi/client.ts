@@ -1,0 +1,93 @@
+import { randomUUID } from "node:crypto";
+import { AppError } from "../core/errors.js";
+import type { EapiConnectionConfig, EapiJsonRpcRequest, EapiOutputFormat } from "./types.js";
+import { NodeHttpsEapiTransport, type EapiTransport } from "./transport.js";
+
+export class EapiClient {
+  private readonly transport: EapiTransport;
+
+  constructor(transport: EapiTransport = new NodeHttpsEapiTransport()) {
+    this.transport = transport;
+  }
+
+  async runShowCommands(
+    connection: EapiConnectionConfig,
+    commands: string[],
+    format: EapiOutputFormat
+  ): Promise<unknown> {
+    return this.runCommands(connection, commands, format);
+  }
+
+  async runCommands(
+    connection: EapiConnectionConfig,
+    commands: string[],
+    format: EapiOutputFormat
+  ): Promise<unknown> {
+    if (commands.length === 0) {
+      throw new AppError("eapi_commands_missing", "runCommands requires at least one command");
+    }
+
+    const requestBody: EapiJsonRpcRequest = {
+      jsonrpc: "2.0",
+      method: "runCmds",
+      params: {
+        version: 1,
+        cmds: commands,
+        format
+      },
+      id: randomUUID()
+    };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), connection.timeoutMs);
+
+    try {
+      const requestJson = JSON.stringify(requestBody);
+      const response = await this.transport.postJson(connection, requestJson, controller.signal);
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new AppError("eapi_http_error", `EOS eAPI request failed with status ${response.status}: ${text}`, {
+          status: response.status
+        });
+      }
+
+      const payload = await response.json();
+      throwIfJsonRpcError(payload);
+      return payload;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+function throwIfJsonRpcError(payload: unknown): void {
+  if (!isObject(payload) || !isObject(payload.error)) {
+    return;
+  }
+
+  const message = typeof payload.error.message === "string" ? payload.error.message : "EOS eAPI JSON-RPC error";
+  const code = typeof payload.error.code === "number" || typeof payload.error.code === "string" ? payload.error.code : "unknown";
+  const data = payload.error.data;
+  const details = data === undefined ? "" : `; data=${JSON.stringify(data)}`;
+  throw new AppError(classifyJsonRpcErrorCode(message, data), `EOS eAPI JSON-RPC error ${String(code)}: ${message}${details}`, {
+    jsonRpcCode: code,
+    ...(data !== undefined ? { data } : {})
+  });
+}
+
+function classifyJsonRpcErrorCode(message: string, data: unknown): string {
+  const haystacks = [message, ...(Array.isArray(data) ? data.filter((entry): entry is string => typeof entry === "string") : [])]
+    .join(" ")
+    .toLowerCase();
+
+  if (haystacks.includes("json")) {
+    return "json_output_unavailable";
+  }
+
+  return "eapi_json_rpc_error";
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

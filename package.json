@@ -1,0 +1,33 @@
+{
+  "name": "eos-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server for Arista EOS eAPI",
+  "type": "module",
+  "bin": {
+    "eos-mcp-server": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "DESIGN.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.0",
+    "yaml": "^2.8.0",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}

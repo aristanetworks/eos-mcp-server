@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "eos": {
+      "command": "eos-mcp-server",
+      "args": [
+        "serve",
+        "--inventory",
+        "./clab/clab-testlab/ansible-inventory.yml"
+      ],
+      "env": {
+        "EOS_MCP_PASSWORD": "admin"
+      }
+    }
+  }
+}
