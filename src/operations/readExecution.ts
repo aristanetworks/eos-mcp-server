@@ -1,4 +1,4 @@
-import { AppError, toErrorMessage } from "../core/errors.js";
+import { AppError, toErrorCode, toErrorMessage } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { resolveEapiConnection } from "../connection/resolveConnection.js";
 import type { EapiConnectionConfig } from "../eapi/types.js";
@@ -109,7 +109,7 @@ export function buildReadDeviceFailure(
     inventory_hostname: host.inventoryHostname,
     resolved_endpoint: host.resolvedEndpoint,
     status: "failed",
-    error_code: errorCode,
+    error_code: toErrorCode(error, errorCode),
     message: toErrorMessage(error)
   };
 }

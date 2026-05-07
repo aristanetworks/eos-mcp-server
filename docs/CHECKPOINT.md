@@ -109,11 +109,12 @@ Not yet implemented:
 ## Automated Validation Status
 
 Current automated status:
-- **20 test files**
-- **89 passing tests**
+- **22 test files** (21 active, 1 integration file skipped by default)
+- **104 passing tests** plus 11 skipped integration tests in the default run
 - `npm test` ✅
 - `npm run build` ✅
 - `npm run typecheck` ✅
+- `npm run lint` ✅
 
 Covered areas now include:
 - CLI parsing
@@ -151,20 +152,22 @@ The following strict behaviors are already reflected in the implementation:
 - default effective validation includes startup-style connection checks
 - `--inventory-only` explicitly skips those startup connection checks
 - `show ...`-only validation for run-show
-- run-show commands are trimmed and rejected if they contain newlines or other control characters
+- run-show commands are trimmed and rejected if they contain newlines, other control characters, CLI output modifiers, or shell metacharacters
 - group running-config requires an explicit section
-- running-config sections are trimmed and rejected if they contain newlines or other control characters
+- running-config sections are trimmed and rejected if they contain newlines, other control characters, CLI output modifiers, or shell metacharacters
 - normalized/sanitized default MCP response shapes for implemented read tools
+- per-device read failures preserve underlying `AppError.code` values when available
 - read-only startup posture enforced in config validation
 
 ## Recently Completed Phase 1 Work
 
 ### Response-size controls
 - added `maxResponseSizeBytes` config field (default: 1MB)
-- enforced in `executeReadOperation` after device results are collected
+- enforced in the HTTPS transport while device response chunks are received
+- still enforced in `executeReadOperation` after device results are collected to cap aggregate tool output
 - throws `AppError("response_size_exceeded", ...)` with structured details including `guidance`
 - each read service provides context-specific narrowing guidance (section filters, fewer devices, etc.)
-- 8 new tests in `test/responseSize.test.ts`
+- response-size coverage includes aggregate read-tool limits plus a transport-level oversized HTTP response test
 
 ### Read operation timeout cancellation
 - `overallOperationTimeoutMs` now aborts the shared read-operation signal
@@ -187,7 +190,14 @@ The following strict behaviors are already reflected in the implementation:
 ### Error taxonomy polish
 - all `throw new Error(...)` converted to `throw new AppError(code, message)` across the codebase
 - error codes added: `cli_missing_value`, `cli_unknown_argument`, `cli_missing_target`, `cli_missing_inventory`, `config_invalid_yaml`, `inventory_validation_failed`, `inventory_invalid_root`, `inventory_unsupported_schema`, `eapi_payload_invalid`
-- 5 new tests in `test/errorTaxonomy.test.ts` validating key error codes
+- per-device read failures now preserve underlying `AppError.code` values, with tool-specific fallback codes only for unknown errors
+- 7 tests in `test/errorTaxonomy.test.ts` validating key request and per-device error codes
+
+### Static policy and packaging guardrails
+- added `npm run lint` / `npm run static-policy`
+- `scripts/static-policy.mjs` scans `src/**/*.ts` for plain `throw new Error`, `@ts-ignore`, `eslint-disable`, and `as any`
+- added package policy tests for `prepack`, lint script exposure, and package-lock root version alignment
+- `npm pack` now runs `npm run build` through the package `prepack` hook
 
 ### cEOS integration validation
 - all 11 integration tests pass against cEOS 4.34.3M (8-node containerlab topology)
@@ -202,12 +212,12 @@ The following strict behaviors are already reflected in the implementation:
 - validated against real-world 35-host inventory with 6 leaf groups under multiple parents
 
 ### Release packaging
-- `npm pack` verified: 53.7 KB, 132 files, no test or dev artifacts
+- `npm pack --dry-run` verified with `prepack` build hook: 57.0 KB, 135 files, no test or dev artifacts
 - clean `npm install` from `.tgz` confirmed working with CLI `--version` and `--help`
 
 ## Phase 1 Status
 
-**Phase 1 is complete.** All read-path tools are implemented, tested (86 unit tests + 11 integration tests), documented, and validated against real cEOS devices. The server is ready for the read-only MVP release.
+**Phase 1 is complete.** All read-path tools are implemented, tested (104 automated tests plus 11 skipped integration tests in the default run), documented, and validated against real cEOS devices. The server is ready for the read-only MVP release.
 
 ## Recommended Resume Point
 

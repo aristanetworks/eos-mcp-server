@@ -1,6 +1,7 @@
 import { AppError } from "../core/errors.js";
 
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
+const RISKY_CLI_META_PATTERN = /[|><;&`$]/;
 
 export function normalizeSingleLineEosInput(value: string, label: string): string {
   const normalized = value.trim();
@@ -11,6 +12,10 @@ export function normalizeSingleLineEosInput(value: string, label: string): strin
 
   if (CONTROL_CHARACTER_PATTERN.test(normalized)) {
     throw new AppError("eos_input_invalid", `${label} must be a single line without control characters`);
+  }
+
+  if (RISKY_CLI_META_PATTERN.test(normalized)) {
+    throw new AppError("eos_input_invalid", `${label} must not contain CLI output modifiers or shell metacharacters`);
   }
 
   return normalized;

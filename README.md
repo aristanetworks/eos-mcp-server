@@ -52,6 +52,7 @@ Or equivalently:
 ```bash
 npm install
 npm run build
+npm run lint
 ```
 
 Run the built CLI directly:
@@ -67,6 +68,8 @@ make pack
 ```
 
 This runs a clean build and produces an `eos-mcp-server-<version>.tgz` that can be installed elsewhere with `npm install -g`.
+
+`npm pack` also runs `npm run build` through the package `prepack` hook, so distributable tarballs are rebuilt from source before packaging.
 
 ### Install on PATH
 
@@ -318,7 +321,7 @@ Useful config fields for the read-only MVP:
 - `defaultConnection.mcpValidateCerts`
 - `defaultConnection.mcpPasswordEnv`
 
-`readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole tool call and aborts in-flight device requests once the limit is reached.
+`readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole tool call and aborts in-flight device requests once the limit is reached. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized read-tool result.
 
 ### Read-only guardrail
 
@@ -439,6 +442,7 @@ Rules:
 
 - exactly one of `command` or `commands`
 - every command is trimmed, must be a single line, and must be `show` or begin with `show `
+- commands with CLI output modifiers or shell metacharacters such as `|`, `>`, `<`, `;`, `&`, backticks, or `$` are rejected before device contact
 - `output_format` is one of `auto`, `json`, `text`
 - `include_raw` optionally includes the raw eAPI response payload
 
@@ -476,7 +480,7 @@ Input:
 
 ### `eos_get_running_config`
 
-Returns running config text for a host target, or for a group target when `section` is provided. Automatically enters enable mode via eAPI since `show running-config` requires privileged access. `section` is trimmed and must be a single-line EOS section selector.
+Returns running config text for a host target, or for a group target when `section` is provided. Automatically enters enable mode via eAPI since `show running-config` requires privileged access. `section` is trimmed and must be a single-line EOS section selector without CLI output modifiers or shell metacharacters.
 
 Input examples:
 
@@ -620,7 +624,11 @@ For `eos_get_running_config`, group targets require a `section` value.
 
 ### Command or section rejected as invalid
 
-`eos_run_show` accepts only single-line `show` commands. `eos_get_running_config.section` must also be a single-line selector. Newlines and other control characters are rejected before any device contact.
+`eos_run_show` accepts only single-line `show` commands. `eos_get_running_config.section` must also be a single-line selector. Newlines, other control characters, CLI output modifiers, and shell metacharacters are rejected before any device contact.
+
+### Response too large
+
+Read tools are bounded by `maxResponseSizeBytes`. The server rejects oversized device HTTP responses before buffering them fully, and also rejects oversized aggregate tool results with narrowing guidance.
 
 ### Policy denied when probing a device
 

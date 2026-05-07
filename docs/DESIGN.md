@@ -274,6 +274,7 @@ But not:
 - Accepts host or group target
 - Accepts one or more commands
 - Commands are trimmed, must be single-line, and must be `show` or start with `show `
+- Commands containing CLI output modifiers or shell metacharacters are rejected before device contact
 - `output_format` supports:
   - `auto`
   - `json`
@@ -294,7 +295,7 @@ But not:
 - Device AAA ultimately decides access at execution time
 - Returns config text inside a structured wrapper
 - `section` is an EOS section selector string
-- `section` is trimmed and must be a single line without control characters
+- `section` is trimmed and must be a single line without control characters, CLI output modifiers, or shell metacharacters
 - Single-host target may request full config or a section
 - Group target is allowed only if `section` is provided
 
@@ -464,7 +465,7 @@ On cancellation or overall timeout during a write-path operation:
 
 ## Response Sizes and Limits
 
-- Enforce both per-device/per-command and aggregate response-size limits
+- Enforce both transport-level device HTTP response limits and aggregate tool-result response-size limits
 - Prefer explicit narrowing/chunking guidance rather than silent truncation
 - `eos_get_running_config` especially encourages section-filtered access
 
@@ -474,6 +475,7 @@ On cancellation or overall timeout during a write-path operation:
 - Request-level problems fail the tool call
 - Device/runtime failures are returned as structured per-device results
 - Stable machine-readable error codes are required for major error classes
+- Per-device failures preserve underlying `AppError.code` values where available, falling back to tool-specific generic codes for unknown errors
 - Human-readable messages and structured context accompany codes
 
 ### Result envelope
@@ -600,13 +602,15 @@ All major Phase 1 gaps have been closed:
 - ~~enforce response-size limits and explicit narrowing guidance~~ — done (`maxResponseSizeBytes`, per-tool guidance)
 - ~~tighten `eos_run_show` output shaping~~ — done (normalized `{ command, output }` pairs, `include_raw` opt-in)
 - ~~finish real cEOS/EOS integration validation and choose/document a minimum supported EOS version~~ — done (cEOS 4.34.3M, minimum 4.20)
-- ~~polish shared request-level error taxonomy~~ — done (all errors use `AppError` with machine-readable codes)
+- ~~polish shared request/per-device error taxonomy~~ — done (all source errors use `AppError` with machine-readable codes; per-device results preserve underlying `AppError.code`)
+- ~~codify basic read-command denylist behavior~~ — done (risky output modifiers and shell metacharacters are rejected for read command inputs)
+- ~~add release packaging/static policy checks~~ — done (`prepack`, `npm run lint`, package policy tests)
 
 ## Remaining Open Items
 
 These are intentionally deferred rather than undecided:
 - concrete default values for timeouts, concurrency, target-count limits, command-count limits, and preview max age
-- exact built-in denylist contents (policy direction is set, list still to be codified)
+- any additional built-in read-command denylist entries beyond the current metacharacter/output-modifier rejection
 - exact fact fields included in the v1 fixed core schema after testing command availability
 
 ## Recommended Implementation Order From Current State

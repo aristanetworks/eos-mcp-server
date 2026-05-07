@@ -8,8 +8,9 @@ This repository is a single TypeScript/Node package.
 - `test/` contains Vitest tests.
 - `dist/` is generated build output from `tsc`.
 - `docs/` contains project documentation (design, checkpoint, implementation plan, etc.).
-- `Makefile` wraps build, test, typecheck, clean, and packaging.
-- `package.json` defines scripts: `npm test`, `npm run typecheck`, and `npm run build`.
+- `Makefile` wraps build, lint/static policy checks, test, typecheck, clean, and packaging.
+- `package.json` defines scripts: `npm test`, `npm run typecheck`, `npm run lint`, and `npm run build`. The package `prepack` hook runs `npm run build`.
+- `scripts/static-policy.mjs` performs lightweight source policy checks for banned patterns such as plain `throw new Error`, `@ts-ignore`, `eslint-disable`, and `as any`.
 
 ## Runtime Entry
 
@@ -37,14 +38,14 @@ Supporting inventory modules:
 
 ## Connection And eAPI
 
-Connection resolution is in `src/connection/resolveConnection.ts`. It turns effective host vars plus server config into an eAPI connection: endpoint, username, password, TLS flags, CA file, and timeout.
+Connection resolution is in `src/connection/resolveConnection.ts`. It turns effective host vars plus server config into an eAPI connection: endpoint, username, password, TLS flags, CA file, timeout, and response-size limit.
 
 Startup credential validation is in `src/connection/validateStartupConnections.ts`.
 
 eAPI protocol and transport are split:
 
 - `src/eapi/client.ts`: builds JSON-RPC `runCmds` requests, handles HTTP errors and JSON-RPC errors. Supports opt-in enable mode (`{ enable: true }`) for privileged commands by prepending `enable` to the wire commands and stripping the extra result entry transparently. Per-request timeout and caller cancellation are combined with `AbortSignal`.
-- `src/eapi/transport.ts`: production HTTPS transport and test-friendly fetch transport.
+- `src/eapi/transport.ts`: production HTTPS transport and test-friendly fetch transport. The production transport enforces `maxResponseSizeBytes` while chunks are received, before buffering an oversized device response.
 - `src/eapi/types.ts`: shared eAPI types, the unified `EosCommandRunner` interface (used by all read-path services), `EapiCommandOptions`, and `extractEapiResults` (a helper for drilling into eAPI JSON-RPC response payloads).
 
 ## Read Tool Services
@@ -52,14 +53,14 @@ eAPI protocol and transport are split:
 The core read behavior is implemented as service modules:
 
 - `src/probe/probeDevices.ts`: runs `show version` to verify readiness.
-- `src/eapi/commands.ts`: normalizes single-line EOS command inputs and validates `show` command boundaries.
-- `src/show/runShow.ts`: validates single-line `show` commands and runs them with `auto`, `json`, or `text` behavior.
+- `src/eapi/commands.ts`: normalizes single-line EOS command inputs, rejects risky CLI modifiers/metacharacters, and validates `show` command boundaries.
+- `src/show/runShow.ts`: validates strict `show` commands and runs them with `auto`, `json`, or `text` behavior.
 - `src/facts/getFacts.ts`: collects fixed facts from `show version`.
 - `src/configuration/getRunningConfig.ts`: returns running config text, requiring `section` for group targets. Uses enable mode since `show running-config` requires privileged access.
 
 All four services accept an `EosCommandRunner` (defined in `src/eapi/types.ts`) rather than defining their own runner interfaces.
 
-Shared read orchestration lives in `src/operations/readExecution.ts`. It centralizes target resolution, target limits, concurrency, overall timeout cancellation, connection resolution, common per-device result fields, and result summaries (including the shared `DeviceResultSummary` type used by all result interfaces).
+Shared read orchestration lives in `src/operations/readExecution.ts`. It centralizes target resolution, target limits, concurrency, overall timeout cancellation, connection resolution, common per-device result fields, result summaries (including the shared `DeviceResultSummary` type used by all result interfaces), final aggregate response-size enforcement, and per-device `AppError.code` preservation.
 
 Shared type-narrowing utilities (`isObject`, `readString`, `readBoolean`, `readNumber`, etc.) live in `src/utils/value.ts`.
 
@@ -96,4 +97,5 @@ Tests mirror the source layout:
 - eAPI and connection behavior: `eapiClient.test.ts`, `startupValidation.test.ts`
 - Read services: `probeDevices.test.ts`, `runShow.test.ts`, `getFacts.test.ts`, `getRunningConfig.test.ts`
 - MCP adapters and stdio: `readToolsMcp.test.ts`, `probeDevicesTool.test.ts`, `listInventoryTool.test.ts`, `mcpStdioSmoke.test.ts`
+- Package/static policy: `packagePolicy.test.ts`
 - Shared test helpers: `test/helpers.ts`

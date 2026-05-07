@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { AppError } from "../src/core/errors.js";
+import { getFacts } from "../src/facts/getFacts.js";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
+import { probeDevices } from "../src/probe/probeDevices.js";
 import { runShow } from "../src/show/runShow.js";
 import { buildConfig, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
 
@@ -138,6 +140,53 @@ describe("error taxonomy", () => {
         expect(appError.details!.guidance).toBeDefined();
         expect(appError.details!.responseSizeBytes).toBeGreaterThan(100);
       }
+    });
+
+    it("preserves per-device AppError codes from connection resolution", async () => {
+      const model = await loadInventoryModel(
+        await writeTempInventory([
+          "hosts:",
+          "  leaf1:",
+          "    ansible_host: 10.0.0.11",
+          "    ansible_network_os: eos"
+        ])
+      );
+
+      const result = await probeDevices(
+        model,
+        buildConfig({
+          defaultConnection: { ansibleUser: "admin" }
+        }),
+        { target: "leaf1", include_raw: false },
+        { runShowCommands: vi.fn() }
+      );
+
+      expect(result.results[0]?.status).toBe("failed");
+      expect(result.results[0]?.error_code).toBe("connection_password_source_invalid");
+    });
+
+    it("preserves per-device AppError codes from read tool execution", async () => {
+      setTestPasswordEnv();
+      const model = await loadInventoryModel(
+        await writeTempInventory([
+          "hosts:",
+          "  leaf1:",
+          "    ansible_host: 10.0.0.11",
+          "    ansible_network_os: eos"
+        ])
+      );
+
+      const result = await getFacts(
+        model,
+        buildConfig({
+          defaultConnection: { ansibleUser: "admin", mcpPasswordEnv: "EOS_MCP_PASSWORD" }
+        }),
+        { target: "leaf1", include_raw: false },
+        { runShowCommands: vi.fn(async () => ({ result: ["unexpected text output"] })) }
+      );
+
+      expect(result.results[0]?.status).toBe("failed");
+      expect(result.results[0]?.error_code).toBe("facts_payload_invalid");
     });
   });
 });

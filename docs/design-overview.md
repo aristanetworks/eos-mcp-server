@@ -36,8 +36,8 @@ The design strongly favors:
 
 Key constraints:
 
-- `eos_run_show` accepts only trimmed, single-line commands that are `show` or begin with `show `.
-- `eos_get_running_config` requires a trimmed, single-line `section` filter when targeting a group.
+- `eos_run_show` accepts only trimmed, single-line commands that are `show` or begin with `show `, and rejects CLI output modifiers or shell metacharacters before device contact.
+- `eos_get_running_config` requires a trimmed, single-line `section` filter when targeting a group; section filters reject the same risky metacharacters as show commands.
 - `eos_get_running_config` automatically enters enable mode via eAPI since `show running-config` requires privileged access.
 - All read tools fail closed if the resolved target contains ineligible or read-denied hosts.
 

@@ -268,4 +268,38 @@ describe("EapiClient", () => {
       requestSpy.mockRestore();
     }
   });
+
+  it("rejects a Node HTTPS response before buffering beyond the response size limit", async () => {
+    const requestSpy = vi.spyOn(https, "request").mockImplementation((_url, _options, callback) => {
+      const request = new EventEmitter() as EventEmitter & {
+        write: ReturnType<typeof vi.fn>;
+        end: () => void;
+        destroy: ReturnType<typeof vi.fn>;
+      };
+      request.write = vi.fn();
+      request.destroy = vi.fn((error?: Error) => {
+        request.emit("error", error ?? new Error("destroyed"));
+        return request;
+      });
+      request.end = () => {
+        const response = new EventEmitter() as EventEmitter & { statusCode: number };
+        response.statusCode = 200;
+        callback?.(response);
+        response.emit("data", Buffer.from('{"result":['));
+        response.emit("data", Buffer.from(`{"output":"${"x".repeat(100)}"}`));
+      };
+      return request as unknown as ReturnType<typeof https.request>;
+    });
+
+    try {
+      const client = new EapiClient();
+      const connection = buildConnection({ maxResponseSizeBytes: 32 });
+
+      await expect(client.runShowCommands(connection, ["show version"], "json")).rejects.toMatchObject({
+        code: "response_size_exceeded"
+      });
+    } finally {
+      requestSpy.mockRestore();
+    }
+  });
 });

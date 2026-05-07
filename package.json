@@ -13,6 +13,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
+    "lint": "node scripts/static-policy.mjs",
+    "prepack": "npm run build",
+    "static-policy": "node scripts/static-policy.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },

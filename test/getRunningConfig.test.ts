@@ -163,4 +163,33 @@ describe("getRunningConfig", () => {
 
     expect(runner.runShowCommands).not.toHaveBeenCalled();
   });
+
+  it("rejects risky section modifiers before device contact", async () => {
+    setTestPasswordEnv();
+    const inventoryPath = await writeTempInventory([
+      "hosts:",
+      "  leaf1:",
+      "    ansible_host: 10.0.0.11",
+      "    ansible_network_os: eos"
+    ]);
+
+    const model = await loadInventoryModel(inventoryPath);
+    const runner = { runShowCommands: vi.fn() };
+
+    await expect(
+      getRunningConfig(
+        model,
+        buildConfig({
+          defaultConnection: {
+            ansibleUser: "admin",
+            mcpPasswordEnv: "EOS_MCP_PASSWORD"
+          }
+        }),
+        { target: "leaf1", section: "interface Ethernet1 | redirect flash:cfg.txt" },
+        runner
+      )
+    ).rejects.toMatchObject({ code: "eos_input_invalid" });
+
+    expect(runner.runShowCommands).not.toHaveBeenCalled();
+  });
 });

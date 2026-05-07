@@ -66,7 +66,8 @@ export function resolveEapiConnection(
     password,
     validateCerts,
     ...(config.caFile !== undefined ? { caFile: config.caFile } : {}),
-    timeoutMs: operationKind === "write" ? config.writeTimeoutMs : config.readTimeoutMs
+    timeoutMs: operationKind === "write" ? config.writeTimeoutMs : config.readTimeoutMs,
+    maxResponseSizeBytes: config.maxResponseSizeBytes
   };
 }
 
@@ -85,4 +86,3 @@ function resolvePasswordFromEnv(prefixes: string[], envName: string, hostName: s
 
   return value;
 }
-

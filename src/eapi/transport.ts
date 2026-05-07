@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import https from "node:https";
+import { AppError } from "../core/errors.js";
 import type { EapiConnectionConfig } from "./types.js";
 
 export interface EapiHttpResponse {
@@ -39,6 +40,7 @@ export class NodeHttpsEapiTransport implements EapiTransport {
     const ca = connection.caFile ? await this.readCaFile(connection.caFile) : undefined;
 
     return new Promise((resolve, reject) => {
+      let settled = false;
       let abortListenerAttached = false;
       const cleanupAbortListener = (): void => {
         if (abortListenerAttached) {
@@ -46,8 +48,23 @@ export class NodeHttpsEapiTransport implements EapiTransport {
           abortListenerAttached = false;
         }
       };
-      const abortRequest = (): void => {
+      const rejectOnce = (error: Error): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
         cleanupAbortListener();
+        reject(error);
+      };
+      const resolveOnce = (response: EapiHttpResponse): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanupAbortListener();
+        resolve(response);
+      };
+      const abortRequest = (): void => {
         request.destroy(new Error("EOS eAPI request aborted"));
       };
       const request = https.request(
@@ -64,13 +81,37 @@ export class NodeHttpsEapiTransport implements EapiTransport {
         },
         (response) => {
           const chunks: Buffer[] = [];
+          let responseSizeBytes = 0;
           response.on("data", (chunk) => {
-            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+            const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            responseSizeBytes += buffer.length;
+
+            if (
+              connection.maxResponseSizeBytes !== undefined &&
+              responseSizeBytes > connection.maxResponseSizeBytes
+            ) {
+              const error = new AppError(
+                "response_size_exceeded",
+                `EOS eAPI HTTP response size exceeded maxResponseSizeBytes ${connection.maxResponseSizeBytes}`,
+                {
+                  responseSizeBytes,
+                  maxResponseSizeBytes: connection.maxResponseSizeBytes,
+                  inventoryHostname: connection.inventoryHostname
+                }
+              );
+              rejectOnce(error);
+              request.destroy(error);
+              return;
+            }
+
+            chunks.push(buffer);
           });
           response.on("end", () => {
-            cleanupAbortListener();
+            if (settled) {
+              return;
+            }
             const text = Buffer.concat(chunks).toString("utf8");
-            resolve({
+            resolveOnce({
               ok: response.statusCode !== undefined && response.statusCode >= 200 && response.statusCode < 300,
               status: response.statusCode ?? 0,
               json: async () => JSON.parse(text),
@@ -81,8 +122,7 @@ export class NodeHttpsEapiTransport implements EapiTransport {
       );
 
       request.on("error", (error) => {
-        cleanupAbortListener();
-        reject(error);
+        rejectOnce(error);
       });
 
       if (signal.aborted) {

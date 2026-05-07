@@ -214,6 +214,28 @@ describe("runShow", () => {
     expect(runner.runShowCommands).not.toHaveBeenCalled();
   });
 
+  it("rejects show commands with risky output modifiers before device contact", async () => {
+    const { model, config } = await buildSingleHostRunShowFixture();
+    const runner = {
+      runShowCommands: vi.fn()
+    };
+
+    await expect(
+      runShow(
+        model,
+        config,
+        {
+          target: "leaf1",
+          commands: ["show version | redirect flash:version.txt"],
+          outputFormat: "auto"
+        },
+        runner
+      )
+    ).rejects.toMatchObject({ code: "eos_input_invalid" });
+
+    expect(runner.runShowCommands).not.toHaveBeenCalled();
+  });
+
   it("trims commands before dispatch", async () => {
     const { model, config } = await buildSingleHostRunShowFixture();
     const runner = {
@@ -291,7 +313,7 @@ describe("runShow", () => {
     );
 
     expect(result.results[0]?.status).toBe("failed");
-    expect(result.results[0]?.error_code).toBe("show_command_failed");
+    expect(result.results[0]?.error_code).toBe("eapi_payload_invalid");
     expect(result.results[0]?.message).toContain("expected 1 result entries");
   });
 

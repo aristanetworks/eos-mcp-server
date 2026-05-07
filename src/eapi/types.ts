@@ -12,6 +12,7 @@ export interface EapiConnectionConfig {
   validateCerts: boolean;
   caFile?: string;
   timeoutMs: number;
+  maxResponseSizeBytes?: number;
 }
 
 export interface EapiCommandOptions {
