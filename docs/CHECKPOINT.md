@@ -164,10 +164,10 @@ The following strict behaviors are already reflected in the implementation:
 ### Response-size controls
 - added `maxResponseSizeBytes` config field (default: 1MB)
 - enforced in the HTTPS transport while device response chunks are received
-- still enforced in `executeReadOperation` after device results are collected to cap aggregate tool output
+- enforced on the final shared read-tool result envelope after tool-specific metadata is included
 - throws `AppError("response_size_exceeded", ...)` with structured details including `guidance`
 - each read service provides context-specific narrowing guidance (section filters, fewer devices, etc.)
-- response-size coverage includes aggregate read-tool limits plus a transport-level oversized HTTP response test
+- response-size coverage includes final-envelope aggregate limits plus a transport-level oversized HTTP response test
 
 ### Read operation timeout cancellation
 - `overallOperationTimeoutMs` now aborts the shared read-operation signal
@@ -217,7 +217,7 @@ The following strict behaviors are already reflected in the implementation:
 
 ## Phase 1 Status
 
-**Phase 1 is complete.** All read-path tools are implemented, tested (104 automated tests plus 11 skipped integration tests in the default run), documented, and validated against real cEOS devices. The server is ready for the read-only MVP release.
+**Phase 1 is complete.** All read-path tools are implemented, tested (109 automated tests plus 11 skipped integration tests in the default run), documented, and validated against real cEOS devices. The server is ready for the read-only MVP release.
 
 ## Recommended Resume Point
 
@@ -253,4 +253,4 @@ Once the read-only MVP is shipped, the next major milestone becomes the write-pa
 - The read side is now substantial and already usable.
 - The main recent work was hardening and simplification, not feature expansion.
 - The inventory trust-boundary code is much easier to navigate than before the refactor.
-- The next high-value work is finishing Phase 1 polish, not starting the write path.
+- The next high-value work is Phase 2 write-path foundation.

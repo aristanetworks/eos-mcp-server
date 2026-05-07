@@ -32,8 +32,11 @@ Inventory parsing and modeling is in `src/inventory/loadInventory.ts`. It suppor
 Supporting inventory modules:
 
 - `src/inventory/types.ts`: inventory model types.
+- `src/inventory/effectiveVars.ts`: global/group/host variable inheritance and same-depth conflict handling.
+- `src/inventory/graph.ts`: group parent maps, group depths, host lineage, direct memberships, and resolved group hosts.
 - `src/inventory/policy.ts`: EOS eligibility and read/write access evaluation.
 - `src/inventory/resolveTarget.ts`: host/group target resolution and policy fail-closed checks.
+- `src/inventory/writePolicy.ts`: deny-dominant write-policy contradiction checks.
 - `src/inventory/listInventoryView.ts`: sanitized inventory view for MCP output.
 
 ## Connection And eAPI
@@ -44,9 +47,9 @@ Startup credential validation is in `src/connection/validateStartupConnections.t
 
 eAPI protocol and transport are split:
 
-- `src/eapi/client.ts`: builds JSON-RPC `runCmds` requests, handles HTTP errors and JSON-RPC errors. Supports opt-in enable mode (`{ enable: true }`) for privileged commands by prepending `enable` to the wire commands and stripping the extra result entry transparently. Per-request timeout and caller cancellation are combined with `AbortSignal`.
+- `src/eapi/client.ts`: builds JSON-RPC `runCmds` requests, handles HTTP errors, invalid JSON, JSON-RPC errors, and unexpected result counts. Supports opt-in enable mode (`{ enable: true }`) for privileged commands by prepending `enable` to the wire commands and stripping the extra result entry transparently. Per-request timeout and caller cancellation are combined with `AbortSignal`.
 - `src/eapi/transport.ts`: production HTTPS transport and test-friendly fetch transport. The production transport enforces `maxResponseSizeBytes` while chunks are received, before buffering an oversized device response.
-- `src/eapi/types.ts`: shared eAPI types, the unified `EosCommandRunner` interface (used by all read-path services), `EapiCommandOptions`, and `extractEapiResults` (a helper for drilling into eAPI JSON-RPC response payloads).
+- `src/eapi/types.ts`: shared eAPI types, the unified `EosCommandRunner` interface (used by all read-path services), `EapiCommandOptions`, and helpers for validating/drilling into eAPI JSON-RPC response payloads.
 
 ## Read Tool Services
 
@@ -60,7 +63,7 @@ The core read behavior is implemented as service modules:
 
 All four services accept an `EosCommandRunner` (defined in `src/eapi/types.ts`) rather than defining their own runner interfaces.
 
-Shared read orchestration lives in `src/operations/readExecution.ts`. It centralizes target resolution, target limits, concurrency, overall timeout cancellation, connection resolution, common per-device result fields, result summaries (including the shared `DeviceResultSummary` type used by all result interfaces), final aggregate response-size enforcement, and per-device `AppError.code` preservation.
+Shared read orchestration lives in `src/operations/readExecution.ts`. It centralizes target resolution, target limits, concurrency, overall timeout cancellation, connection resolution, common per-device result fields, result summaries (including the shared `DeviceResultSummary` type used by all result interfaces), final result-envelope response-size enforcement, and per-device `AppError.code` preservation.
 
 Shared type-narrowing utilities (`isObject`, `readString`, `readBoolean`, `readNumber`, etc.) live in `src/utils/value.ts`.
 

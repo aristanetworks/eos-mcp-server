@@ -467,7 +467,7 @@ On cancellation or overall timeout during a write-path operation:
 
 ## Response Sizes and Limits
 
-- Enforce both transport-level device HTTP response limits and aggregate tool-result response-size limits
+- Enforce both transport-level device HTTP response limits and final read-tool result response-size limits
 - Prefer explicit narrowing/chunking guidance rather than silent truncation
 - `eos_get_running_config` especially encourages section-filtered access
 

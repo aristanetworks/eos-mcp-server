@@ -91,7 +91,7 @@ The Phase 1 release should provide:
 The main Phase 1 gaps have been closed or explicitly scoped:
 
 #### 1. Response-size controls for read tools -- COMPLETED
-`maxResponseSizeBytes` config field (default 1 MB) added and enforced in both the production HTTPS transport and `executeReadOperation`. Oversized device HTTP responses are rejected before full buffering, and oversized aggregate tool results return `AppError("response_size_exceeded")` with structured details and per-tool narrowing guidance. Tests cover transport-level caps, aggregate limit enforcement, error shape, and guidance rendering.
+`maxResponseSizeBytes` config field (default 1 MB) added and enforced in both the production HTTPS transport and the shared final read-tool result envelope. Oversized device HTTP responses are rejected before full buffering, and oversized aggregate tool results return `AppError("response_size_exceeded")` with structured details and per-tool narrowing guidance. Tests cover transport-level caps, aggregate limit enforcement, error shape, and guidance rendering.
 
 #### 2. `eos_run_show` output shaping cleanup -- COMPLETED
 Command results normalized into `NormalizedCommandResult[]` with `{ command, output }` pairs. Raw eAPI payload exposure is now behind an `include_raw` opt-in flag (default false). 4 tests cover the normalized shape and raw opt-in behavior.
@@ -114,7 +114,7 @@ All 11 integration tests pass against cEOS 4.34.3M. All 8 lab devices probed suc
 #### Step 1: response-size enforcement -- COMPLETED
 - `maxResponseSizeBytes` config field added (default 1 MB)
 - enforced in the HTTPS transport before buffering oversized device responses
-- enforced in `executeReadOperation` for aggregate show/facts/running-config service results
+- enforced on the shared final result envelope for aggregate show/facts/probe/running-config service results
 - returns `AppError("response_size_exceeded")` with per-tool narrowing guidance
 
 #### Step 2: read-path result-shape cleanup -- COMPLETED
@@ -227,7 +227,7 @@ Not all of these are required for Phase 1. For the read-only MVP, the most valua
 
 ### Phase 1 risks
 1. inventory/operator confusion around secret env handling and TLS settings
-2. large response handling for `show` and running-config reads -- MITIGATED (`maxResponseSizeBytes` enforced in transport and aggregate result paths)
+2. large response handling for `show` and running-config reads -- MITIGATED (`maxResponseSizeBytes` enforced in transport and final result envelopes)
 3. incomplete effective validation semantics in `validate-inventory`
 4. insufficient real-device validation before release -- MITIGATED (cEOS 4.34.3M validated)
 
