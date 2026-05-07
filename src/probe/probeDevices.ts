@@ -47,5 +47,10 @@ export async function probeDevices(
     onError: (host, error) => buildReadDeviceFailure(host, "probe_failed", error)
   });
 
-  return buildReadOperationResultEnvelope(options.target, operation);
+  return buildReadOperationResultEnvelope(options.target, operation, {
+    responseSizeLimit: {
+      config,
+      operationName: "eos_probe_devices"
+    }
+  });
 }

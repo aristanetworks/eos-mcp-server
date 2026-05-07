@@ -1,7 +1,7 @@
 import { AppError } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { normalizeSingleLineEosInput } from "../eapi/commands.js";
-import { extractEapiResults, extractEapiTextOutput, type EosCommandRunner } from "../eapi/types.js";
+import { extractEapiTextOutput, parseEapiRunCmdsResponse, type EosCommandRunner } from "../eapi/types.js";
 import type { InventoryModel } from "../inventory/types.js";
 import {
   buildReadDeviceFailure,
@@ -43,7 +43,6 @@ export async function getRunningConfig(
   const operation = await executeReadOperation<GetRunningConfigResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_get_running_config",
-    responseSizeGuidance: "Use a section filter to retrieve only the relevant portion of the running config (e.g., section \"router bgp\").",
     validateTarget: (resolvedTarget) => {
       if (resolvedTarget.targetType === "group" && !section) {
         throw new AppError("running_config_section_required", "Group targets for eos_get_running_config require a section");
@@ -56,14 +55,20 @@ export async function getRunningConfig(
     onError: (host, error) => buildReadDeviceFailure(host, "running_config_failed", error)
   });
 
-  return {
-    ...buildReadOperationResultEnvelope(options.target, operation),
-    section_requested: section ?? null
-  };
+  return buildReadOperationResultEnvelope(options.target, operation, {
+    extra: {
+      section_requested: section ?? null
+    },
+    responseSizeLimit: {
+      config,
+      operationName: "eos_get_running_config",
+      narrowingGuidance: "Use a section filter to retrieve only the relevant portion of the running config (e.g., section \"router bgp\")."
+    }
+  });
 }
 
 function extractConfigText(rawResult: unknown): string {
-  const results = extractEapiResults(rawResult);
+  const results = parseEapiRunCmdsResponse(rawResult, 1).result;
   const first = results[0];
 
   if (typeof first === "string") {

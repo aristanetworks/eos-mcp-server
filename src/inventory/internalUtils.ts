@@ -73,6 +73,17 @@ export function validateSafeName(
 export { isObject };
 
 export function stableValueKey(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableValueKey).join(",")}]`;
+  }
+
+  if (isObject(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableValueKey(value[key])}`)
+      .join(",")}}`;
+  }
+
   return JSON.stringify(value);
 }
 

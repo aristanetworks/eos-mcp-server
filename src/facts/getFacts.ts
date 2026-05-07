@@ -1,6 +1,6 @@
 import { AppError } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
-import { extractEapiResults, type EosCommandRunner } from "../eapi/types.js";
+import { parseEapiRunCmdsResponse, type EosCommandRunner } from "../eapi/types.js";
 import type { InventoryModel } from "../inventory/types.js";
 import {
   buildReadDeviceFailure,
@@ -49,7 +49,6 @@ export async function getFacts(
   const operation = await executeReadOperation<GetFactsResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_get_facts",
-    responseSizeGuidance: "Reduce the number of target devices or set include_raw to false to omit raw device payloads.",
     run: async (host, connection, signal) => {
       const rawResult = await runner.runShowCommands(connection, ["show version"], "json", { signal });
       const versionPayload = extractPrimaryPayload(rawResult);
@@ -77,11 +76,17 @@ export async function getFacts(
     onError: (host, error) => buildReadDeviceFailure(host, "facts_collection_failed", error)
   });
 
-  return buildReadOperationResultEnvelope(options.target, operation);
+  return buildReadOperationResultEnvelope(options.target, operation, {
+    responseSizeLimit: {
+      config,
+      operationName: "eos_get_facts",
+      narrowingGuidance: "Reduce the number of target devices or set include_raw to false to omit raw device payloads."
+    }
+  });
 }
 
 function extractPrimaryPayload(rawResult: unknown): Record<string, unknown> {
-  const results = extractEapiResults(rawResult);
+  const results = parseEapiRunCmdsResponse(rawResult, 1).result;
   const first = results[0];
 
   if (typeof first === "object" && first !== null) {

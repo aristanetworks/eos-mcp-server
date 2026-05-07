@@ -1,7 +1,7 @@
 import { AppError, getErrorCode } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { normalizeShowCommand } from "../eapi/commands.js";
-import { extractEapiResults, extractEapiTextOutput, type EapiConnectionConfig, type EosCommandRunner } from "../eapi/types.js";
+import { extractEapiTextOutput, parseEapiRunCmdsResponse, type EapiConnectionConfig, type EosCommandRunner } from "../eapi/types.js";
 import type { InventoryModel } from "../inventory/types.js";
 import {
   buildReadDeviceFailure,
@@ -54,7 +54,6 @@ export async function runShow(
   const operation = await executeReadOperation<RunShowResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_run_show",
-    responseSizeGuidance: "Reduce the number of target devices, use fewer commands per request, or request text format for more concise output.",
     run: async (host, connection, signal) => {
       const { payload, actualFormat } = await executeShow(runner, connection, commands, options.outputFormat, signal);
       const normalizedResults = normalizeCommandResults(payload, commands, actualFormat);
@@ -68,10 +67,16 @@ export async function runShow(
     onError: (host, error) => buildReadDeviceFailure(host, mapShowErrorCode(error, options.outputFormat), error)
   });
 
-  return {
-    ...buildReadOperationResultEnvelope(options.target, operation),
-    requested_output_format: options.outputFormat
-  };
+  return buildReadOperationResultEnvelope(options.target, operation, {
+    extra: {
+      requested_output_format: options.outputFormat
+    },
+    responseSizeLimit: {
+      config,
+      operationName: "eos_run_show",
+      narrowingGuidance: "Reduce the number of target devices, use fewer commands per request, or request text format for more concise output."
+    }
+  });
 }
 
 async function executeShow(
@@ -118,13 +123,7 @@ function normalizeCommandResults(
   commands: string[],
   actualFormat: "json" | "text"
 ): NormalizedCommandResult[] {
-  const eapiResults = extractEapiResults(payload);
-  if (eapiResults.length !== commands.length) {
-    throw new AppError(
-      "eapi_payload_invalid",
-      `Unexpected eAPI payload structure: expected ${commands.length} result entries but received ${eapiResults.length}`
-    );
-  }
+  const eapiResults = parseEapiRunCmdsResponse(payload, commands.length).result;
 
   return commands.map((command, index) => {
     const rawEntry = eapiResults[index];

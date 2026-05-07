@@ -17,7 +17,7 @@ export async function loadServerConfig(options: CliOptions): Promise<ResolvedSer
 
   if (options.configPath) {
     resolvedConfigPath = resolvePathFromCwd(options.configPath);
-    const text = await fs.readFile(resolvedConfigPath, "utf8");
+    const text = await readConfigFile(resolvedConfigPath);
     const doc = parseDocument(text, { uniqueKeys: true, merge: true, prettyErrors: true });
 
     if (doc.errors.length > 0) {
@@ -65,6 +65,15 @@ export async function loadServerConfig(options: CliOptions): Promise<ResolvedSer
   }
 
   return parseConfigSchema(() => resolvedServerConfigSchema.parse(merged), "config_resolved_invalid");
+}
+
+async function readConfigFile(configPath: string): Promise<string> {
+  try {
+    return await fs.readFile(configPath, "utf8");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new AppError("config_read_failed", `Failed to read server config ${configPath}: ${message}`, { configPath });
+  }
 }
 
 function resolveMaybePath(value: string | undefined, configPath: string | undefined): string | undefined {

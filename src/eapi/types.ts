@@ -33,12 +33,28 @@ export function hasEapiResultArray(payload: unknown): payload is { result: unkno
   return isObject(payload) && "result" in payload && Array.isArray(payload.result);
 }
 
-export function extractEapiResults(payload: unknown): unknown[] {
-  if (hasEapiResultArray(payload)) {
-    return payload.result;
+export interface EapiRunCmdsResponse {
+  result: unknown[];
+  raw: unknown;
+}
+
+export function parseEapiRunCmdsResponse(payload: unknown, expectedResultCount?: number): EapiRunCmdsResponse {
+  if (!hasEapiResultArray(payload)) {
+    throw new AppError("eapi_payload_invalid", "Unexpected eAPI payload structure: missing result array");
   }
 
-  throw new AppError("eapi_payload_invalid", "Unexpected eAPI payload structure: missing result array");
+  if (expectedResultCount !== undefined && payload.result.length !== expectedResultCount) {
+    throw new AppError(
+      "eapi_payload_invalid",
+      `Unexpected eAPI payload structure: expected ${expectedResultCount} result entries but received ${payload.result.length}`
+    );
+  }
+
+  return { result: payload.result, raw: payload };
+}
+
+export function extractEapiResults(payload: unknown): unknown[] {
+  return parseEapiRunCmdsResponse(payload).result;
 }
 
 export function extractEapiTextOutput(entry: unknown): string | undefined {

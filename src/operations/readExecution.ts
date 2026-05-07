@@ -33,13 +33,23 @@ export interface ReadOperationResultEnvelope<TDeviceResult extends ReadDeviceRes
   results: TDeviceResult[];
 }
 
+interface ResponseSizeLimitOptions {
+  config: ResolvedServerConfig;
+  operationName: string;
+  narrowingGuidance?: string;
+}
+
+interface ReadOperationResultEnvelopeOptions<TExtra extends Record<string, unknown>> {
+  extra?: TExtra;
+  responseSizeLimit?: ResponseSizeLimitOptions;
+}
+
 export async function executeReadOperation<TDeviceResult extends ReadDeviceResultBase>(
   model: InventoryModel,
   config: ResolvedServerConfig,
   options: {
     target: string;
     operationName: string;
-    responseSizeGuidance?: string;
     validateTarget?: (resolvedTarget: ResolvedInventoryTarget) => void;
     run: (host: InventoryHostModel, connection: EapiConnectionConfig, signal: AbortSignal) => Promise<TDeviceResult>;
     onError: (host: InventoryHostModel, error: unknown) => TDeviceResult;
@@ -66,8 +76,6 @@ export async function executeReadOperation<TDeviceResult extends ReadDeviceResul
       }, signal)
   );
 
-  enforceResponseSizeLimit(config, results, options.operationName, options.responseSizeGuidance);
-
   return {
     resolvedTarget,
     results,
@@ -78,14 +86,43 @@ export async function executeReadOperation<TDeviceResult extends ReadDeviceResul
 export function buildReadOperationResultEnvelope<TDeviceResult extends ReadDeviceResultBase>(
   target: string,
   operation: ExecuteReadOperationResult<TDeviceResult>
-): ReadOperationResultEnvelope<TDeviceResult> {
-  return {
+): ReadOperationResultEnvelope<TDeviceResult>;
+export function buildReadOperationResultEnvelope<
+  TDeviceResult extends ReadDeviceResultBase,
+  TExtra extends Record<string, unknown>
+>(
+  target: string,
+  operation: ExecuteReadOperationResult<TDeviceResult>,
+  options: ReadOperationResultEnvelopeOptions<TExtra>
+): ReadOperationResultEnvelope<TDeviceResult> & TExtra;
+export function buildReadOperationResultEnvelope<
+  TDeviceResult extends ReadDeviceResultBase,
+  TExtra extends Record<string, unknown>
+>(
+  target: string,
+  operation: ExecuteReadOperationResult<TDeviceResult>,
+  options?: ReadOperationResultEnvelopeOptions<TExtra>
+): ReadOperationResultEnvelope<TDeviceResult> & Partial<TExtra> {
+  const payload = {
     target,
     target_type: operation.resolvedTarget.targetType,
     resolved_devices: operation.resolvedTarget.resolvedHosts.map((host) => host.inventoryHostname),
     summary: operation.summary,
-    results: operation.results
-  };
+    results: operation.results,
+    ...(options?.extra ?? {})
+  } as ReadOperationResultEnvelope<TDeviceResult> & Partial<TExtra>;
+
+  const responseSizeLimit = options?.responseSizeLimit;
+  if (responseSizeLimit !== undefined) {
+    enforceResponseSizeLimit(
+      responseSizeLimit.config,
+      payload,
+      responseSizeLimit.operationName,
+      responseSizeLimit.narrowingGuidance
+    );
+  }
+
+  return payload;
 }
 
 export function buildReadDeviceSuccess<TExtra extends Record<string, unknown>>(
@@ -201,11 +238,11 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 
 export function enforceResponseSizeLimit(
   config: ResolvedServerConfig,
-  results: unknown[],
+  payload: unknown,
   operationName: string,
   narrowingGuidance?: string
 ): void {
-  const serialized = JSON.stringify(results);
+  const serialized = JSON.stringify(payload);
   const sizeBytes = Buffer.byteLength(serialized, "utf8");
 
   if (sizeBytes > config.maxResponseSizeBytes) {
@@ -216,7 +253,7 @@ export function enforceResponseSizeLimit(
       {
         responseSizeBytes: sizeBytes,
         maxResponseSizeBytes: config.maxResponseSizeBytes,
-        deviceCount: results.length,
+        ...(Array.isArray(payload) ? { deviceCount: payload.length } : {}),
         guidance: narrowingGuidance ?? defaultGuidance
       }
     );

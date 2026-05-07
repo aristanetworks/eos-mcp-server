@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { AppError } from "../core/errors.js";
 import { isObject } from "../utils/value.js";
-import { hasEapiResultArray, type EapiCommandOptions, type EapiConnectionConfig, type EapiJsonRpcRequest, type EapiOutputFormat } from "./types.js";
+import { hasEapiResultArray, parseEapiRunCmdsResponse, type EapiCommandOptions, type EapiConnectionConfig, type EapiJsonRpcRequest, type EapiOutputFormat } from "./types.js";
 import { NodeHttpsEapiTransport, type EapiTransport } from "./transport.js";
 
 export class EapiClient {
@@ -61,19 +61,29 @@ export class EapiClient {
       });
     }
 
-    const payload = await response.json();
+    const payload = await parseJsonResponse(response, connection);
     throwIfJsonRpcError(payload);
 
-    if (useEnable) {
-      return stripEnableResult(payload);
-    }
-    return payload;
+    const normalizedPayload = useEnable ? stripEnableResult(payload) : payload;
+    parseEapiRunCmdsResponse(normalizedPayload, commands.length);
+    return normalizedPayload;
   }
 }
 
 function buildRequestSignal(timeoutMs: number, callerSignal: AbortSignal | undefined): AbortSignal {
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   return callerSignal === undefined ? timeoutSignal : AbortSignal.any([callerSignal, timeoutSignal]);
+}
+
+async function parseJsonResponse(response: { json(): Promise<unknown> }, connection: EapiConnectionConfig): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new AppError("eapi_response_invalid_json", `EOS eAPI response for host ${connection.inventoryHostname} was not valid JSON: ${message}`, {
+      inventoryHostname: connection.inventoryHostname
+    });
+  }
 }
 
 function classifyTransportError(error: unknown, signal: AbortSignal, connection: EapiConnectionConfig): AppError {
