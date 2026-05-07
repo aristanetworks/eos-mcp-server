@@ -4,6 +4,31 @@ import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import { runShow } from "../src/show/runShow.js";
 import { buildConfig, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
 
+function defaultReadConfig() {
+  return buildConfig({
+    defaultConnection: {
+      ansibleUser: "admin",
+      mcpPasswordEnv: "EOS_MCP_PASSWORD"
+    }
+  });
+}
+
+async function buildSingleHostRunShowFixture() {
+  setTestPasswordEnv();
+  const inventoryPath = await writeTempInventory([
+    "vars:",
+    "  ansible_network_os: eos",
+    "hosts:",
+    "  leaf1:",
+    "    ansible_host: 10.0.0.11"
+  ]);
+
+  return {
+    model: await loadInventoryModel(inventoryPath),
+    config: defaultReadConfig()
+  };
+}
+
 describe("runShow", () => {
   it("runs show commands against a group target", async () => {
     setTestPasswordEnv();
@@ -167,17 +192,58 @@ describe("runShow", () => {
     expect(runner.runShowCommands).not.toHaveBeenCalled();
   });
 
-  it("returns normalized command_results by default", async () => {
-    setTestPasswordEnv();
-    const inventoryPath = await writeTempInventory([
-      "vars:",
-      "  ansible_network_os: eos",
-      "hosts:",
-      "  leaf1:",
-      "    ansible_host: 10.0.0.11"
-    ]);
+  it("rejects multiline show commands before device contact", async () => {
+    const { model, config } = await buildSingleHostRunShowFixture();
+    const runner = {
+      runShowCommands: vi.fn()
+    };
 
-    const model = await loadInventoryModel(inventoryPath);
+    await expect(
+      runShow(
+        model,
+        config,
+        {
+          target: "leaf1",
+          commands: ["show version\nconfigure terminal"],
+          outputFormat: "auto"
+        },
+        runner
+      )
+    ).rejects.toThrow(/single line/i);
+
+    expect(runner.runShowCommands).not.toHaveBeenCalled();
+  });
+
+  it("trims commands before dispatch", async () => {
+    const { model, config } = await buildSingleHostRunShowFixture();
+    const runner = {
+      runShowCommands: vi.fn(async (_connection, commands) => ({
+        result: commands.map((command) => ({ command }))
+      }))
+    };
+
+    const result = await runShow(
+      model,
+      config,
+      {
+        target: "leaf1",
+        commands: ["  show version  "],
+        outputFormat: "json"
+      },
+      runner
+    );
+
+    expect(runner.runShowCommands).toHaveBeenCalledWith(
+      expect.anything(),
+      ["show version"],
+      "json",
+      expect.objectContaining({})
+    );
+    expect(result.results[0]?.command_results?.[0]?.command).toBe("show version");
+  });
+
+  it("returns normalized command_results by default", async () => {
+    const { model, config } = await buildSingleHostRunShowFixture();
     const runner = {
       runShowCommands: vi.fn(async () => ({
         result: [{ version: "4.32.1F", modelName: "DCS-7050SX3-48YC8" }]
@@ -186,12 +252,7 @@ describe("runShow", () => {
 
     const result = await runShow(
       model,
-      buildConfig({
-        defaultConnection: {
-          ansibleUser: "admin",
-          mcpPasswordEnv: "EOS_MCP_PASSWORD"
-        }
-      }),
+      config,
       {
         target: "leaf1",
         commands: ["show version"],
@@ -210,17 +271,32 @@ describe("runShow", () => {
     expect(deviceResult.raw_result).toBeUndefined();
   });
 
-  it("returns text output in normalized command_results", async () => {
-    setTestPasswordEnv();
-    const inventoryPath = await writeTempInventory([
-      "vars:",
-      "  ansible_network_os: eos",
-      "hosts:",
-      "  leaf1:",
-      "    ansible_host: 10.0.0.11"
-    ]);
+  it("fails a device result when eapi result count does not match commands", async () => {
+    const { model, config } = await buildSingleHostRunShowFixture();
+    const runner = {
+      runShowCommands: vi.fn(async () => ({
+        result: []
+      }))
+    };
 
-    const model = await loadInventoryModel(inventoryPath);
+    const result = await runShow(
+      model,
+      config,
+      {
+        target: "leaf1",
+        commands: ["show version"],
+        outputFormat: "json"
+      },
+      runner
+    );
+
+    expect(result.results[0]?.status).toBe("failed");
+    expect(result.results[0]?.error_code).toBe("show_command_failed");
+    expect(result.results[0]?.message).toContain("expected 1 result entries");
+  });
+
+  it("returns text output in normalized command_results", async () => {
+    const { model, config } = await buildSingleHostRunShowFixture();
     const runner = {
       runShowCommands: vi.fn(async () => ({
         result: [{ output: "Arista DCS-7050SX3-48YC8\n" }]
@@ -229,12 +305,7 @@ describe("runShow", () => {
 
     const result = await runShow(
       model,
-      buildConfig({
-        defaultConnection: {
-          ansibleUser: "admin",
-          mcpPasswordEnv: "EOS_MCP_PASSWORD"
-        }
-      }),
+      config,
       {
         target: "leaf1",
         commands: ["show version"],
@@ -253,16 +324,7 @@ describe("runShow", () => {
   });
 
   it("includes raw_result when include_raw is true", async () => {
-    setTestPasswordEnv();
-    const inventoryPath = await writeTempInventory([
-      "vars:",
-      "  ansible_network_os: eos",
-      "hosts:",
-      "  leaf1:",
-      "    ansible_host: 10.0.0.11"
-    ]);
-
-    const model = await loadInventoryModel(inventoryPath);
+    const { model, config } = await buildSingleHostRunShowFixture();
     const eapiPayload = {
       result: [{ version: "4.32.1F", modelName: "DCS-7050SX3-48YC8" }]
     };
@@ -272,12 +334,7 @@ describe("runShow", () => {
 
     const result = await runShow(
       model,
-      buildConfig({
-        defaultConnection: {
-          ansibleUser: "admin",
-          mcpPasswordEnv: "EOS_MCP_PASSWORD"
-        }
-      }),
+      config,
       {
         target: "leaf1",
         commands: ["show version"],
@@ -292,16 +349,7 @@ describe("runShow", () => {
   });
 
   it("normalizes multiple command results in order", async () => {
-    setTestPasswordEnv();
-    const inventoryPath = await writeTempInventory([
-      "vars:",
-      "  ansible_network_os: eos",
-      "hosts:",
-      "  leaf1:",
-      "    ansible_host: 10.0.0.11"
-    ]);
-
-    const model = await loadInventoryModel(inventoryPath);
+    const { model, config } = await buildSingleHostRunShowFixture();
     const runner = {
       runShowCommands: vi.fn(async () => ({
         result: [
@@ -313,12 +361,7 @@ describe("runShow", () => {
 
     const result = await runShow(
       model,
-      buildConfig({
-        defaultConnection: {
-          ansibleUser: "admin",
-          mcpPasswordEnv: "EOS_MCP_PASSWORD"
-        }
-      }),
+      config,
       {
         target: "leaf1",
         commands: ["show version", "show hostname"],

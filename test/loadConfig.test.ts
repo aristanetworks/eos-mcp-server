@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadServerConfig } from "../src/config/loadConfig.js";
+import { AppError } from "../src/core/errors.js";
 
 async function writeTempConfig(lines: string[]): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "eos-mcp-config-test-"));
@@ -39,5 +40,13 @@ describe("loadServerConfig", () => {
     await expect(loadServerConfig({ command: "serve", configPath })).rejects.toThrow(
       "allowDirectConfigFallback is not supported in the read-only MVP"
     );
+  });
+
+  it("wraps config schema errors in AppError", async () => {
+    const configPath = await writeTempConfig(["unknownKey: true"]);
+
+    await expect(loadServerConfig({ command: "serve", configPath })).rejects.toMatchObject({
+      code: "config_schema_invalid"
+    } satisfies Partial<AppError>);
   });
 });

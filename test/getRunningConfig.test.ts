@@ -97,7 +97,7 @@ describe("getRunningConfig", () => {
       expect.anything(),
       ["show running-config"],
       "text",
-      { enable: true }
+      expect.objectContaining({ enable: true })
     );
   });
 
@@ -133,5 +133,34 @@ describe("getRunningConfig", () => {
     );
 
     expect(result.results[0]?.config_text).toContain("section interface Ethernet1");
+  });
+
+  it("rejects multiline section input before device contact", async () => {
+    setTestPasswordEnv();
+    const inventoryPath = await writeTempInventory([
+      "hosts:",
+      "  leaf1:",
+      "    ansible_host: 10.0.0.11",
+      "    ansible_network_os: eos"
+    ]);
+
+    const model = await loadInventoryModel(inventoryPath);
+    const runner = { runShowCommands: vi.fn() };
+
+    await expect(
+      getRunningConfig(
+        model,
+        buildConfig({
+          defaultConnection: {
+            ansibleUser: "admin",
+            mcpPasswordEnv: "EOS_MCP_PASSWORD"
+          }
+        }),
+        { target: "leaf1", section: "interface Ethernet1\nshow version" },
+        runner
+      )
+    ).rejects.toThrow(/single line/i);
+
+    expect(runner.runShowCommands).not.toHaveBeenCalled();
   });
 });

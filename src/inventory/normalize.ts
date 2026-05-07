@@ -168,6 +168,16 @@ function normalizeCanonicalInventory(value: unknown, context: ValidationContext)
     return null;
   }
 
+  for (const key of Object.keys(value)) {
+    if (key !== "all") {
+      context.errors.push({
+        code: "inventory_structural_key_invalid",
+        message: `Unsupported top-level key in canonical inventory: ${key}`,
+        path: key
+      });
+    }
+  }
+
   const allNode = value.all;
   const globalVars = readVarsObject(allNode.vars, context, "all.vars");
   const hosts = new Map<string, InventoryVars>();

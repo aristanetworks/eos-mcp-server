@@ -39,6 +39,17 @@ export class NodeHttpsEapiTransport implements EapiTransport {
     const ca = connection.caFile ? await this.readCaFile(connection.caFile) : undefined;
 
     return new Promise((resolve, reject) => {
+      let abortListenerAttached = false;
+      const cleanupAbortListener = (): void => {
+        if (abortListenerAttached) {
+          signal.removeEventListener("abort", abortRequest);
+          abortListenerAttached = false;
+        }
+      };
+      const abortRequest = (): void => {
+        cleanupAbortListener();
+        request.destroy(new Error("EOS eAPI request aborted"));
+      };
       const request = https.request(
         url,
         {
@@ -57,6 +68,7 @@ export class NodeHttpsEapiTransport implements EapiTransport {
             chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
           });
           response.on("end", () => {
+            cleanupAbortListener();
             const text = Buffer.concat(chunks).toString("utf8");
             resolve({
               ok: response.statusCode !== undefined && response.statusCode >= 200 && response.statusCode < 300,
@@ -68,15 +80,18 @@ export class NodeHttpsEapiTransport implements EapiTransport {
         }
       );
 
-      request.on("error", reject);
+      request.on("error", (error) => {
+        cleanupAbortListener();
+        reject(error);
+      });
 
-      signal.addEventListener(
-        "abort",
-        () => {
-          request.destroy(new Error("EOS eAPI request timed out"));
-        },
-        { once: true }
-      );
+      if (signal.aborted) {
+        abortRequest();
+        return;
+      } else {
+        signal.addEventListener("abort", abortRequest, { once: true });
+        abortListenerAttached = true;
+      }
 
       request.write(requestJson);
       request.end();

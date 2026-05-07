@@ -151,7 +151,9 @@ The following strict behaviors are already reflected in the implementation:
 - default effective validation includes startup-style connection checks
 - `--inventory-only` explicitly skips those startup connection checks
 - `show ...`-only validation for run-show
+- run-show commands are trimmed and rejected if they contain newlines or other control characters
 - group running-config requires an explicit section
+- running-config sections are trimmed and rejected if they contain newlines or other control characters
 - normalized/sanitized default MCP response shapes for implemented read tools
 - read-only startup posture enforced in config validation
 
@@ -163,6 +165,12 @@ The following strict behaviors are already reflected in the implementation:
 - throws `AppError("response_size_exceeded", ...)` with structured details including `guidance`
 - each read service provides context-specific narrowing guidance (section filters, fewer devices, etc.)
 - 8 new tests in `test/responseSize.test.ts`
+
+### Read operation timeout cancellation
+- `overallOperationTimeoutMs` now aborts the shared read-operation signal
+- in-flight eAPI requests receive cancellation through `AbortSignal`
+- new device work stops being scheduled after cancellation
+- covered by `test/readExecution.test.ts`
 
 ### `eos_run_show` output shaping
 - command results are now normalized into `NormalizedCommandResult[]` with `{ command, output }` pairs

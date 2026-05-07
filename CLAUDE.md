@@ -48,7 +48,7 @@ This is a TypeScript ESM-only Node 20+ MCP server that exposes Arista EOS networ
 - `src/config/` — server config file schema (`schema.ts`) and loader (`loadConfig.ts`)
 - `src/inventory/` — inventory loading/validation (`loadInventory.ts`), target resolution (`resolveTarget.ts`), list view builder (`listInventoryView.ts`), and types (`types.ts`)
 - `src/connection/` — eAPI connection resolution: credentials, TLS, endpoint, timeout (`resolveConnection.ts`)
-- `src/eapi/` — low-level EOS JSON-RPC HTTP client (`client.ts`), transport (`transport.ts`), and shared types including `EosCommandRunner`, `EapiCommandOptions`, and `extractEapiResults` (`types.ts`)
+- `src/eapi/` — low-level EOS JSON-RPC HTTP client (`client.ts`), transport (`transport.ts`), command input validation (`commands.ts`), and shared types including `EosCommandRunner`, `EapiCommandOptions`, and `extractEapiResults` (`types.ts`)
 - `src/probe/`, `src/show/`, `src/facts/`, `src/configuration/` — read-path service implementations
 - `src/mcp/createServer.ts` — wires all MCP tools into the SDK server and connects the stdio transport
 - `src/mcp/tools/` — one file per MCP tool; each exports an input schema and a result builder
@@ -69,9 +69,10 @@ This is a TypeScript ESM-only Node 20+ MCP server that exposes Arista EOS networ
 - **`mcp_write_allowed` is deny-dominant**: a child cannot override an ancestor's `false`
 - **`all` is write-forbidden**: enforced in `resolveInventoryTarget`
 - **Password source**: exactly one of `mcp_password_env` (preferred) or `ansible_password` must resolve per host; env var names must match an allowed prefix (`EOS_MCP_` by default)
-- **`eos_run_show`**: only `show ...` commands accepted; validated before dispatch
-- **`eos_get_running_config`**: group targets require an explicit `section` string; automatically enters enable mode via eAPI since `show running-config` requires privileged access
+- **`eos_run_show`**: only single-line `show ...` commands accepted; commands are trimmed and validated before dispatch
+- **`eos_get_running_config`**: group targets require an explicit single-line `section` string; automatically enters enable mode via eAPI since `show running-config` requires privileged access
 - **Enable mode**: the eAPI client supports opt-in enable mode (`{ enable: true }` option on `runShowCommands`/`runCommands`) for privileged commands; it prepends `enable` to the wire commands and strips the extra result entry from the response transparently
+- **Overall timeout**: `overallOperationTimeoutMs` aborts in-flight read eAPI requests and stops scheduling new devices
 - **Response-size controls**: `executeReadOperation` enforces `maxResponseSizeBytes` (default 1MB) on serialized results; each service provides context-specific narrowing guidance
 - **Normalized output**: `eos_run_show` returns `NormalizedCommandResult[]` (`{ command, output }` pairs) by default; raw eAPI payloads are opt-in via `include_raw`
 - **`include_raw` pattern**: `eos_get_facts`, `eos_run_show`, and `eos_probe_devices` all support an `include_raw` flag for raw eAPI payload access (default false)

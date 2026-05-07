@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { parseDocument } from "yaml";
+import { ZodError } from "zod";
 import type { CliOptions } from "../cli.js";
 import { AppError } from "../core/errors.js";
 import { resolvePathFromConfig, resolvePathFromCwd } from "../utils/path.js";
@@ -24,7 +25,7 @@ export async function loadServerConfig(options: CliOptions): Promise<ResolvedSer
     }
 
     const raw = doc.toJS();
-    fileConfig = serverConfigFileSchema.parse(raw);
+    fileConfig = parseConfigSchema(() => serverConfigFileSchema.parse(raw), "config_schema_invalid");
   }
 
   const merged = {
@@ -63,7 +64,7 @@ export async function loadServerConfig(options: CliOptions): Promise<ResolvedSer
     merged.actor = options.actor;
   }
 
-  return resolvedServerConfigSchema.parse(merged);
+  return parseConfigSchema(() => resolvedServerConfigSchema.parse(merged), "config_resolved_invalid");
 }
 
 function resolveMaybePath(value: string | undefined, configPath: string | undefined): string | undefined {
@@ -76,4 +77,26 @@ function resolveMaybePath(value: string | undefined, configPath: string | undefi
   }
 
   return resolvePathFromConfig(configPath, value);
+}
+
+function parseConfigSchema<T>(parse: () => T, code: string): T {
+  try {
+    return parse();
+  } catch (error) {
+    if (error instanceof ZodError) {
+      throw new AppError(code, `Invalid server config: ${formatZodIssues(error)}`, {
+        issues: error.issues
+      });
+    }
+    throw error;
+  }
+}
+
+function formatZodIssues(error: ZodError): string {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+      return `${path}${issue.message}`;
+    })
+    .join("; ");
 }

@@ -117,6 +117,8 @@ Supported schema families:
 
 No inventory directories, include graphs, or multi-file merge behavior in v1.
 
+Canonical inventories must contain `all` as the only top-level key. Simplified inventories may contain only `version`, `vars`, `hosts`, and `groups` at the top level.
+
 ### Simplified inventory schema
 ```yaml
 version: 1   # optional
@@ -271,7 +273,7 @@ But not:
 ### `eos_run_show`
 - Accepts host or group target
 - Accepts one or more commands
-- Commands must start with `show`
+- Commands are trimmed, must be single-line, and must be `show` or start with `show `
 - `output_format` supports:
   - `auto`
   - `json`
@@ -291,7 +293,8 @@ But not:
 - Automatically enters enable mode via eAPI (prepends `enable` command) since `show running-config` requires privileged access
 - Device AAA ultimately decides access at execution time
 - Returns config text inside a structured wrapper
-- `section` is a raw EOS section selector string
+- `section` is an EOS section selector string
+- `section` is trimmed and must be a single line without control characters
 - Single-host target may request full config or a section
 - Group target is allowed only if `section` is provided
 
@@ -457,6 +460,7 @@ On cancellation or overall timeout during a write-path operation:
 - No automatic retries
 - Separate startup-configured read and write timeouts
 - Both per-device timeout and overall operation timeout
+- Overall read-operation timeout aborts in-flight eAPI requests and stops scheduling new devices
 
 ## Response Sizes and Limits
 

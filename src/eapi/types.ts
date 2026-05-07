@@ -16,6 +16,7 @@ export interface EapiConnectionConfig {
 
 export interface EapiCommandOptions {
   enable?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface EosCommandRunner {

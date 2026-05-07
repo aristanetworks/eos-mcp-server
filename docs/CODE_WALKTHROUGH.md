@@ -43,7 +43,7 @@ Startup credential validation is in `src/connection/validateStartupConnections.t
 
 eAPI protocol and transport are split:
 
-- `src/eapi/client.ts`: builds JSON-RPC `runCmds` requests, handles HTTP errors and JSON-RPC errors. Supports opt-in enable mode (`{ enable: true }`) for privileged commands — prepends `enable` to the wire commands and strips the extra result entry transparently.
+- `src/eapi/client.ts`: builds JSON-RPC `runCmds` requests, handles HTTP errors and JSON-RPC errors. Supports opt-in enable mode (`{ enable: true }`) for privileged commands by prepending `enable` to the wire commands and stripping the extra result entry transparently. Per-request timeout and caller cancellation are combined with `AbortSignal`.
 - `src/eapi/transport.ts`: production HTTPS transport and test-friendly fetch transport.
 - `src/eapi/types.ts`: shared eAPI types, the unified `EosCommandRunner` interface (used by all read-path services), `EapiCommandOptions`, and `extractEapiResults` (a helper for drilling into eAPI JSON-RPC response payloads).
 
@@ -52,13 +52,14 @@ eAPI protocol and transport are split:
 The core read behavior is implemented as service modules:
 
 - `src/probe/probeDevices.ts`: runs `show version` to verify readiness.
-- `src/show/runShow.ts`: validates `show` commands and runs them with `auto`, `json`, or `text` behavior.
+- `src/eapi/commands.ts`: normalizes single-line EOS command inputs and validates `show` command boundaries.
+- `src/show/runShow.ts`: validates single-line `show` commands and runs them with `auto`, `json`, or `text` behavior.
 - `src/facts/getFacts.ts`: collects fixed facts from `show version`.
 - `src/configuration/getRunningConfig.ts`: returns running config text, requiring `section` for group targets. Uses enable mode since `show running-config` requires privileged access.
 
 All four services accept an `EosCommandRunner` (defined in `src/eapi/types.ts`) rather than defining their own runner interfaces.
 
-Shared read orchestration lives in `src/operations/readExecution.ts`. It centralizes target resolution, target limits, concurrency, caller timeout, connection resolution, and result summaries (including the shared `DeviceResultSummary` type used by all result interfaces).
+Shared read orchestration lives in `src/operations/readExecution.ts`. It centralizes target resolution, target limits, concurrency, overall timeout cancellation, connection resolution, common per-device result fields, and result summaries (including the shared `DeviceResultSummary` type used by all result interfaces).
 
 Shared type-narrowing utilities (`isObject`, `readString`, `readBoolean`, `readNumber`, etc.) live in `src/utils/value.ts`.
 

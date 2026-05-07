@@ -44,31 +44,31 @@ export class EapiClient {
       id: randomUUID()
     };
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), connection.timeoutMs);
+    const requestSignal = buildRequestSignal(connection.timeoutMs, options?.signal);
 
-    try {
-      const requestJson = JSON.stringify(requestBody);
-      const response = await this.transport.postJson(connection, requestJson, controller.signal);
+    const requestJson = JSON.stringify(requestBody);
+    const response = await this.transport.postJson(connection, requestJson, requestSignal);
 
-      if (!response.ok) {
-        const text = await response.text();
-        throw new AppError("eapi_http_error", `EOS eAPI request failed with status ${response.status}: ${text}`, {
-          status: response.status
-        });
-      }
-
-      const payload = await response.json();
-      throwIfJsonRpcError(payload);
-
-      if (useEnable) {
-        return stripEnableResult(payload);
-      }
-      return payload;
-    } finally {
-      clearTimeout(timeout);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new AppError("eapi_http_error", `EOS eAPI request failed with status ${response.status}: ${text}`, {
+        status: response.status
+      });
     }
+
+    const payload = await response.json();
+    throwIfJsonRpcError(payload);
+
+    if (useEnable) {
+      return stripEnableResult(payload);
+    }
+    return payload;
   }
+}
+
+function buildRequestSignal(timeoutMs: number, callerSignal: AbortSignal | undefined): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return callerSignal === undefined ? timeoutSignal : AbortSignal.any([callerSignal, timeoutSignal]);
 }
 
 function stripEnableResult(payload: unknown): unknown {
@@ -104,4 +104,3 @@ function classifyJsonRpcErrorCode(message: string, data: unknown): string {
 
   return "eapi_json_rpc_error";
 }
-

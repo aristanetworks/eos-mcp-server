@@ -148,6 +148,20 @@ describe("inventory validation", () => {
     delete process.env.EOS_MCP_PASSWORD;
   });
 
+  it("rejects unknown top-level keys in canonical inventory", async () => {
+    const filePath = await writeTempInventory([
+      "all:",
+      "  vars:",
+      "    ansible_network_os: eos",
+      "unexpected:",
+      "  hosts: {}"
+    ]);
+
+    const result = await validateInventory(filePath);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.message.includes("unexpected"))).toBe(true);
+  });
+
   it("merges hosts when a canonical group is defined in two places with hosts", async () => {
     process.env.EOS_MCP_PASSWORD = "secret";
     const filePath = await writeTempInventory([

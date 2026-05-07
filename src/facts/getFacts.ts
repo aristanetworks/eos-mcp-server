@@ -1,8 +1,14 @@
-import { AppError, toErrorMessage } from "../core/errors.js";
+import { AppError } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { extractEapiResults, type EosCommandRunner } from "../eapi/types.js";
 import type { InventoryModel } from "../inventory/types.js";
-import { buildReadOperationResultEnvelope, executeReadOperation, type DeviceResultSummary } from "../operations/readExecution.js";
+import {
+  buildReadDeviceFailure,
+  buildReadDeviceSuccess,
+  buildReadOperationResultEnvelope,
+  executeReadOperation,
+  type DeviceResultSummary
+} from "../operations/readExecution.js";
 import { readNumber, readString } from "../utils/value.js";
 
 export interface GetFactsOptions {
@@ -44,8 +50,8 @@ export async function getFacts(
     target: options.target,
     operationName: "eos_get_facts",
     responseSizeGuidance: "Reduce the number of target devices or set include_raw to false to omit raw device payloads.",
-    run: async (host, connection) => {
-      const rawResult = await runner.runShowCommands(connection, ["show version"], "json");
+    run: async (host, connection, signal) => {
+      const rawResult = await runner.runShowCommands(connection, ["show version"], "json", { signal });
       const versionPayload = extractPrimaryPayload(rawResult);
 
       const factDeviceHostname = readString(versionPayload.hostname);
@@ -55,10 +61,7 @@ export async function getFacts(
       const factUptime = readNumber(versionPayload.uptime);
       const factSystemMac = readString(versionPayload.systemMacAddress);
 
-      return {
-        inventory_hostname: host.inventoryHostname,
-        resolved_endpoint: host.resolvedEndpoint,
-        status: "success",
+      return buildReadDeviceSuccess(host, {
         facts: {
           inventory_hostname: host.inventoryHostname,
           ...(factDeviceHostname !== undefined ? { device_hostname: factDeviceHostname } : {}),
@@ -69,15 +72,9 @@ export async function getFacts(
           ...(factSystemMac !== undefined ? { system_mac: factSystemMac } : {})
         },
         ...(options.include_raw ? { raw_result: rawResult } : {})
-      };
+      });
     },
-    onError: (host, error) => ({
-      inventory_hostname: host.inventoryHostname,
-      resolved_endpoint: host.resolvedEndpoint,
-      status: "failed",
-      error_code: "facts_collection_failed",
-      message: toErrorMessage(error)
-    })
+    onError: (host, error) => buildReadDeviceFailure(host, "facts_collection_failed", error)
   });
 
   return buildReadOperationResultEnvelope(options.target, operation);
@@ -93,4 +90,3 @@ function extractPrimaryPayload(rawResult: unknown): Record<string, unknown> {
 
   throw new AppError("facts_payload_invalid", "Unexpected show version payload structure");
 }
-

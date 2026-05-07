@@ -1,8 +1,16 @@
-import { AppError, getErrorCode, toErrorMessage } from "../core/errors.js";
+import { AppError, getErrorCode } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
+import { normalizeShowCommand } from "../eapi/commands.js";
 import { extractEapiResults, extractEapiTextOutput, type EapiConnectionConfig, type EosCommandRunner } from "../eapi/types.js";
 import type { InventoryModel } from "../inventory/types.js";
-import { buildReadOperationResultEnvelope, enforceShowCommandLimit, executeReadOperation, type DeviceResultSummary } from "../operations/readExecution.js";
+import {
+  buildReadDeviceFailure,
+  buildReadDeviceSuccess,
+  buildReadOperationResultEnvelope,
+  enforceShowCommandLimit,
+  executeReadOperation,
+  type DeviceResultSummary
+} from "../operations/readExecution.js";
 
 export interface RunShowOptions {
   target: string;
@@ -40,33 +48,24 @@ export async function runShow(
   options: RunShowOptions,
   runner: EosCommandRunner
 ): Promise<RunShowResult> {
-  validateShowCommands(options.commands);
-  enforceShowCommandLimit(config, options.commands.length);
+  const commands = normalizeShowCommands(options.commands);
+  enforceShowCommandLimit(config, commands.length);
 
   const operation = await executeReadOperation<RunShowResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_run_show",
     responseSizeGuidance: "Reduce the number of target devices, use fewer commands per request, or request text format for more concise output.",
-    run: async (host, connection) => {
-      const { payload, actualFormat } = await executeShow(runner, connection, options.commands, options.outputFormat);
-      const normalizedResults = normalizeCommandResults(payload, options.commands, actualFormat);
+    run: async (host, connection, signal) => {
+      const { payload, actualFormat } = await executeShow(runner, connection, commands, options.outputFormat, signal);
+      const normalizedResults = normalizeCommandResults(payload, commands, actualFormat);
 
-      return {
-        inventory_hostname: host.inventoryHostname,
-        resolved_endpoint: host.resolvedEndpoint,
-        status: "success",
+      return buildReadDeviceSuccess(host, {
         actual_output_format: actualFormat,
         command_results: normalizedResults,
         ...(options.includeRaw ? { raw_result: payload } : {})
-      };
+      });
     },
-    onError: (host, error) => ({
-      inventory_hostname: host.inventoryHostname,
-      resolved_endpoint: host.resolvedEndpoint,
-      status: "failed",
-      error_code: mapShowErrorCode(error, options.outputFormat),
-      message: toErrorMessage(error)
-    })
+    onError: (host, error) => buildReadDeviceFailure(host, mapShowErrorCode(error, options.outputFormat), error)
   });
 
   return {
@@ -79,50 +78,39 @@ async function executeShow(
   runner: EosCommandRunner,
   connection: EapiConnectionConfig,
   commands: string[],
-  outputFormat: "auto" | "json" | "text"
+  outputFormat: "auto" | "json" | "text",
+  signal: AbortSignal
 ): Promise<{ payload: unknown; actualFormat: "json" | "text" }> {
+  const run = async (format: "json" | "text"): Promise<{ payload: unknown; actualFormat: "json" | "text" }> => ({
+    payload: await runner.runShowCommands(connection, commands, format, { signal }),
+    actualFormat: format
+  });
+
   if (outputFormat === "json") {
-    return {
-      payload: await runner.runShowCommands(connection, commands, "json"),
-      actualFormat: "json"
-    };
+    return run("json");
   }
 
   if (outputFormat === "text") {
-    return {
-      payload: await runner.runShowCommands(connection, commands, "text"),
-      actualFormat: "text"
-    };
+    return run("text");
   }
 
   try {
-    return {
-      payload: await runner.runShowCommands(connection, commands, "json"),
-      actualFormat: "json"
-    };
+    return await run("json");
   } catch (error) {
     if (getErrorCode(error) !== "json_output_unavailable") {
       throw error;
     }
 
-    return {
-      payload: await runner.runShowCommands(connection, commands, "text"),
-      actualFormat: "text"
-    };
+    return run("text");
   }
 }
 
-function validateShowCommands(commands: string[]): void {
+function normalizeShowCommands(commands: string[]): string[] {
   if (commands.length === 0) {
     throw new AppError("show_commands_missing", "runShow requires at least one command");
   }
 
-  for (const command of commands) {
-    const normalized = command.trim();
-    if (!normalized.toLowerCase().startsWith("show ") && normalized.toLowerCase() !== "show") {
-      throw new AppError("show_command_invalid", `Only show commands are allowed in eos_run_show: ${command}`);
-    }
-  }
+  return commands.map((command) => normalizeShowCommand(command));
 }
 
 function normalizeCommandResults(
@@ -131,6 +119,12 @@ function normalizeCommandResults(
   actualFormat: "json" | "text"
 ): NormalizedCommandResult[] {
   const eapiResults = extractEapiResults(payload);
+  if (eapiResults.length !== commands.length) {
+    throw new AppError(
+      "eapi_payload_invalid",
+      `Unexpected eAPI payload structure: expected ${commands.length} result entries but received ${eapiResults.length}`
+    );
+  }
 
   return commands.map((command, index) => {
     const rawEntry = eapiResults[index];

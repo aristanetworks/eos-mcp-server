@@ -36,8 +36,8 @@ The design strongly favors:
 
 Key constraints:
 
-- `eos_run_show` accepts only commands beginning with `show`.
-- `eos_get_running_config` requires a `section` filter when targeting a group.
+- `eos_run_show` accepts only trimmed, single-line commands that are `show` or begin with `show `.
+- `eos_get_running_config` requires a trimmed, single-line `section` filter when targeting a group.
 - `eos_get_running_config` automatically enters enable mode via eAPI since `show running-config` requires privileged access.
 - All read tools fail closed if the resolved target contains ineligible or read-denied hosts.
 
@@ -291,7 +291,7 @@ On cancellation or overall timeout during a write operation:
 - Uncommitted config sessions are aborted/discarded where possible.
 - No rollback guarantees for already-applied direct-config changes.
 
-Separate configurable timeouts exist for per-device read operations, per-device write operations, and overall operation duration. There are no automatic retries.
+Separate configurable timeouts exist for per-device read operations, per-device write operations, and overall operation duration. Overall read-operation timeout aborts in-flight eAPI requests and stops scheduling new devices. There are no automatic retries.
 
 ## Summary of key security choices
 

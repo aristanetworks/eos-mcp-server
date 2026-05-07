@@ -1,4 +1,4 @@
-import { AppError } from "../core/errors.js";
+import { AppError, toErrorMessage } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { resolveEapiConnection } from "../connection/resolveConnection.js";
 import type { EapiConnectionConfig } from "../eapi/types.js";
@@ -41,7 +41,7 @@ export async function executeReadOperation<TDeviceResult extends ReadDeviceResul
     operationName: string;
     responseSizeGuidance?: string;
     validateTarget?: (resolvedTarget: ResolvedInventoryTarget) => void;
-    run: (host: InventoryHostModel, connection: EapiConnectionConfig) => Promise<TDeviceResult>;
+    run: (host: InventoryHostModel, connection: EapiConnectionConfig, signal: AbortSignal) => Promise<TDeviceResult>;
     onError: (host: InventoryHostModel, error: unknown) => TDeviceResult;
   }
 ): Promise<ExecuteReadOperationResult<TDeviceResult>> {
@@ -52,17 +52,18 @@ export async function executeReadOperation<TDeviceResult extends ReadDeviceResul
   enforceReadTargetLimit(config, resolvedTarget.resolvedHosts.length);
   options.validateTarget?.(resolvedTarget);
 
-  const results = await withCallerTimeout(
+  const results = await runWithOperationTimeout(
     config,
     options.operationName,
-    mapWithConcurrency(resolvedTarget.resolvedHosts, config.deviceConcurrency, async (host) => {
-      try {
-        const connection = resolveEapiConnection(config, host, "read");
-        return await options.run(host, connection);
-      } catch (error) {
-        return options.onError(host, error);
-      }
-    })
+    (signal) =>
+      mapWithConcurrency(resolvedTarget.resolvedHosts, config.deviceConcurrency, async (host) => {
+        try {
+          const connection = resolveEapiConnection(config, host, "read");
+          return await options.run(host, connection, signal);
+        } catch (error) {
+          return options.onError(host, error);
+        }
+      }, signal)
   );
 
   enforceResponseSizeLimit(config, results, options.operationName, options.responseSizeGuidance);
@@ -87,6 +88,32 @@ export function buildReadOperationResultEnvelope<TDeviceResult extends ReadDevic
   };
 }
 
+export function buildReadDeviceSuccess<TExtra extends Record<string, unknown>>(
+  host: InventoryHostModel,
+  extra: TExtra
+): ReadDeviceResultBase & { status: "success" } & TExtra {
+  return {
+    inventory_hostname: host.inventoryHostname,
+    resolved_endpoint: host.resolvedEndpoint,
+    status: "success",
+    ...extra
+  };
+}
+
+export function buildReadDeviceFailure(
+  host: InventoryHostModel,
+  errorCode: string,
+  error: unknown
+): ReadDeviceResultBase & { status: "failed" } {
+  return {
+    inventory_hostname: host.inventoryHostname,
+    resolved_endpoint: host.resolvedEndpoint,
+    status: "failed",
+    error_code: errorCode,
+    message: toErrorMessage(error)
+  };
+}
+
 export function enforceReadTargetLimit(config: ResolvedServerConfig, targetCount: number): void {
   if (targetCount > config.maxReadTargets) {
     throw new AppError(
@@ -108,13 +135,15 @@ export function enforceShowCommandLimit(config: ResolvedServerConfig, commandCou
 export async function mapWithConcurrency<T, R>(
   items: T[],
   concurrencyLimit: number,
-  worker: (item: T) => Promise<R>
+  worker: (item: T) => Promise<R>,
+  signal?: AbortSignal
 ): Promise<R[]> {
   const results: R[] = new Array<R>(items.length);
   let nextIndex = 0;
 
   async function runWorker(): Promise<void> {
     while (nextIndex < items.length) {
+      throwIfAborted(signal);
       const currentIndex = nextIndex;
       nextIndex += 1;
       const item = items[currentIndex];
@@ -130,12 +159,14 @@ export async function mapWithConcurrency<T, R>(
   return results;
 }
 
-// This bounds the caller's wait time; it does not cancel already-started device requests.
-export async function withCallerTimeout<T>(
+export async function runWithOperationTimeout<T>(
   config: ResolvedServerConfig,
   operationName: string,
-  operation: Promise<T>
+  run: (signal: AbortSignal) => Promise<T>
 ): Promise<T> {
+  const controller = new AbortController();
+  const operation = run(controller.signal);
+
   if (config.overallOperationTimeoutMs === undefined) {
     return operation;
   }
@@ -146,12 +177,12 @@ export async function withCallerTimeout<T>(
       operation,
       new Promise<T>((_resolve, reject) => {
         timeout = setTimeout(() => {
-          reject(
-            new AppError(
-              "operation_timeout",
-              `${operationName} exceeded overallOperationTimeoutMs ${config.overallOperationTimeoutMs}`
-            )
+          const error = new AppError(
+            "operation_timeout",
+            `${operationName} exceeded overallOperationTimeoutMs ${config.overallOperationTimeoutMs}`
           );
+          reject(error);
+          controller.abort(error);
         }, config.overallOperationTimeoutMs);
       })
     ]);
@@ -159,6 +190,12 @@ export async function withCallerTimeout<T>(
     if (timeout !== undefined) {
       clearTimeout(timeout);
     }
+  }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) {
+    throw new AppError("operation_timeout", "Operation was aborted");
   }
 }
 

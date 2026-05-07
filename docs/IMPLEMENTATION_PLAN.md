@@ -80,9 +80,10 @@ The Phase 1 release should provide:
   - `validate-inventory`
   - `print-server-info`
   - `probe`
-- strict `show ...` validation for `eos_run_show`
-- group `eos_get_running_config` requiring an explicit `section`
+- strict single-line `show ...` validation for `eos_run_show`
+- group `eos_get_running_config` requiring an explicit single-line `section`
 - read concurrency and target-count limits
+- overall read-operation timeout cancellation through `AbortSignal`
 - read-only startup posture that rejects write enablement
 
 ### Current gaps to close or explicitly accept

@@ -145,6 +145,8 @@ Supported formats:
 - canonical Ansible-style YAML
 - simplified YAML
 
+Canonical inventories must have `all` as the only top-level key. Simplified inventories may use only `version`, `vars`, `hosts`, and `groups` at the top level. Unknown structural keys are rejected; unknown keys inside `vars` remain allowed.
+
 ### Canonical Ansible-style example
 
 ```yaml
@@ -316,6 +318,8 @@ Useful config fields for the read-only MVP:
 - `defaultConnection.mcpValidateCerts`
 - `defaultConnection.mcpPasswordEnv`
 
+`readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole tool call and aborts in-flight device requests once the limit is reached.
+
 ### Read-only guardrail
 
 These are reserved for future work and are currently rejected if set:
@@ -434,7 +438,7 @@ Runs one or more `show` commands.
 Rules:
 
 - exactly one of `command` or `commands`
-- every command must begin with `show`
+- every command is trimmed, must be a single line, and must be `show` or begin with `show `
 - `output_format` is one of `auto`, `json`, `text`
 - `include_raw` optionally includes the raw eAPI response payload
 
@@ -472,7 +476,7 @@ Input:
 
 ### `eos_get_running_config`
 
-Returns running config text for a host target, or for a group target when `section` is provided. Automatically enters enable mode via eAPI since `show running-config` requires privileged access.
+Returns running config text for a host target, or for a group target when `section` is provided. Automatically enters enable mode via eAPI since `show running-config` requires privileged access. `section` is trimmed and must be a single-line EOS section selector.
 
 Input examples:
 
@@ -613,6 +617,10 @@ Tool and CLI targets must be inventory names, not `ansible_host` IPs.
 ### Group running-config request failed without `section`
 
 For `eos_get_running_config`, group targets require a `section` value.
+
+### Command or section rejected as invalid
+
+`eos_run_show` accepts only single-line `show` commands. `eos_get_running_config.section` must also be a single-line selector. Newlines and other control characters are rejected before any device contact.
 
 ### Policy denied when probing a device
 
