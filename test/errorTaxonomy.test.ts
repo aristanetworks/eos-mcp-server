@@ -162,7 +162,7 @@ describe("error taxonomy", () => {
       );
 
       expect(result.results[0]?.status).toBe("failed");
-      expect(result.results[0]?.error_code).toBe("connection_password_source_invalid");
+      expect(result.results[0]?.error_code).toBe("connection_password_source_missing");
     });
 
     it("preserves per-device AppError codes from read tool execution", async () => {

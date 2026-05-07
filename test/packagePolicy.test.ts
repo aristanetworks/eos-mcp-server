@@ -4,6 +4,15 @@ import { describe, expect, it } from "vitest";
 interface PackageJson {
   version?: string;
   scripts?: Record<string, string>;
+  files?: string[];
+  repository?: {
+    type?: string;
+    url?: string;
+  };
+  bugs?: {
+    url?: string;
+  };
+  homepage?: string;
 }
 
 interface PackageLockJson {
@@ -37,6 +46,21 @@ describe("package policy", () => {
 
     expect(packageJson.scripts?.lint).toBe("node scripts/static-policy.mjs");
     expect(packageJson.scripts?.["static-policy"]).toBe("node scripts/static-policy.mjs");
+  });
+
+  it("ships release docs and examples in npm packages", async () => {
+    const packageJson = await readPackageJson();
+
+    expect(packageJson.files).toEqual(expect.arrayContaining(["dist", "docs", "example-inventories", "CHANGELOG.md"]));
+  });
+
+  it("exposes repository metadata for package consumers", async () => {
+    const packageJson = await readPackageJson();
+
+    expect(packageJson.repository?.type).toBe("git");
+    expect(packageJson.repository?.url).toContain("github.com/aristanetworks/eos-mcp-server");
+    expect(packageJson.bugs?.url).toContain("github.com/aristanetworks/eos-mcp-server/issues");
+    expect(packageJson.homepage).toContain("github.com/aristanetworks/eos-mcp-server");
   });
 
   it("keeps package-lock root versions aligned with package.json", async () => {

@@ -323,6 +323,8 @@ Useful config fields for the read-only MVP:
 
 `readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole tool call and aborts in-flight device requests once the limit is reached. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized read-tool result.
 
+`defaultConnection.mcpPasswordEnv` is a fallback password source. A host or inherited inventory value for `mcp_password_env` or `ansible_password` overrides it. Setting both `mcp_password_env` and `ansible_password` for the same host remains invalid.
+
 ### Read-only guardrail
 
 These are reserved for future work and are currently rejected if set:

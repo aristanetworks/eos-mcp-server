@@ -55,19 +55,39 @@ describe("resolveEapiConnection", () => {
     expect(connection.username).toBe("operator");
   });
 
-  it("rejects multiple effective password sources", () => {
+  it("allows host-specific password source to override the server default password env", () => {
+    setTestPasswordEnv("topsecret");
+
+    const connection = resolveEapiConnection(
+      buildConfig({
+        defaultConnection: {
+          ansibleUser: "admin",
+          mcpPasswordEnv: "EOS_MCP_PASSWORD"
+        }
+      }),
+      buildHost({
+        effectiveVars: {
+          ansible_password: "literal-secret"
+        }
+      })
+    );
+
+    expect(connection.password).toBe("literal-secret");
+  });
+
+  it("rejects multiple host-specific password sources", () => {
     setTestPasswordEnv("topsecret");
 
     expect(() =>
       resolveEapiConnection(
         buildConfig({
           defaultConnection: {
-            ansibleUser: "admin",
-            mcpPasswordEnv: "EOS_MCP_PASSWORD"
+            ansibleUser: "admin"
           }
         }),
         buildHost({
           effectiveVars: {
+            mcp_password_env: "EOS_MCP_PASSWORD",
             ansible_password: "literal-secret"
           }
         })
@@ -224,6 +244,22 @@ describe("EapiClient", () => {
 
     const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
     expect(body.params.cmds).toEqual(["show version"]);
+  });
+
+  it("maps per-request timeouts to a machine-readable AppError code", async () => {
+    const fetchMock = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<never>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        })
+    );
+
+    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const connection = buildConnection({ timeoutMs: 1 });
+
+    await expect(client.runShowCommands(connection, ["show version"], "json")).rejects.toMatchObject({
+      code: "eapi_request_timeout"
+    });
   });
 
   it("uses Node HTTPS options for TLS validation and caches custom CA contents", async () => {

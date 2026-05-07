@@ -20,29 +20,26 @@ export function resolveEapiConnection(
     throw new AppError("connection_username_missing", `Missing effective username for host ${host.inventoryHostname}`);
   }
 
-  const passwordSources: Array<{ kind: "env" | "literal"; value: string }> = [];
+  const hostPasswordSources: Array<{ kind: "env" | "literal"; value: string }> = [];
   const passwordEnv = readNonEmptyString(effectiveVars.mcp_password_env);
   const literalPassword = readNonEmptyString(effectiveVars.ansible_password);
   const defaultPasswordEnv = config.defaultConnection.mcpPasswordEnv;
 
   if (passwordEnv) {
-    passwordSources.push({ kind: "env", value: passwordEnv });
+    hostPasswordSources.push({ kind: "env", value: passwordEnv });
   }
   if (literalPassword) {
-    passwordSources.push({ kind: "literal", value: literalPassword });
-  }
-  if (defaultPasswordEnv) {
-    passwordSources.push({ kind: "env", value: defaultPasswordEnv });
+    hostPasswordSources.push({ kind: "literal", value: literalPassword });
   }
 
-  if (passwordSources.length !== 1) {
+  if (hostPasswordSources.length > 1) {
     throw new AppError(
       "connection_password_source_invalid",
       `Expected exactly one effective password source for host ${host.inventoryHostname}`
     );
   }
 
-  const passwordSource = passwordSources[0];
+  const passwordSource = hostPasswordSources[0] ?? (defaultPasswordEnv ? { kind: "env" as const, value: defaultPasswordEnv } : undefined);
   if (!passwordSource) {
     throw new AppError("connection_password_source_missing", `Missing password source for host ${host.inventoryHostname}`);
   }

@@ -3,12 +3,29 @@
   "version": "0.3.0-alpha",
   "description": "MCP server for Arista EOS eAPI",
   "type": "module",
+  "homepage": "https://github.com/aristanetworks/eos-mcp-server#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aristanetworks/eos-mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aristanetworks/eos-mcp-server/issues"
+  },
+  "keywords": [
+    "arista",
+    "eos",
+    "mcp",
+    "model-context-protocol",
+    "network-automation"
+  ],
   "bin": {
     "eos-mcp-server": "dist/index.js"
   },
   "files": [
     "dist",
-    "docs/DESIGN.md"
+    "docs",
+    "example-inventories",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

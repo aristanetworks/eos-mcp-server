@@ -65,7 +65,7 @@ export class NodeHttpsEapiTransport implements EapiTransport {
         resolve(response);
       };
       const abortRequest = (): void => {
-        request.destroy(new Error("EOS eAPI request aborted"));
+        request.destroy(buildAbortError(signal.reason, connection));
       };
       const request = https.request(
         url,
@@ -158,4 +158,25 @@ export class NodeHttpsEapiTransport implements EapiTransport {
 
 function buildBasicAuthHeader(connection: EapiConnectionConfig): string {
   return `Basic ${Buffer.from(`${connection.username}:${connection.password}`).toString("base64")}`;
+}
+
+function buildAbortError(reason: unknown, connection: EapiConnectionConfig): Error {
+  if (reason instanceof AppError) {
+    return reason;
+  }
+
+  if (reason instanceof DOMException && reason.name === "TimeoutError") {
+    return new AppError(
+      "eapi_request_timeout",
+      `EOS eAPI request for host ${connection.inventoryHostname} exceeded timeoutMs ${connection.timeoutMs}`,
+      {
+        inventoryHostname: connection.inventoryHostname,
+        timeoutMs: connection.timeoutMs
+      }
+    );
+  }
+
+  return new AppError("eapi_request_aborted", `EOS eAPI request for host ${connection.inventoryHostname} was aborted`, {
+    inventoryHostname: connection.inventoryHostname
+  });
 }

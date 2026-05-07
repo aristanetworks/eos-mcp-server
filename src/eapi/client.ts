@@ -47,7 +47,12 @@ export class EapiClient {
     const requestSignal = buildRequestSignal(connection.timeoutMs, options?.signal);
 
     const requestJson = JSON.stringify(requestBody);
-    const response = await this.transport.postJson(connection, requestJson, requestSignal);
+    let response;
+    try {
+      response = await this.transport.postJson(connection, requestJson, requestSignal);
+    } catch (error) {
+      throw classifyTransportError(error, requestSignal, connection);
+    }
 
     if (!response.ok) {
       const text = await response.text();
@@ -69,6 +74,43 @@ export class EapiClient {
 function buildRequestSignal(timeoutMs: number, callerSignal: AbortSignal | undefined): AbortSignal {
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   return callerSignal === undefined ? timeoutSignal : AbortSignal.any([callerSignal, timeoutSignal]);
+}
+
+function classifyTransportError(error: unknown, signal: AbortSignal, connection: EapiConnectionConfig): AppError {
+  if (error instanceof AppError) {
+    return error;
+  }
+
+  if (signal.aborted) {
+    const reason = signal.reason;
+    if (reason instanceof AppError) {
+      return reason;
+    }
+
+    if (isTimeoutAbortReason(reason)) {
+      return new AppError(
+        "eapi_request_timeout",
+        `EOS eAPI request for host ${connection.inventoryHostname} exceeded readTimeoutMs ${connection.timeoutMs}`,
+        {
+          inventoryHostname: connection.inventoryHostname,
+          timeoutMs: connection.timeoutMs
+        }
+      );
+    }
+
+    return new AppError("eapi_request_aborted", `EOS eAPI request for host ${connection.inventoryHostname} was aborted`, {
+      inventoryHostname: connection.inventoryHostname
+    });
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  return new AppError("eapi_transport_error", `EOS eAPI transport error for host ${connection.inventoryHostname}: ${message}`, {
+    inventoryHostname: connection.inventoryHostname
+  });
+}
+
+function isTimeoutAbortReason(reason: unknown): boolean {
+  return reason instanceof DOMException && reason.name === "TimeoutError";
 }
 
 function stripEnableResult(payload: unknown): unknown {

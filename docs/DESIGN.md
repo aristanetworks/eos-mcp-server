@@ -249,6 +249,8 @@ Server config may provide connection defaults such as:
 - default TLS validation policy
 - default password env reference
 
+The default password env reference is a fallback only. A host's effective `mcp_password_env` or `ansible_password` overrides it, while setting both host-level password source fields remains invalid.
+
 But not:
 - literal default passwords
 - per-target policy defaults
