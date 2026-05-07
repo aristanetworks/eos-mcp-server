@@ -39,6 +39,7 @@ export async function executeReadOperation<TDeviceResult extends ReadDeviceResul
   options: {
     target: string;
     operationName: string;
+    responseSizeGuidance?: string;
     validateTarget?: (resolvedTarget: ResolvedInventoryTarget) => void;
     run: (host: InventoryHostModel, connection: EapiConnectionConfig) => Promise<TDeviceResult>;
     onError: (host: InventoryHostModel, error: unknown) => TDeviceResult;
@@ -63,6 +64,8 @@ export async function executeReadOperation<TDeviceResult extends ReadDeviceResul
       }
     })
   );
+
+  enforceResponseSizeLimit(config, results, options.operationName, options.responseSizeGuidance);
 
   return {
     resolvedTarget,
@@ -156,6 +159,30 @@ export async function withCallerTimeout<T>(
     if (timeout !== undefined) {
       clearTimeout(timeout);
     }
+  }
+}
+
+export function enforceResponseSizeLimit(
+  config: ResolvedServerConfig,
+  results: unknown[],
+  operationName: string,
+  narrowingGuidance?: string
+): void {
+  const serialized = JSON.stringify(results);
+  const sizeBytes = Buffer.byteLength(serialized, "utf8");
+
+  if (sizeBytes > config.maxResponseSizeBytes) {
+    const defaultGuidance = "Reduce the number of target devices or narrow the request scope.";
+    throw new AppError(
+      "response_size_exceeded",
+      `${operationName} response size ${sizeBytes} bytes exceeds configured maxResponseSizeBytes ${config.maxResponseSizeBytes}`,
+      {
+        responseSizeBytes: sizeBytes,
+        maxResponseSizeBytes: config.maxResponseSizeBytes,
+        deviceCount: results.length,
+        guidance: narrowingGuidance ?? defaultGuidance
+      }
+    );
   }
 }
 

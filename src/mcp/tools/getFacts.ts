@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ResolvedServerConfig } from "../../config/schema.js";
+import type { EosCommandRunner } from "../../eapi/types.js";
 import type { InventoryModel } from "../../inventory/types.js";
-import type { FactsRunner } from "../../facts/getFacts.js";
 import { getFacts } from "../../facts/getFacts.js";
 import { buildJsonToolResult } from "../toolResult.js";
 
@@ -16,7 +16,7 @@ export async function buildGetFactsToolResult(
   inventoryModel: InventoryModel,
   config: ResolvedServerConfig,
   args: z.infer<typeof getFactsInputSchema>,
-  runner: FactsRunner
+  runner: EosCommandRunner
 ) {
   const payload = await getFacts(
     inventoryModel,

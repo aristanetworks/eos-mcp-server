@@ -107,8 +107,8 @@ Not yet implemented:
 ## Automated Validation Status
 
 Current automated status:
-- **17 test files**
-- **51 passing tests**
+- **20 test files**
+- **86 passing tests**
 - `npm test` ✅
 - `npm run build` ✅
 - `npm run typecheck` ✅
@@ -125,12 +125,14 @@ Covered areas now include:
 - startup connection validation
 - `validate-inventory` command behavior
 - eAPI client request formation
-- probe behavior
-- run-show behavior
+- probe behavior (with include_raw opt-in)
+- run-show behavior (with normalized output and include_raw)
 - get-facts behavior
 - running-config behavior
 - MCP read-tool adapters
 - stdio MCP smoke test
+- response-size enforcement
+- error taxonomy coverage
 
 ## Security / Operationally Strict Behavior Already Enforced
 
@@ -151,58 +153,63 @@ The following strict behaviors are already reflected in the implementation:
 - normalized/sanitized default MCP response shapes for implemented read tools
 - read-only startup posture enforced in config validation
 
-## Phase 1 Remaining Gaps
+## Recently Completed Phase 1 Work
 
-The main remaining work before calling Phase 1 complete is:
-1. add explicit response-size limits and narrowing guidance for read tools
-2. tighten default output shaping vs optional raw/debug payload exposure
-3. improve request-level/operator-facing error rendering consistency across CLI and MCP
-4. run real cEOS/EOS integration validation for the read path
-5. choose and document the minimum supported EOS version for read operations
-6. prepare final release packaging/examples pass (`npm pack`, install/run flow, MCP client examples sanity check)
+### Response-size controls
+- added `maxResponseSizeBytes` config field (default: 1MB)
+- enforced in `executeReadOperation` after device results are collected
+- throws `AppError("response_size_exceeded", ...)` with structured details including `guidance`
+- each read service provides context-specific narrowing guidance (section filters, fewer devices, etc.)
+- 8 new tests in `test/responseSize.test.ts`
+
+### `eos_run_show` output shaping
+- command results are now normalized into `NormalizedCommandResult[]` with `{ command, output }` pairs
+- JSON format: `output` is the parsed JSON object per command
+- text format: `output` is the text string extracted from the eAPI `{ output: "..." }` wrapper
+- added `include_raw` opt-in flag for raw eAPI payload pass-through (matching `eos_get_facts` pattern)
+- 4 new tests for normalized vs raw output shapes
+
+### `eos_probe_devices` raw result opt-in
+- `raw_result` is now opt-in via `include_raw` flag (default false), matching `eos_get_facts` pattern
+- MCP tool schema updated with `include_raw: z.boolean().optional().default(false)`
+- 2 new tests for include_raw behavior
+
+### Error taxonomy polish
+- all `throw new Error(...)` converted to `throw new AppError(code, message)` across the codebase
+- error codes added: `cli_missing_value`, `cli_unknown_argument`, `cli_missing_target`, `cli_missing_inventory`, `config_invalid_yaml`, `inventory_validation_failed`, `inventory_invalid_root`, `inventory_unsupported_schema`, `eapi_payload_invalid`
+- 5 new tests in `test/errorTaxonomy.test.ts` validating key error codes
+
+### cEOS integration validation
+- all 11 integration tests pass against cEOS 4.34.3M (8-node containerlab topology)
+- all 8 devices probed successfully via CLI
+- normalized `eos_run_show` output confirmed working against real devices
+- minimum supported EOS version for read operations documented as 4.20
+
+### Release packaging
+- `npm pack` verified: 53.7 KB, 132 files, no test or dev artifacts
+- clean `npm install` from `.tgz` confirmed working with CLI `--version` and `--help`
+
+## Phase 1 Status
+
+**Phase 1 is complete.** All read-path tools are implemented, tested (86 unit tests + 11 integration tests), documented, and validated against real cEOS devices. The server is ready for the read-only MVP release.
 
 ## Recommended Resume Point
 
-If resuming work for Phase 1, the recommended next step is:
-
-### **Read response-size enforcement**
-
-Start with:
-- `eos_run_show`
-- `eos_get_facts`
-- `eos_get_running_config`
-
-Recommended order:
-1. define config/schema for read response-size limits if needed
-2. enforce per-device and aggregate limits in the read services
-3. return explicit narrowing guidance instead of silent truncation
-4. add tests for oversized show/facts/running-config responses
-
-### After response-size enforcement
-Continue with:
-1. read-path output-shape cleanup
-   - especially `eos_run_show` normalized/default output contract
-   - decide whether `probeDevices` should keep returning `raw_result` by default
-2. real cEOS/EOS integration validation
-3. release packaging and final docs/examples verification
+The next work is **Phase 2: write-path foundation**.
 
 ## Suggested Re-entry Reading List
 
 When resuming, start here:
-- `CHECKPOINT.md`
+- `docs/CHECKPOINT.md`
 - `README.md`
-- `IMPLEMENTATION_PLAN.md`
+- `docs/IMPLEMENTATION_PLAN.md`
 
 Then inspect the main code paths:
-- `src/commands/validateInventory.ts`
 - `src/operations/readExecution.ts`
 - `src/show/runShow.ts`
 - `src/facts/getFacts.ts`
 - `src/configuration/getRunningConfig.ts`
-- `src/inventory/loadInventory.ts`
-- `src/inventory/normalize.ts`
-- `src/inventory/validateNormalized.ts`
-- `src/inventory/buildModel.ts`
+- `src/probe/probeDevices.ts`
 
 ## Phase 2 Work After Phase 1 Ships
 

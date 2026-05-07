@@ -7,12 +7,12 @@ This guide gets you from a `.tgz` package to a working MCP server inside Claude 
 - Node.js 20+
 - Claude Code installed (`npm install -g @anthropic-ai/claude-code`)
 - One or more Arista EOS devices reachable via eAPI (HTTPS)
-- The `eos-mcp-server-0.1.0.tgz` package file
+- An `eos-mcp-server-<version>.tgz` package file (build one with `make pack`)
 
 ## 1. Install the package globally
 
 ```bash
-npm install -g eos-mcp-server-0.1.0.tgz
+npm install -g eos-mcp-server-<version>.tgz
 ```
 
 Verify it's on your PATH:

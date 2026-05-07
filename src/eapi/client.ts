@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { AppError } from "../core/errors.js";
-import type { EapiConnectionConfig, EapiJsonRpcRequest, EapiOutputFormat } from "./types.js";
+import { isObject } from "../utils/value.js";
+import { hasEapiResultArray, type EapiCommandOptions, type EapiConnectionConfig, type EapiJsonRpcRequest, type EapiOutputFormat } from "./types.js";
 import { NodeHttpsEapiTransport, type EapiTransport } from "./transport.js";
 
 export class EapiClient {
@@ -13,26 +14,31 @@ export class EapiClient {
   async runShowCommands(
     connection: EapiConnectionConfig,
     commands: string[],
-    format: EapiOutputFormat
+    format: EapiOutputFormat,
+    options?: EapiCommandOptions
   ): Promise<unknown> {
-    return this.runCommands(connection, commands, format);
+    return this.runCommands(connection, commands, format, options);
   }
 
   async runCommands(
     connection: EapiConnectionConfig,
     commands: string[],
-    format: EapiOutputFormat
+    format: EapiOutputFormat,
+    options?: EapiCommandOptions
   ): Promise<unknown> {
     if (commands.length === 0) {
       throw new AppError("eapi_commands_missing", "runCommands requires at least one command");
     }
+
+    const useEnable = options?.enable === true;
+    const wireCommands = useEnable ? ["enable", ...commands] : commands;
 
     const requestBody: EapiJsonRpcRequest = {
       jsonrpc: "2.0",
       method: "runCmds",
       params: {
         version: 1,
-        cmds: commands,
+        cmds: wireCommands,
         format
       },
       id: randomUUID()
@@ -54,11 +60,22 @@ export class EapiClient {
 
       const payload = await response.json();
       throwIfJsonRpcError(payload);
+
+      if (useEnable) {
+        return stripEnableResult(payload);
+      }
       return payload;
     } finally {
       clearTimeout(timeout);
     }
   }
+}
+
+function stripEnableResult(payload: unknown): unknown {
+  if (hasEapiResultArray(payload)) {
+    return { ...payload, result: payload.result.slice(1) };
+  }
+  return payload;
 }
 
 function throwIfJsonRpcError(payload: unknown): void {
@@ -88,6 +105,3 @@ function classifyJsonRpcErrorCode(message: string, data: unknown): string {
   return "eapi_json_rpc_error";
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}

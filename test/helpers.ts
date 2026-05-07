@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { ResolvedServerConfig } from "../src/config/schema.js";
+import type { EapiConnectionConfig } from "../src/eapi/types.js";
 import type { InventoryHostModel, InventoryModel } from "../src/inventory/types.js";
 
 export function buildConfig(overrides: Partial<ResolvedServerConfig> = {}): ResolvedServerConfig {
@@ -21,6 +22,7 @@ export function buildConfig(overrides: Partial<ResolvedServerConfig> = {}): Reso
     maxWriteTargets: 10,
     maxShowCommandsPerRequest: 5,
     maxConfigCommandsPerRequest: 20,
+    maxResponseSizeBytes: 1_048_576,
     previewMaxAgeMs: 900_000,
     logWriteCommands: false,
     secretEnvPrefixes: ["EOS_MCP_"],
@@ -38,6 +40,19 @@ export async function writeTempInventory(lines: string[], prefix = "eos-mcp-test
   const filePath = path.join(dir, "inventory.yml");
   await fs.writeFile(filePath, lines.join("\n"));
   return filePath;
+}
+
+export function buildConnection(overrides: Partial<EapiConnectionConfig> = {}): EapiConnectionConfig {
+  return {
+    inventoryHostname: "leaf1",
+    endpointHost: "10.0.0.11",
+    baseUrl: "https://10.0.0.11:443/command-api",
+    username: "admin",
+    password: "secret",
+    validateCerts: true,
+    timeoutMs: 10_000,
+    ...overrides
+  };
 }
 
 export function buildHost(overrides: Partial<InventoryHostModel> = {}): InventoryHostModel {

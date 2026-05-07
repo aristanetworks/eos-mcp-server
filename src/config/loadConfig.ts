@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import { parseDocument } from "yaml";
 import type { CliOptions } from "../cli.js";
+import { AppError } from "../core/errors.js";
 import { resolvePathFromConfig, resolvePathFromCwd } from "../utils/path.js";
 import {
   resolvedServerConfigSchema,
@@ -19,7 +20,7 @@ export async function loadServerConfig(options: CliOptions): Promise<ResolvedSer
     const doc = parseDocument(text, { uniqueKeys: true, merge: true, prettyErrors: true });
 
     if (doc.errors.length > 0) {
-      throw new Error(`Invalid server config YAML: ${doc.errors.map((error) => error.message).join("; ")}`);
+      throw new AppError("config_invalid_yaml", `Invalid server config YAML: ${doc.errors.map((error) => error.message).join("; ")}`);
     }
 
     const raw = doc.toJS();
@@ -42,6 +43,7 @@ export async function loadServerConfig(options: CliOptions): Promise<ResolvedSer
     maxWriteTargets: fileConfig.maxWriteTargets,
     maxShowCommandsPerRequest: fileConfig.maxShowCommandsPerRequest,
     maxConfigCommandsPerRequest: fileConfig.maxConfigCommandsPerRequest,
+    maxResponseSizeBytes: fileConfig.maxResponseSizeBytes,
     previewMaxAgeMs: fileConfig.previewMaxAgeMs,
     logWriteCommands: fileConfig.logWriteCommands,
     secretEnvPrefixes: fileConfig.secretEnvPrefixes,

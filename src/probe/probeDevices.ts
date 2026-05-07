@@ -1,26 +1,19 @@
 import { toErrorMessage } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
-import type { EapiConnectionConfig } from "../eapi/types.js";
+import type { EosCommandRunner } from "../eapi/types.js";
 import type { InventoryModel } from "../inventory/types.js";
-import { buildReadOperationResultEnvelope, executeReadOperation } from "../operations/readExecution.js";
-
-export interface ProbeRunner {
-  runShowCommands(connection: EapiConnectionConfig, commands: string[], format: "json" | "text"): Promise<unknown>;
-}
+import { buildReadOperationResultEnvelope, executeReadOperation, type DeviceResultSummary } from "../operations/readExecution.js";
 
 export interface ProbeDevicesOptions {
   target: string;
+  include_raw: boolean;
 }
 
 export interface ProbeDevicesResult {
   target: string;
   target_type: "host" | "group";
   resolved_devices: string[];
-  summary: {
-    total_count: number;
-    success_count: number;
-    failed_count: number;
-  };
+  summary: DeviceResultSummary;
   results: Array<{
     inventory_hostname: string;
     resolved_endpoint: string;
@@ -35,17 +28,20 @@ export async function probeDevices(
   model: InventoryModel,
   config: ResolvedServerConfig,
   options: ProbeDevicesOptions,
-  runner: ProbeRunner
+  runner: EosCommandRunner
 ): Promise<ProbeDevicesResult> {
   const operation = await executeReadOperation<ProbeDevicesResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_probe_devices",
-    run: async (host, connection) => ({
-      inventory_hostname: host.inventoryHostname,
-      resolved_endpoint: host.resolvedEndpoint,
-      status: "success",
-      raw_result: await runner.runShowCommands(connection, ["show version"], "json")
-    }),
+    run: async (host, connection) => {
+      const showVersionResult = await runner.runShowCommands(connection, ["show version"], "json");
+      return {
+        inventory_hostname: host.inventoryHostname,
+        resolved_endpoint: host.resolvedEndpoint,
+        status: "success",
+        ...(options.include_raw ? { raw_result: showVersionResult } : {})
+      };
+    },
     onError: (host, error) => ({
       inventory_hostname: host.inventoryHostname,
       resolved_endpoint: host.resolvedEndpoint,

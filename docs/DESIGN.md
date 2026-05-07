@@ -24,7 +24,7 @@ The design strongly favors:
 - **Packaging:** npm package with a CLI entrypoint
 - **Package format:** ESM only
 - **Repo structure:** single package for v1, with internal module boundaries
-- **Package manager:** pnpm
+- **Package manager:** npm
 - **MCP transport:** stdio only in v1
 - **MCP implementation:** official TypeScript MCP SDK, wrapped in a thin internal abstraction
 
@@ -222,8 +222,8 @@ For operational tools:
 
 ### Authentication
 - Username/password only in v1
-- Assume supplied credentials already have required privilege
-- No explicit enable-mode flow
+- Opt-in enable mode: tools that require privileged access (e.g. `eos_get_running_config`) automatically prepend an `enable` command via eAPI and strip the result transparently
+- Other tools run without enable mode since most `show` commands do not require elevated privilege
 
 ### Credential fields
 - Username: `ansible_user`
@@ -280,6 +280,7 @@ But not:
 
 ### `eos_get_running_config`
 - Read permission required
+- Automatically enters enable mode via eAPI (prepends `enable` command) since `show running-config` requires privileged access
 - Device AAA ultimately decides access at execution time
 - Returns config text inside a structured wrapper
 - `section` is a raw EOS section selector string
@@ -531,10 +532,10 @@ Supports:
 
 ## Version Compatibility
 
-- The server will document a minimum supported EOS version before release
-- Exact minimum version remains open until integration testing is complete
-- Reads may proceed best-effort on older EOS
-- Write-path tools fail closed below the supported minimum
+- Minimum supported EOS version for read operations: **4.20**
+- Read-path integration tested against cEOS 4.34.3M
+- Reads may proceed best-effort on older EOS; the `auto` output format falls back to text when JSON is unavailable
+- Write-path tools will enforce a stricter minimum version for config session support
 
 ## Testing Strategy
 
@@ -581,18 +582,17 @@ The following decisions most strongly shape the security posture:
 
 ## Current Phase 1 Gaps
 
-The current implementation is strong enough to target a read-only MVP, but the following items remain the main gaps to close or explicitly accept before release:
-- add operator-facing package documentation (`README.md`) with inventory examples, secret-env usage, TLS guidance, and MCP client launch examples
-- make `validate-inventory`'s default/effective mode truly distinct from `inventory-only`; today it does not yet perform startup-equivalent config/default-connection/secret validation
-- enforce response-size limits and explicit narrowing guidance for large `show`, facts, and running-config responses
-- tighten `eos_run_show` output shaping so sanitized default output is clearly separated from any optional raw payload pass-through
-- finish real cEOS/EOS integration validation and choose/document a minimum supported EOS version for the read path
-- polish shared request-level error taxonomy and operator-facing diagnostics for common inventory/auth/TLS failures
+All major Phase 1 gaps have been closed:
+- ~~add operator-facing package documentation~~ — done (`README.md`, `docs/QUICKSTART.md`)
+- ~~make `validate-inventory`'s default/effective mode truly distinct from `inventory-only`~~ — done
+- ~~enforce response-size limits and explicit narrowing guidance~~ — done (`maxResponseSizeBytes`, per-tool guidance)
+- ~~tighten `eos_run_show` output shaping~~ — done (normalized `{ command, output }` pairs, `include_raw` opt-in)
+- ~~finish real cEOS/EOS integration validation and choose/document a minimum supported EOS version~~ — done (cEOS 4.34.3M, minimum 4.20)
+- ~~polish shared request-level error taxonomy~~ — done (all errors use `AppError` with machine-readable codes)
 
 ## Remaining Open Items
 
 These are intentionally deferred rather than undecided:
-- exact minimum supported EOS version (to be chosen after integration testing)
 - concrete default values for timeouts, concurrency, target-count limits, command-count limits, and preview max age
 - exact built-in denylist contents (policy direction is set, list still to be codified)
 - exact fact fields included in the v1 fixed core schema after testing command availability
@@ -600,12 +600,13 @@ These are intentionally deferred rather than undecided:
 ## Recommended Implementation Order From Current State
 
 ### Phase 1 completion order
-1. Package/operator documentation for the read-only MVP
-2. `validate-inventory` effective-mode hardening
-3. response-size limits and narrowing guidance for read tools
-4. `eos_run_show` output-shaping cleanup
-5. real EOS/cEOS integration testing and minimum-version decision
-6. release packaging and MCP client setup examples
+All Phase 1 items are complete:
+1. ~~Package/operator documentation for the read-only MVP~~ — done
+2. ~~`validate-inventory` effective-mode hardening~~ — done
+3. ~~response-size limits and narrowing guidance for read tools~~ — done
+4. ~~`eos_run_show` output-shaping cleanup~~ — done
+5. ~~real EOS/cEOS integration testing and minimum-version decision~~ — done
+6. ~~release packaging and MCP client setup examples~~ — done
 
 ### Phase 2 order
 1. global write lock / runtime orchestration

@@ -1,3 +1,4 @@
+import { AppError } from "../core/errors.js";
 import { buildInventoryModel } from "./buildModel.js";
 import type { ValidationContext } from "./internalTypes.js";
 import { detectSchemaKind, normalizeInventory } from "./normalize.js";
@@ -31,7 +32,10 @@ function assertParsedInventorySuccess<TValue>(
   value: TValue | undefined
 ): TValue {
   if (result.errors.length > 0 || value === undefined) {
-    throw new Error(result.errors.map((error) => error.message).join("; "));
+    throw new AppError(
+      "inventory_validation_failed",
+      result.errors.map((error) => error.message).join("; ")
+    );
   }
 
   return value;

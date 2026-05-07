@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveEapiConnection } from "../src/connection/resolveConnection.js";
 import { EapiClient } from "../src/eapi/client.js";
 import { FetchEapiTransport } from "../src/eapi/transport.js";
-import { buildConfig, buildHost, setTestPasswordEnv } from "./helpers.js";
+import { buildConfig, buildConnection, buildHost, setTestPasswordEnv } from "./helpers.js";
 
 describe("resolveEapiConnection", () => {
   it("uses server default username and password env when host does not override them", () => {
@@ -144,16 +144,7 @@ describe("EapiClient", () => {
     }));
 
     const client = new EapiClient(new FetchEapiTransport(fetchMock));
-    const connection = {
-      inventoryHostname: "leaf1",
-      endpointHost: "10.0.0.11",
-      baseUrl: "https://10.0.0.11:443/command-api",
-      username: "admin",
-      password: "secret",
-      validateCerts: true,
-      caFile: undefined,
-      timeoutMs: 10_000
-    };
+    const connection = buildConnection();
 
     await client.runShowCommands(connection, ["show version"], "json");
 
@@ -181,18 +172,58 @@ describe("EapiClient", () => {
     }));
 
     const client = new EapiClient(new FetchEapiTransport(fetchMock));
-    const connection = {
-      inventoryHostname: "leaf1",
-      endpointHost: "10.0.0.11",
-      baseUrl: "https://10.0.0.11:443/command-api",
-      username: "admin",
-      password: "secret",
-      validateCerts: true,
-      caFile: undefined,
-      timeoutMs: 10_000
-    };
+    const connection = buildConnection();
 
     await expect(client.runShowCommands(connection, ["show version"], "json")).rejects.toThrow(/JSON-RPC error 1002/);
+  });
+
+  it("prepends enable command when enable option is true", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: [{}, { output: "! running-config\n" }] }),
+      text: async () => JSON.stringify({ result: [{}, { output: "! running-config\n" }] })
+    }));
+
+    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const connection = buildConnection();
+
+    await client.runShowCommands(connection, ["show running-config"], "text", { enable: true });
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
+    expect(body.params.cmds).toEqual(["enable", "show running-config"]);
+  });
+
+  it("strips enable result entry from response when enable is true", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: [{}, { output: "! running-config\n" }] }),
+      text: async () => JSON.stringify({ result: [{}, { output: "! running-config\n" }] })
+    }));
+
+    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const connection = buildConnection();
+
+    const result = await client.runShowCommands(connection, ["show running-config"], "text", { enable: true });
+    expect(result).toEqual({ result: [{ output: "! running-config\n" }] });
+  });
+
+  it("does not prepend enable when enable option is omitted", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: [{ version: "4.32.1F" }] }),
+      text: async () => JSON.stringify({ result: [{ version: "4.32.1F" }] })
+    }));
+
+    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const connection = buildConnection();
+
+    await client.runShowCommands(connection, ["show version"], "json");
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
+    expect(body.params.cmds).toEqual(["show version"]);
   });
 
   it("uses Node HTTPS options for TLS validation and caches custom CA contents", async () => {
@@ -223,16 +254,7 @@ describe("EapiClient", () => {
 
     try {
       const client = new EapiClient();
-      const connection = {
-        inventoryHostname: "leaf1",
-        endpointHost: "10.0.0.11",
-        baseUrl: "https://10.0.0.11:443/command-api",
-        username: "admin",
-        password: "secret",
-        validateCerts: false,
-        caFile,
-        timeoutMs: 10_000
-      };
+      const connection = buildConnection({ validateCerts: false, caFile });
 
       await client.runShowCommands(connection, ["show version"], "json");
       await client.runShowCommands(connection, ["show hostname"], "json");

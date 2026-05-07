@@ -10,6 +10,10 @@ export function readBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
 
+export function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined;
+}
+
 export function readPositiveInteger(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isInteger(value) && value > 0) {
     return value;
@@ -23,4 +27,8 @@ export function readPositiveInteger(value: unknown): number | undefined {
   }
 
   return undefined;
+}
+
+export function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

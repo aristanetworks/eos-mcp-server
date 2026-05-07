@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
-import { toErrorMessage } from "./core/errors.js";
-import { parseCliArgs } from "./cli.js";
+import { AppError, toErrorMessage } from "./core/errors.js";
+import { parseCliArgs, printHelp, printVersion } from "./cli.js";
 import { runProbe } from "./commands/probe.js";
 import { runValidateInventory } from "./commands/validateInventory.js";
 import { printServerInfo } from "./commands/printServerInfo.js";
@@ -13,6 +13,17 @@ import type { ServerRuntimeContext } from "./serverInfo/types.js";
 
 async function main(): Promise<void> {
   const cli = parseCliArgs(process.argv.slice(2));
+
+  if (cli.version) {
+    printVersion();
+    return;
+  }
+
+  if (cli.help) {
+    printHelp(cli);
+    return;
+  }
+
   const config = await loadServerConfig(cli);
 
   switch (cli.command) {
@@ -40,7 +51,7 @@ async function main(): Promise<void> {
 
     case "probe": {
       if (!cli.target) {
-        throw new Error("probe requires a target via --target");
+        throw new AppError("cli_missing_target", "probe requires a target via --target");
       }
 
       const exitCode = await runProbe(config, cli.target, cli.json ?? false);
@@ -50,7 +61,7 @@ async function main(): Promise<void> {
 
     case "serve": {
       if (!config.inventoryPath) {
-        throw new Error("serve requires an inventory path via --inventory or config file");
+        throw new AppError("cli_missing_inventory", "serve requires an inventory path via --inventory or config file");
       }
       const inventoryModel = await loadInventoryModel(config.inventoryPath);
       validateStartupConnections(config, inventoryModel);

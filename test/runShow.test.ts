@@ -167,6 +167,173 @@ describe("runShow", () => {
     expect(runner.runShowCommands).not.toHaveBeenCalled();
   });
 
+  it("returns normalized command_results by default", async () => {
+    setTestPasswordEnv();
+    const inventoryPath = await writeTempInventory([
+      "vars:",
+      "  ansible_network_os: eos",
+      "hosts:",
+      "  leaf1:",
+      "    ansible_host: 10.0.0.11"
+    ]);
+
+    const model = await loadInventoryModel(inventoryPath);
+    const runner = {
+      runShowCommands: vi.fn(async () => ({
+        result: [{ version: "4.32.1F", modelName: "DCS-7050SX3-48YC8" }]
+      }))
+    };
+
+    const result = await runShow(
+      model,
+      buildConfig({
+        defaultConnection: {
+          ansibleUser: "admin",
+          mcpPasswordEnv: "EOS_MCP_PASSWORD"
+        }
+      }),
+      {
+        target: "leaf1",
+        commands: ["show version"],
+        outputFormat: "json"
+      },
+      runner
+    );
+
+    const deviceResult = result.results[0]!;
+    expect(deviceResult.command_results).toEqual([
+      {
+        command: "show version",
+        output: { version: "4.32.1F", modelName: "DCS-7050SX3-48YC8" }
+      }
+    ]);
+    expect(deviceResult.raw_result).toBeUndefined();
+  });
+
+  it("returns text output in normalized command_results", async () => {
+    setTestPasswordEnv();
+    const inventoryPath = await writeTempInventory([
+      "vars:",
+      "  ansible_network_os: eos",
+      "hosts:",
+      "  leaf1:",
+      "    ansible_host: 10.0.0.11"
+    ]);
+
+    const model = await loadInventoryModel(inventoryPath);
+    const runner = {
+      runShowCommands: vi.fn(async () => ({
+        result: [{ output: "Arista DCS-7050SX3-48YC8\n" }]
+      }))
+    };
+
+    const result = await runShow(
+      model,
+      buildConfig({
+        defaultConnection: {
+          ansibleUser: "admin",
+          mcpPasswordEnv: "EOS_MCP_PASSWORD"
+        }
+      }),
+      {
+        target: "leaf1",
+        commands: ["show version"],
+        outputFormat: "text"
+      },
+      runner
+    );
+
+    const deviceResult = result.results[0]!;
+    expect(deviceResult.command_results).toEqual([
+      {
+        command: "show version",
+        output: "Arista DCS-7050SX3-48YC8\n"
+      }
+    ]);
+  });
+
+  it("includes raw_result when include_raw is true", async () => {
+    setTestPasswordEnv();
+    const inventoryPath = await writeTempInventory([
+      "vars:",
+      "  ansible_network_os: eos",
+      "hosts:",
+      "  leaf1:",
+      "    ansible_host: 10.0.0.11"
+    ]);
+
+    const model = await loadInventoryModel(inventoryPath);
+    const eapiPayload = {
+      result: [{ version: "4.32.1F", modelName: "DCS-7050SX3-48YC8" }]
+    };
+    const runner = {
+      runShowCommands: vi.fn(async () => eapiPayload)
+    };
+
+    const result = await runShow(
+      model,
+      buildConfig({
+        defaultConnection: {
+          ansibleUser: "admin",
+          mcpPasswordEnv: "EOS_MCP_PASSWORD"
+        }
+      }),
+      {
+        target: "leaf1",
+        commands: ["show version"],
+        outputFormat: "json",
+        includeRaw: true
+      },
+      runner
+    );
+
+    const deviceResult = result.results[0]!;
+    expect(deviceResult.raw_result).toEqual(eapiPayload);
+  });
+
+  it("normalizes multiple command results in order", async () => {
+    setTestPasswordEnv();
+    const inventoryPath = await writeTempInventory([
+      "vars:",
+      "  ansible_network_os: eos",
+      "hosts:",
+      "  leaf1:",
+      "    ansible_host: 10.0.0.11"
+    ]);
+
+    const model = await loadInventoryModel(inventoryPath);
+    const runner = {
+      runShowCommands: vi.fn(async () => ({
+        result: [
+          { version: "4.32.1F" },
+          { hostname: "leaf1" }
+        ]
+      }))
+    };
+
+    const result = await runShow(
+      model,
+      buildConfig({
+        defaultConnection: {
+          ansibleUser: "admin",
+          mcpPasswordEnv: "EOS_MCP_PASSWORD"
+        }
+      }),
+      {
+        target: "leaf1",
+        commands: ["show version", "show hostname"],
+        outputFormat: "json"
+      },
+      runner
+    );
+
+    const deviceResult = result.results[0]!;
+    expect(deviceResult.command_results).toEqual([
+      { command: "show version", output: { version: "4.32.1F" } },
+      { command: "show hostname", output: { hostname: "leaf1" } }
+    ]);
+  });
+
   it("enforces configured read target and show command limits", async () => {
     setTestPasswordEnv();
     const inventoryPath = await writeTempInventory([

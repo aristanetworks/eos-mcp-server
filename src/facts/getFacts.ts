@@ -1,13 +1,9 @@
 import { AppError, toErrorMessage } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
-import type { EapiConnectionConfig } from "../eapi/types.js";
+import { extractEapiResults, type EosCommandRunner } from "../eapi/types.js";
 import type { InventoryModel } from "../inventory/types.js";
-import { buildReadOperationResultEnvelope, executeReadOperation } from "../operations/readExecution.js";
-import { readString } from "../utils/value.js";
-
-export interface FactsRunner {
-  runShowCommands(connection: EapiConnectionConfig, commands: string[], format: "json" | "text"): Promise<unknown>;
-}
+import { buildReadOperationResultEnvelope, executeReadOperation, type DeviceResultSummary } from "../operations/readExecution.js";
+import { readNumber, readString } from "../utils/value.js";
 
 export interface GetFactsOptions {
   target: string;
@@ -18,11 +14,7 @@ export interface GetFactsResult {
   target: string;
   target_type: "host" | "group";
   resolved_devices: string[];
-  summary: {
-    total_count: number;
-    success_count: number;
-    failed_count: number;
-  };
+  summary: DeviceResultSummary;
   results: Array<{
     inventory_hostname: string;
     resolved_endpoint: string;
@@ -46,11 +38,12 @@ export async function getFacts(
   model: InventoryModel,
   config: ResolvedServerConfig,
   options: GetFactsOptions,
-  runner: FactsRunner
+  runner: EosCommandRunner
 ): Promise<GetFactsResult> {
   const operation = await executeReadOperation<GetFactsResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_get_facts",
+    responseSizeGuidance: "Reduce the number of target devices or set include_raw to false to omit raw device payloads.",
     run: async (host, connection) => {
       const rawResult = await runner.runShowCommands(connection, ["show version"], "json");
       const versionPayload = extractPrimaryPayload(rawResult);
@@ -91,20 +84,13 @@ export async function getFacts(
 }
 
 function extractPrimaryPayload(rawResult: unknown): Record<string, unknown> {
-  if (
-    typeof rawResult === "object" &&
-    rawResult !== null &&
-    "result" in rawResult &&
-    Array.isArray((rawResult as { result: unknown }).result) &&
-    typeof (rawResult as { result: unknown[] }).result[0] === "object" &&
-    (rawResult as { result: unknown[] }).result[0] !== null
-  ) {
-    return (rawResult as { result: Array<Record<string, unknown>> }).result[0] ?? {};
+  const results = extractEapiResults(rawResult);
+  const first = results[0];
+
+  if (typeof first === "object" && first !== null) {
+    return first as Record<string, unknown>;
   }
 
   throw new AppError("facts_payload_invalid", "Unexpected show version payload structure");
 }
 
-function readNumber(value: unknown): number | undefined {
-  return typeof value === "number" ? value : undefined;
-}

@@ -7,8 +7,8 @@ This repository is a single TypeScript/Node package.
 - `src/` contains all source code.
 - `test/` contains Vitest tests.
 - `dist/` is generated build output from `tsc`.
-- `DESIGN.md` describes the target architecture.
-- `CHECKPOINT.md` captures current implementation status.
+- `docs/` contains project documentation (design, checkpoint, implementation plan, etc.).
+- `Makefile` wraps build, test, typecheck, clean, and packaging.
 - `package.json` defines scripts: `npm test`, `npm run typecheck`, and `npm run build`.
 
 ## Runtime Entry
@@ -20,7 +20,7 @@ Execution starts at `src/index.ts`. It parses CLI args, loads config, then dispa
 - `print-server-info`: print sanitized server metadata.
 - `probe`: run the same probe logic as the MCP probe tool.
 
-CLI parsing lives in `src/cli.ts`.
+CLI parsing lives in `src/cli.ts`. The app name and version are read from `package.json` at runtime via `src/core/version.ts`.
 
 ## Config And Inventory
 
@@ -43,9 +43,9 @@ Startup credential validation is in `src/connection/validateStartupConnections.t
 
 eAPI protocol and transport are split:
 
-- `src/eapi/client.ts`: builds JSON-RPC `runCmds` requests, handles HTTP errors and JSON-RPC errors.
+- `src/eapi/client.ts`: builds JSON-RPC `runCmds` requests, handles HTTP errors and JSON-RPC errors. Supports opt-in enable mode (`{ enable: true }`) for privileged commands — prepends `enable` to the wire commands and strips the extra result entry transparently.
 - `src/eapi/transport.ts`: production HTTPS transport and test-friendly fetch transport.
-- `src/eapi/types.ts`: eAPI types.
+- `src/eapi/types.ts`: shared eAPI types, the unified `EosCommandRunner` interface (used by all read-path services), `EapiCommandOptions`, and `extractEapiResults` (a helper for drilling into eAPI JSON-RPC response payloads).
 
 ## Read Tool Services
 
@@ -54,9 +54,13 @@ The core read behavior is implemented as service modules:
 - `src/probe/probeDevices.ts`: runs `show version` to verify readiness.
 - `src/show/runShow.ts`: validates `show` commands and runs them with `auto`, `json`, or `text` behavior.
 - `src/facts/getFacts.ts`: collects fixed facts from `show version`.
-- `src/configuration/getRunningConfig.ts`: returns running config text, requiring `section` for group targets.
+- `src/configuration/getRunningConfig.ts`: returns running config text, requiring `section` for group targets. Uses enable mode since `show running-config` requires privileged access.
 
-Shared read orchestration lives in `src/operations/readExecution.ts`. It centralizes target resolution, target limits, concurrency, caller timeout, connection resolution, and result summaries.
+All four services accept an `EosCommandRunner` (defined in `src/eapi/types.ts`) rather than defining their own runner interfaces.
+
+Shared read orchestration lives in `src/operations/readExecution.ts`. It centralizes target resolution, target limits, concurrency, caller timeout, connection resolution, and result summaries (including the shared `DeviceResultSummary` type used by all result interfaces).
+
+Shared type-narrowing utilities (`isObject`, `readString`, `readBoolean`, `readNumber`, etc.) live in `src/utils/value.ts`.
 
 ## MCP Layer
 

@@ -41,6 +41,7 @@ export interface ServerInfo {
     max_write_targets: number;
     max_show_commands_per_request: number;
     max_config_commands_per_request: number;
+    max_response_size_bytes: number;
     preview_max_age_ms: number;
   };
   logging: {

@@ -1,3 +1,4 @@
+import { isObject } from "../utils/value.js";
 import type { InventoryVars, ValidationContext } from "./internalTypes.js";
 
 const SAFE_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
@@ -69,14 +70,9 @@ export function validateSafeName(
   }
 }
 
-export function parseBoolean(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined;
-}
+export { isObject };
 
 export function stableValueKey(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}

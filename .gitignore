@@ -6,3 +6,6 @@ coverage/
 clab/
 *.tgz
 demo/
+.codex
+.envrc
+.mcp.json

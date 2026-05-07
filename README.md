@@ -35,11 +35,19 @@ Implemented local CLI commands:
 
 - Node.js 20+
 - Arista EOS devices reachable via eAPI over HTTPS
+- EOS 4.20 or later (read-path tested against cEOS 4.34.3M)
 - Inventory in one of the supported YAML formats
 
 ## Install
 
 ### From source
+
+```bash
+npm install
+make build
+```
+
+Or equivalently:
 
 ```bash
 npm install
@@ -52,6 +60,14 @@ Run the built CLI directly:
 node dist/index.js serve --inventory path/to/inventory.yml
 ```
 
+### Package a distributable tarball
+
+```bash
+make pack
+```
+
+This runs a clean build and produces an `eos-mcp-server-<version>.tgz` that can be installed elsewhere with `npm install -g`.
+
 ### Install on PATH
 
 After building, you can make the `eos-mcp-server` command available globally.
@@ -60,7 +76,7 @@ From the project directory:
 
 ```bash
 npm install
-npm run build
+make build
 npm link
 ```
 
@@ -91,6 +107,13 @@ npm run dev -- serve --inventory path/to/inventory.yml
 ### Tests
 
 ```bash
+make test
+make typecheck
+```
+
+Or equivalently:
+
+```bash
 npm test
 npm run typecheck
 ```
@@ -115,7 +138,7 @@ node dist/index.js serve --inventory inventory.yml
 
 ## Inventory formats
 
-The server supports exactly one inventory file loaded at startup.
+The server supports exactly one inventory file loaded at startup. The inventory is not watched for changes — to pick up inventory edits, restart the server. Most MCP clients will do this automatically when you restart the client or re-launch the MCP connection. For Claude code quitting and starting a new session will work.
 
 Supported formats:
 
@@ -267,6 +290,7 @@ overallOperationTimeoutMs: 30000
 deviceConcurrency: 5
 maxReadTargets: 50
 maxShowCommandsPerRequest: 5
+maxResponseSizeBytes: 1048576
 secretEnvPrefixes:
   - EOS_MCP_
 defaultConnection:
@@ -285,6 +309,7 @@ Useful config fields for the read-only MVP:
 - `deviceConcurrency`
 - `maxReadTargets`
 - `maxShowCommandsPerRequest`
+- `maxResponseSizeBytes`
 - `secretEnvPrefixes`
 - `defaultConnection.ansibleUser`
 - `defaultConnection.ansibleHttpapiPort`
@@ -303,6 +328,11 @@ These are reserved for future work and are currently rejected if set:
 ## CLI usage
 
 If no subcommand is provided, the CLI defaults to `serve`.
+
+```bash
+node dist/index.js --version
+node dist/index.js --help
+```
 
 ### `serve`
 
@@ -392,7 +422,8 @@ Input:
 
 ```json
 {
-  "target": "leaf1"
+  "target": "leaf1",
+  "include_raw": false
 }
 ```
 
@@ -405,6 +436,7 @@ Rules:
 - exactly one of `command` or `commands`
 - every command must begin with `show`
 - `output_format` is one of `auto`, `json`, `text`
+- `include_raw` optionally includes the raw eAPI response payload
 
 Input examples:
 
@@ -420,7 +452,8 @@ Input examples:
 {
   "target": "leafs",
   "commands": ["show version", "show interfaces status"],
-  "output_format": "json"
+  "output_format": "json",
+  "include_raw": false
 }
 ```
 
@@ -439,7 +472,7 @@ Input:
 
 ### `eos_get_running_config`
 
-Returns running config text for a host target, or for a group target when `section` is provided.
+Returns running config text for a host target, or for a group target when `section` is provided. Automatically enters enable mode via eAPI since `show running-config` requires privileged access.
 
 Input examples:
 
@@ -592,6 +625,14 @@ Policy denied: target clab-testlab-node1-1 includes host(s) not permitted for re
 
 You need to specify that the devices are marked as `ansible_network_os=eos` in your inventory.
 
+## EOS version compatibility
+
+The read-path tools have been validated against cEOS 4.34.3M. The minimum supported EOS version for read operations is 4.20, which is when eAPI JSON-RPC became stable and `show` commands reliably produce structured JSON output.
+
+Older EOS versions may work for basic `show` commands but are not tested. The `auto` output format falls back to text when JSON output is unavailable, so most read operations will still function on older releases.
+
+The write path (Phase 2) will enforce a stricter minimum EOS version for config session support.
+
 ## Design notes for the current MVP
 
 - inventory is the trust boundary
@@ -601,8 +642,12 @@ You need to specify that the devices are marked as `ansible_network_os=eos` in y
 
 ## Project docs
 
-Additional design and planning docs in this repository:
+Additional design and planning docs in the `docs/` directory:
 
-- `DESIGN.md`
-- `IMPLEMENTATION_PLAN.md`
-- `CHECKPOINT.md`
+- `docs/design-overview.md` — design overview for evaluators
+- `docs/DESIGN.md` — detailed design specification
+- `docs/IMPLEMENTATION_PLAN.md` — execution plan and phase tracking
+- `docs/CHECKPOINT.md` — current implementation status
+- `docs/CODE_WALKTHROUGH.md` — source layout and module guide
+- `docs/QUICKSTART.md` — quick start tutorial
+- `docs/EXAMPLES.md` — inventory and usage examples

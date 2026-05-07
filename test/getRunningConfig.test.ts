@@ -65,6 +65,42 @@ describe("getRunningConfig", () => {
     ).rejects.toThrow(/section/i);
   });
 
+  it("passes enable option to the runner", async () => {
+    setTestPasswordEnv();
+    const inventoryPath = await writeTempInventory([
+      "hosts:",
+      "  leaf1:",
+      "    ansible_host: 10.0.0.11",
+      "    ansible_network_os: eos"
+    ]);
+
+    const model = await loadInventoryModel(inventoryPath);
+    const runner = {
+      runShowCommands: vi.fn(async (_connection: unknown, _commands: unknown, _format: unknown, _options: unknown) => ({
+        result: [{ output: "! running-config\n" }]
+      }))
+    };
+
+    await getRunningConfig(
+      model,
+      buildConfig({
+        defaultConnection: {
+          ansibleUser: "admin",
+          mcpPasswordEnv: "EOS_MCP_PASSWORD"
+        }
+      }),
+      { target: "leaf1" },
+      runner
+    );
+
+    expect(runner.runShowCommands).toHaveBeenCalledWith(
+      expect.anything(),
+      ["show running-config"],
+      "text",
+      { enable: true }
+    );
+  });
+
   it("uses section commands for group targets", async () => {
     setTestPasswordEnv();
     const inventoryPath = await writeTempInventory([

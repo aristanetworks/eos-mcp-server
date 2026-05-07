@@ -1,12 +1,8 @@
 import { AppError, toErrorMessage } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
-import type { EapiConnectionConfig } from "../eapi/types.js";
+import { extractEapiResults, extractEapiTextOutput, type EosCommandRunner } from "../eapi/types.js";
 import type { InventoryModel } from "../inventory/types.js";
-import { buildReadOperationResultEnvelope, executeReadOperation } from "../operations/readExecution.js";
-
-export interface RunningConfigRunner {
-  runShowCommands(connection: EapiConnectionConfig, commands: string[], format: "json" | "text"): Promise<unknown>;
-}
+import { buildReadOperationResultEnvelope, executeReadOperation, type DeviceResultSummary } from "../operations/readExecution.js";
 
 export interface GetRunningConfigOptions {
   target: string;
@@ -18,11 +14,7 @@ export interface GetRunningConfigResult {
   target_type: "host" | "group";
   section_requested: string | null;
   resolved_devices: string[];
-  summary: {
-    total_count: number;
-    success_count: number;
-    failed_count: number;
-  };
+  summary: DeviceResultSummary;
   results: Array<{
     inventory_hostname: string;
     resolved_endpoint: string;
@@ -37,12 +29,13 @@ export async function getRunningConfig(
   model: InventoryModel,
   config: ResolvedServerConfig,
   options: GetRunningConfigOptions,
-  runner: RunningConfigRunner
+  runner: EosCommandRunner
 ): Promise<GetRunningConfigResult> {
   const command = options.section ? `show running-config section ${options.section}` : "show running-config";
   const operation = await executeReadOperation<GetRunningConfigResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_get_running_config",
+    responseSizeGuidance: "Use a section filter to retrieve only the relevant portion of the running config (e.g., section \"router bgp\").",
     validateTarget: (resolvedTarget) => {
       if (resolvedTarget.targetType === "group" && !options.section) {
         throw new AppError("running_config_section_required", "Group targets for eos_get_running_config require a section");
@@ -52,7 +45,7 @@ export async function getRunningConfig(
       inventory_hostname: host.inventoryHostname,
       resolved_endpoint: host.resolvedEndpoint,
       status: "success",
-      config_text: extractConfigText(await runner.runShowCommands(connection, [command], "text"))
+      config_text: extractConfigText(await runner.runShowCommands(connection, [command], "text", { enable: true }))
     }),
     onError: (host, error) => ({
       inventory_hostname: host.inventoryHostname,
@@ -70,19 +63,15 @@ export async function getRunningConfig(
 }
 
 function extractConfigText(rawResult: unknown): string {
-  if (
-    typeof rawResult === "object" &&
-    rawResult !== null &&
-    "result" in rawResult &&
-    Array.isArray((rawResult as { result: unknown }).result)
-  ) {
-    const first = (rawResult as { result: unknown[] }).result[0];
-    if (typeof first === "string") {
-      return first;
-    }
-    if (typeof first === "object" && first !== null && "output" in first && typeof (first as { output: unknown }).output === "string") {
-      return (first as { output: string }).output;
-    }
+  const results = extractEapiResults(rawResult);
+  const first = results[0];
+
+  if (typeof first === "string") {
+    return first;
+  }
+  const textOutput = extractEapiTextOutput(first);
+  if (textOutput !== undefined) {
+    return textOutput;
   }
 
   throw new AppError("running_config_payload_invalid", "Unexpected running-config payload structure");

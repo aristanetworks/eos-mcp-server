@@ -1,3 +1,4 @@
+import { AppError } from "../core/errors.js";
 import type { InventorySchemaKind } from "./types.js";
 import type { InventoryVars, NormalizedGroup, NormalizedInventory, ValidationContext } from "./internalTypes.js";
 import {
@@ -12,7 +13,7 @@ import {
 
 export function detectSchemaKind(value: unknown): InventorySchemaKind {
   if (!isObject(value)) {
-    throw new Error("Inventory root must be a mapping/object");
+    throw new AppError("inventory_invalid_root", "Inventory root must be a mapping/object");
   }
 
   if ("all" in value) {
@@ -23,7 +24,7 @@ export function detectSchemaKind(value: unknown): InventorySchemaKind {
     return "simplified-yaml";
   }
 
-  throw new Error("Unsupported inventory schema: expected canonical all: root or simplified vars/hosts/groups root");
+  throw new AppError("inventory_unsupported_schema", "Unsupported inventory schema: expected canonical all: root or simplified vars/hosts/groups root");
 }
 
 export function normalizeInventory(

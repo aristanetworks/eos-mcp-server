@@ -1,9 +1,15 @@
+import { AppError } from "./core/errors.js";
+import { APP_NAME, APP_VERSION } from "./core/version.js";
+
 export type CommandName = "serve" | "validate-inventory" | "print-server-info" | "probe";
 
 const COMMAND_NAMES = new Set<string>(["serve", "validate-inventory", "print-server-info", "probe"]);
 
 export interface CliOptions {
   command: CommandName;
+  explicitCommand?: boolean;
+  help?: boolean;
+  version?: boolean;
   configPath?: string;
   inventoryPath?: string;
   enableWrite?: boolean;
@@ -19,21 +25,38 @@ export function parseCliArgs(argv: string[]): CliOptions {
   let index = 0;
 
   const first = argv[0];
+  if (first === "--help" || first === "-h") {
+    return { command, help: true };
+  }
+  if (first === "--version" || first === "-V") {
+    return { command, version: true };
+  }
+
+  let explicitCommand = false;
   if (first !== undefined && COMMAND_NAMES.has(first)) {
     command = first as CommandName;
+    explicitCommand = true;
     index = 1;
   }
 
-  const options: CliOptions = { command };
+  const options: CliOptions = { command, ...(explicitCommand ? { explicitCommand: true } : {}) };
 
   while (index < argv.length) {
     const arg = argv[index];
 
     switch (arg) {
+      case "--help":
+      case "-h":
+        options.help = true;
+        return options;
+      case "--version":
+      case "-V":
+        options.version = true;
+        return options;
       case "--config": {
         const value = argv[index + 1];
         if (!value) {
-          throw new Error("Missing value for --config");
+          throw new AppError("cli_missing_value", "Missing value for --config");
         }
         options.configPath = value;
         index += 2;
@@ -42,7 +65,7 @@ export function parseCliArgs(argv: string[]): CliOptions {
       case "--inventory": {
         const value = argv[index + 1];
         if (!value) {
-          throw new Error("Missing value for --inventory");
+          throw new AppError("cli_missing_value", "Missing value for --inventory");
         }
         options.inventoryPath = value;
         index += 2;
@@ -59,7 +82,7 @@ export function parseCliArgs(argv: string[]): CliOptions {
       case "--actor": {
         const value = argv[index + 1];
         if (!value) {
-          throw new Error("Missing value for --actor");
+          throw new AppError("cli_missing_value", "Missing value for --actor");
         }
         options.actor = value;
         index += 2;
@@ -76,16 +99,104 @@ export function parseCliArgs(argv: string[]): CliOptions {
       case "--target": {
         const value = argv[index + 1];
         if (!value) {
-          throw new Error("Missing value for --target");
+          throw new AppError("cli_missing_value", "Missing value for --target");
         }
         options.target = value;
         index += 2;
         break;
       }
       default:
-        throw new Error(`Unknown argument: ${arg}`);
+        throw new AppError("cli_unknown_argument", `Unknown argument: ${arg}`);
     }
   }
 
   return options;
+}
+
+const VERSION_BANNER = `${APP_NAME} v${APP_VERSION}`;
+
+const HELP_TOP = `${VERSION_BANNER}
+MCP server for Arista EOS eAPI (JSON-RPC over HTTPS)
+
+Usage: ${APP_NAME} [command] [options]
+
+Commands:
+  serve                 Start the MCP server over stdio (default)
+  validate-inventory    Validate an inventory file
+  print-server-info     Print server runtime/config summary
+  probe                 Probe device readiness for a target
+
+Global options:
+  --config <path>       Path to server config YAML file
+  --inventory <path>    Path to inventory YAML file
+  --actor <name>        Actor label for audit logging
+  --enable-write        Enable write-path tools (currently rejected)
+  --allow-direct-config-fallback
+                        Allow direct-config mode as fallback
+  -h, --help            Show this help message
+  -V, --version         Show version number
+
+Run '${APP_NAME} <command> --help' for command-specific options.`;
+
+const HELP_SERVE = `Usage: ${APP_NAME} serve [options]
+
+Start the MCP server over stdio.
+
+Options:
+  --config <path>       Path to server config YAML file
+  --inventory <path>    Path to inventory YAML file
+  --actor <name>        Actor label for audit logging
+  --enable-write        Enable write-path tools (currently rejected)
+  --allow-direct-config-fallback
+                        Allow direct-config mode as fallback
+  -h, --help            Show this help message`;
+
+const HELP_VALIDATE_INVENTORY = `Usage: ${APP_NAME} validate-inventory [options]
+
+Validate an inventory file. Performs structural parsing, effective
+inventory validation, and startup-style connection checks by default.
+
+Options:
+  --config <path>       Path to server config YAML file
+  --inventory <path>    Path to inventory YAML file
+  --inventory-only      Skip startup connection checks
+  --json                Output results as JSON
+  -h, --help            Show this help message`;
+
+const HELP_PRINT_SERVER_INFO = `Usage: ${APP_NAME} print-server-info [options]
+
+Print a sanitized summary of server runtime configuration.
+
+Options:
+  --config <path>       Path to server config YAML file
+  --inventory <path>    Path to inventory YAML file
+  --json                Output as JSON
+  -h, --help            Show this help message`;
+
+const HELP_PROBE = `Usage: ${APP_NAME} probe [options]
+
+Probe device readiness for a host or group target. Tests connectivity,
+authentication, and harmless command execution.
+
+Options:
+  --config <path>       Path to server config YAML file
+  --inventory <path>    Path to inventory YAML file
+  --target <name>       Host or group name to probe (required)
+  --json                Output as JSON
+  -h, --help            Show this help message`;
+
+const COMMAND_HELP: Record<CommandName, string> = {
+  "serve": HELP_SERVE,
+  "validate-inventory": HELP_VALIDATE_INVENTORY,
+  "print-server-info": HELP_PRINT_SERVER_INFO,
+  "probe": HELP_PROBE
+};
+
+export function printHelp(cli: CliOptions): void {
+  const helpText = cli.explicitCommand ? COMMAND_HELP[cli.command] : HELP_TOP;
+  console.log(helpText);
+}
+
+export function printVersion(): void {
+  console.log(VERSION_BANNER);
 }
