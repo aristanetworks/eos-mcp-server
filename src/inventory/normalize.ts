@@ -267,8 +267,9 @@ function walkCanonicalGroup(
       childGroups.push(childGroupName);
 
       if (childNode === null || childNode === undefined) {
-        // Bare key reference (e.g. group listed under multiple parents) — treat as empty group
-        walkCanonicalGroup(childGroupName, {} as Record<string, unknown>, hosts, groups, context);
+        if (!groups.has(childGroupName)) {
+          groups.set(childGroupName, { name: childGroupName, vars: {}, hosts: [], children: [] });
+        }
         continue;
       }
 
@@ -286,11 +287,14 @@ function walkCanonicalGroup(
   }
 
   if (!isRoot) {
-    groups.set(groupName, {
-      name: groupName,
-      vars,
-      hosts: hostNames,
-      children: childGroups
-    });
+    const existing = groups.get(groupName);
+    if (existing) {
+      const mergedHosts = [...new Set([...existing.hosts, ...hostNames])];
+      const mergedChildren = [...new Set([...existing.children, ...childGroups])];
+      const mergedVars = { ...existing.vars, ...vars };
+      groups.set(groupName, { name: groupName, vars: mergedVars, hosts: mergedHosts, children: mergedChildren });
+    } else {
+      groups.set(groupName, { name: groupName, vars, hosts: hostNames, children: childGroups });
+    }
   }
 }

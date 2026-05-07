@@ -43,11 +43,11 @@ all:
 If your devices use self-signed certificates, add `mcp_validate_certs: false` (or `ansible_httpapi_validate_certs: false`) under `vars`:
 
 ```yaml
-      vars:
-        ansible_user: admin
-        ansible_network_os: eos
-        mcp_password_env: EOS_MCP_PASSWORD
-        mcp_validate_certs: false
+vars:
+  ansible_user: admin
+  ansible_network_os: eos
+  mcp_password_env: EOS_MCP_PASSWORD
+  mcp_validate_certs: false
 ```
 
 ## 3. Export the password
@@ -94,6 +94,14 @@ To make it available across all your projects, add `-s user`:
 claude mcp add -s user eos -- eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
 ```
 
+### For Arista internal users
+
+When using the proxy with `lclaude` there may be issues with passing the password and adding the server name, so just add the server without specifying the name:
+
+```bash
+lclaude mcp add -e EOS_MCP_PASSWORD=arista -- eos-mcp-server serve --inventory inventory.yml
+```
+
 ### Passing the password to Claude Code
 
 The simplest approach is to export `EOS_MCP_PASSWORD` in your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) so it's available whenever Claude Code starts the server.
@@ -126,14 +134,14 @@ Claude will call the `eos_list_inventory`, `eos_probe_devices`, and `eos_run_sho
 
 Once connected, Claude Code has access to these tools:
 
-| Tool | Description |
-|------|-------------|
-| `eos_get_server_info` | Server runtime summary and capabilities |
-| `eos_list_inventory` | List inventory hosts and groups |
-| `eos_probe_devices` | Check device reachability |
-| `eos_run_show` | Run `show` commands on devices |
-| `eos_get_facts` | Collect device facts from `show version` |
-| `eos_get_running_config` | Retrieve running configuration |
+| Tool                     | Description                              |
+| ------------------------ | ---------------------------------------- |
+| `eos_get_server_info`    | Server runtime summary and capabilities  |
+| `eos_list_inventory`     | List inventory hosts and groups          |
+| `eos_probe_devices`      | Check device reachability                |
+| `eos_run_show`           | Run `show` commands on devices           |
+| `eos_get_facts`          | Collect device facts from `show version` |
+| `eos_get_running_config` | Retrieve running configuration           |
 
 ## Troubleshooting
 

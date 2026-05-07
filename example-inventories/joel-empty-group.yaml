@@ -1,0 +1,163 @@
+all:
+  children:
+    FABRIC:
+      vars:
+        ansible_user: arista
+        ansible_network_os: eos
+        mcp_password_env: EOS_MCP_PASSWORD
+        mcp_validate_certs: false
+
+      children:
+        # ── DC1 EVPN/VXLAN ────────────────────────────────────────
+        DC1:
+          children:
+            DC1_BORDERS:
+              hosts:
+                border1-dc1:
+                  ansible_host: 10.90.226.212
+                border2-dc1:
+                  ansible_host: 10.90.226.213
+            DC1_SPINES:
+              hosts:
+                spine1-dc1:
+                  ansible_host: 10.90.226.214
+                spine2-dc1:
+                  ansible_host: 10.90.226.215
+            DC1_L3_LEAVES:
+              hosts:
+                leaf1-dc1:
+                  ansible_host: 10.90.226.216
+                leaf2-dc1:
+                  ansible_host: 10.90.226.217
+
+        # ── Site1 EVPN/VXLAN ──────────────────────────────────────
+        SITE1:
+          children:
+            SITE1_BORDERS:
+              hosts:
+                border1-site1:
+                  ansible_host: 10.90.226.222
+                border2-site1:
+                  ansible_host: 10.90.226.223
+            SITE1_SPINES:
+              hosts:
+                spine1-site1:
+                  ansible_host: 10.90.226.224
+                spine2-site1:
+                  ansible_host: 10.90.226.225
+            SITE1_L3_LEAVES:
+              hosts:
+                leaf1-site1:
+                  ansible_host: 10.90.226.226
+                leaf2-site1:
+                  ansible_host: 10.90.226.227
+
+        # ── Site2 L2LS (routed spine) ─────────────────────────────
+        SITE2:
+          children:
+            SITE2_SPINES:
+              hosts:
+                spine1-site2:
+                  ansible_host: 10.90.226.232
+                spine2-site2:
+                  ansible_host: 10.90.226.233
+            SITE2_L2_LEAVES:
+              hosts:
+                leaf1-site2:
+                  ansible_host: 10.90.226.234
+                leaf2-site2:
+                  ansible_host: 10.90.226.235
+
+        # ── Site3 L2LS (single WAN, no spine) ─────────────────────
+        SITE3:
+          children:
+            SITE3_WAN:
+              hosts:
+                wan1-site3:
+                  ansible_host: 10.90.226.240
+            SITE3_L2_LEAVES:
+              hosts:
+                leaf1-site3:
+                  ansible_host: 10.90.226.241
+                leaf2-site3:
+                  ansible_host: 10.90.226.242
+
+        # ── Site4 L2LS (dual WAN, no spine) ───────────────────────
+        SITE4:
+          children:
+            SITE4_WAN:
+              hosts:
+                wan1-site4:
+                  ansible_host: 10.90.226.245
+                wan2-site4:
+                  ansible_host: 10.90.226.246
+            SITE4_L2_LEAVES:
+              hosts:
+                leaf1-site4:
+                  ansible_host: 10.90.226.247
+                leaf2-site4:
+                  ansible_host: 10.90.226.248
+
+        # ── Site5 L3LS routed-leaf ────────────────────────────────
+        SITE5:
+          children:
+            SITE5_WAN:
+              hosts:
+                wan1-site5:
+                  ansible_host: 10.90.226.250
+            SITE5_L3_LEAVES:
+              hosts:
+                leaf1-site5:
+                  ansible_host: 10.90.226.251
+
+    # ── External (out of fabric scope) ────────────────────────────
+    EXTERNAL:
+      children:
+        WAN_CORE:
+          hosts:
+            mpls-cloud:
+              ansible_host: 10.90.226.200
+            inet-cloud:
+              ansible_host: 10.90.226.201
+            nat-rtr1:
+              ansible_host: 10.90.226.202
+            test-host:
+              ansible_host: 10.90.226.203
+        DC1_WAN:
+          hosts:
+            wan1-dc1:
+              ansible_host: 10.90.226.210
+            wan2-dc1:
+              ansible_host: 10.90.226.211
+        SITE1_WAN:
+          hosts:
+            wan1-site1:
+              ansible_host: 10.90.226.220
+            wan2-site1:
+              ansible_host: 10.90.226.221
+        SITE2_WAN:
+          hosts:
+            wan1-site2:
+              ansible_host: 10.90.226.230
+            wan2-site2:
+              ansible_host: 10.90.226.231
+
+    # Service / endpoint groups (referenced by group_vars/NETWORK_SERVICES.yml,
+    # group_vars/CONNECTED_ENDPOINTS.yml).
+    NETWORK_SERVICES:
+      children:
+        DC1_L3_LEAVES:
+        SITE1_L3_LEAVES:
+        SITE2_L2_LEAVES:
+        SITE3_L2_LEAVES:
+        SITE4_L2_LEAVES:
+        SITE5_L3_LEAVES:
+
+    CONNECTED_ENDPOINTS:
+      children:
+        DC1_L3_LEAVES:
+        SITE1_L3_LEAVES:
+        SITE2_L2_LEAVES:
+        SITE3_L2_LEAVES:
+        SITE4_L2_LEAVES:
+        SITE5_L3_LEAVES:

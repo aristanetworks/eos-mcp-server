@@ -71,6 +71,8 @@ Completed:
 - introduced a dedicated inventory parse stage
 - separated normalization, normalized-graph validation, and model building
 - removed one duplicate lineage traversal in host effective-var resolution
+- canonical inventory parser merges groups referenced under multiple parents (matching Ansible semantics): hosts and children are unioned, vars are merged with later-wins precedence
+- 3 new tests for multi-parent group merging (null-body reference, additive hosts, vars merge)
 
 New/updated files:
 - `src/inventory/parse.ts`
@@ -108,7 +110,7 @@ Not yet implemented:
 
 Current automated status:
 - **20 test files**
-- **86 passing tests**
+- **89 passing tests**
 - `npm test` ✅
 - `npm run build` ✅
 - `npm run typecheck` ✅
@@ -184,6 +186,12 @@ The following strict behaviors are already reflected in the implementation:
 - all 8 devices probed successfully via CLI
 - normalized `eos_run_show` output confirmed working against real devices
 - minimum supported EOS version for read operations documented as 4.20
+
+### Canonical inventory multi-parent group merging
+- groups referenced under multiple parents (common Ansible pattern for `NETWORK_SERVICES`/`CONNECTED_ENDPOINTS`) now merge correctly instead of overwriting
+- null-body child references (`DC1_LEAFS:` with no body) preserve existing group definition
+- full-body redefinitions merge: hosts are unioned, children are unioned, vars merge with later-wins
+- validated against real-world 35-host inventory with 6 leaf groups under multiple parents
 
 ### Release packaging
 - `npm pack` verified: 53.7 KB, 132 files, no test or dev artifacts

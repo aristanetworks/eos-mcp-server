@@ -64,6 +64,7 @@ This is a TypeScript ESM-only Node 20+ MCP server that exposes Arista EOS networ
 ### Key design rules enforced in code
 
 - **Inventory is authoritative**: targets must be inventory host/group names; no ad hoc IPs
+- **Canonical groups merge**: a group referenced under multiple parents has its hosts/children unioned and vars merged (later wins), matching Ansible semantics
 - **Fail-closed**: mixed eligibility in a group target is an error, not a partial success
 - **`mcp_write_allowed` is deny-dominant**: a child cannot override an ancestor's `false`
 - **`all` is write-forbidden**: enforced in `resolveInventoryTarget`

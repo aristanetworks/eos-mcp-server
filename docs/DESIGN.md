@@ -146,6 +146,14 @@ Rules:
 - `all` is implicit/reserved in the simplified schema and may not appear in `groups`
 - group `children` relationships must form an acyclic graph
 
+### Canonical group merging
+A group may appear under multiple parents in the canonical format (e.g. `DC1_L3_LEAVES` under both `DC1` and `NETWORK_SERVICES`). When a group is referenced more than once, definitions are merged following Ansible semantics:
+- **Hosts**: union — a host listed in any definition is a member
+- **Children**: union — child groups from all definitions are included
+- **Vars**: merge with later-wins — if a later definition sets the same var key, it overrides
+
+A null-body child reference (e.g. `DC1_L3_LEAVES:` with no body under `NETWORK_SERVICES`) simply adds the parent-child relationship without affecting the group's existing hosts, children, or vars.
+
 ### Structural validation rules
 - Strict structural validation
 - Flexible variable maps
