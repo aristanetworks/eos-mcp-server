@@ -1,12 +1,14 @@
 # Changelog
 
-## 0.3.2-alpha
+## 0.4.0-beta
 
 - Hardens eAPI response handling with invalid-JSON errors and runCmds result-count validation.
 - Centralizes final read-tool response-size enforcement on the shared result envelope so tool-specific metadata is included in the limit check.
 - Refactors inventory model construction into focused effective-vars, graph, and write-policy modules.
 - Refactors MCP tool registration into shared tool definitions.
 - Improves config file read failures with machine-readable `AppError` details.
+- Sanitizes packaged example inventories and release documentation for public distribution.
+- Refreshes transitive dependency locks to clear `npm audit` findings.
 - Adds regression coverage for shared final-envelope response-size enforcement.
 
 ## 0.3.0-alpha

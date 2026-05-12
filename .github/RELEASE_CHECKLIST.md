@@ -16,6 +16,7 @@ Use this checklist before tagging and publishing a read-only release.
 - [ ] Run `npm run lint`.
 - [ ] Run `npm run typecheck`.
 - [ ] Run `npm test`.
+- [ ] Run `npm audit`.
 - [ ] Run `npm run build`.
 - [ ] Run `npm pack --dry-run` and inspect package contents.
 - [ ] Run `INTEGRATION=1 npm test` against the cEOS/containerlab test environment.
@@ -46,7 +47,7 @@ Use this checklist before tagging and publishing a read-only release.
 
 - [ ] Confirm `package.json` has correct `repository`, `bugs`, `homepage`, and `keywords`.
 - [ ] Confirm the project has an approved `LICENSE` file and matching `package.json` `license` field before public publication.
-- [ ] Confirm no local-only files, secrets, lab artifacts, or generated tarballs are tracked.
+- [ ] Confirm no local-only files, secrets, lab artifacts, generated tarballs, or personal lab inventories are tracked.
 
 ## GitHub Release
 

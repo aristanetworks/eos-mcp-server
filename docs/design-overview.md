@@ -87,9 +87,9 @@ all:
         mcp_password_env: EOS_MCP_PASSWORD
       hosts:
         leaf1:
-          ansible_host: 10.0.0.11
+          ansible_host: 192.0.2.11
         leaf2:
-          ansible_host: 10.0.0.12
+          ansible_host: 192.0.2.12
 ```
 
 **Simplified YAML** — a flatter format for environments that do not use Ansible:
@@ -102,7 +102,7 @@ vars:
 
 hosts:
   leaf1:
-    ansible_host: 10.0.0.11
+    ansible_host: 192.0.2.11
     ansible_network_os: eos
 
 groups:

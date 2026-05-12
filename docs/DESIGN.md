@@ -127,7 +127,7 @@ vars:
 
 hosts:
   leaf1:
-    ansible_host: 10.0.0.11
+    ansible_host: 192.0.2.11
     ansible_network_os: eos
 
 groups:

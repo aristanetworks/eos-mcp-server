@@ -54,6 +54,23 @@ describe("package policy", () => {
     expect(packageJson.files).toEqual(expect.arrayContaining(["dist", "docs", "example-inventories", "CHANGELOG.md"]));
   });
 
+  it("keeps packaged example inventories generic and sanitized", async () => {
+    const exampleDir = new URL("../example-inventories/", import.meta.url);
+    const entries = (await fs.readdir(exampleDir)).sort();
+
+    expect(entries).toEqual(["canonical-fabric.yaml", "simplified-lab.yaml"]);
+
+    const sensitivePatterns = [/ansible_ssh_pass/i, /ansible_password/i, /10\.83\./, /10\.90\./, /arastra/i, /cvpadmin/i, /serial_number/i];
+
+    for (const entry of entries) {
+      const contents = await fs.readFile(new URL(entry, exampleDir), "utf8");
+
+      for (const pattern of sensitivePatterns) {
+        expect(contents).not.toMatch(pattern);
+      }
+    }
+  });
+
   it("exposes repository metadata for package consumers", async () => {
     const packageJson = await readPackageJson();
 

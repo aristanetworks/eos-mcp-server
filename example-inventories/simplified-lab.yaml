@@ -1,0 +1,33 @@
+# Simplified inventory format for eos-mcp-server.
+#
+# The addresses below use RFC 5737 TEST-NET space and are placeholders.
+version: 1
+
+vars:
+  ansible_user: admin
+  mcp_password_env: EOS_MCP_PASSWORD
+  # Useful for labs with self-signed eAPI certificates. Prefer a CA bundle
+  # and certificate validation in production.
+  mcp_validate_certs: false
+
+hosts:
+  leaf1:
+    ansible_host: 198.51.100.11
+    ansible_network_os: eos
+  leaf2:
+    ansible_host: 198.51.100.12
+    ansible_network_os: eos
+  spine1:
+    ansible_host: 198.51.100.21
+    ansible_network_os: eos
+  spine2:
+    ansible_host: 198.51.100.22
+    ansible_network_os: eos
+
+groups:
+  leafs:
+    hosts: [leaf1, leaf2]
+  spines:
+    hosts: [spine1, spine2]
+  fabric:
+    children: [spines, leafs]

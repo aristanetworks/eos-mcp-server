@@ -162,9 +162,9 @@ all:
         mcp_password_env: EOS_MCP_PASSWORD
       hosts:
         leaf1:
-          ansible_host: 10.0.0.11
+          ansible_host: 192.0.2.11
         leaf2:
-          ansible_host: 10.0.0.12
+          ansible_host: 192.0.2.12
 ```
 
 ### Simplified YAML example
@@ -177,10 +177,10 @@ vars:
 
 hosts:
   leaf1:
-    ansible_host: 10.0.0.11
+    ansible_host: 192.0.2.11
     ansible_network_os: eos
   leaf2:
-    ansible_host: 10.0.0.12
+    ansible_host: 192.0.2.12
     ansible_network_os: eos
 
 groups:
@@ -241,7 +241,7 @@ The default allowed env var prefix is `EOS_MCP_`, so names like `EOS_MCP_PASSWOR
 Example:
 
 ```bash
-export EOS_MCP_PASSWORD='admin'
+export EOS_MCP_PASSWORD='replace-with-device-password'
 ```
 
 ## TLS behavior
@@ -266,7 +266,7 @@ all:
         mcp_validate_certs: false
       hosts:
         leaf1:
-          ansible_host: 10.0.0.11
+          ansible_host: 192.0.2.11
 ```
 
 ### Prefer a CA bundle when possible

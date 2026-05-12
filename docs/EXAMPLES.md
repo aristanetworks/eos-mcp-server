@@ -21,7 +21,7 @@ Place a `.mcp.json` file in your project directory — Claude Code auto-discover
         "./ansible-inventory.yml"
       ],
       "env": {
-        "EOS_MCP_PASSWORD": "admin"
+        "EOS_MCP_PASSWORD": "replace-with-device-password"
       }
     }
   }
