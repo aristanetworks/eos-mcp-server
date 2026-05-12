@@ -9,11 +9,11 @@ The EOS MCP server gives MCP-compatible AI assistants (Claude Code, Claude Deskt
 The server provides two classes of operations:
 
 - **Read tools** — run show commands, collect facts, retrieve running configuration, probe device readiness, and inspect the inventory.
-- **Write tools** — preview, apply, and persist configuration changes through a multi-step workflow with signed artifacts and explicit confirmations.
+- **Write tools** (planned) — preview, apply, and persist configuration changes through a multi-step workflow with signed artifacts and explicit confirmations.
+
+The write path is designed but still under consideration.
 
 ## Design principles
-
-The design strongly favors:
 
 - **Security by default** — TLS validation on, write operations off, secrets never stored in config files.
 - **Explicit trust boundaries** — the inventory is the authoritative source of scope, credentials, and policy. No ad hoc targets.
@@ -25,35 +25,34 @@ The design strongly favors:
 
 ### Read tools
 
-| Tool | Purpose |
-|------|---------|
-| `eos_get_server_info` | Sanitized summary of server runtime, capabilities, limits, and inventory statistics |
-| `eos_list_inventory` | Operational view of loaded hosts and groups with eligibility and policy status |
-| `eos_probe_devices` | Verify device readiness by testing connectivity, authentication, and command execution |
-| `eos_run_show` | Run one or more `show` commands against a host or group target |
-| `eos_get_facts` | Collect a fixed core set of device facts (version, model, serial, etc.) |
-| `eos_get_running_config` | Retrieve running configuration text, optionally filtered by section. Automatically enters enable mode. |
+| Tool                     | Purpose                                                                                |
+| ------------------------ | -------------------------------------------------------------------------------------- |
+| `eos_get_server_info`    | Sanitized summary of server runtime, capabilities, limits, and inventory statistics    |
+| `eos_list_inventory`     | Operational view of loaded hosts and groups with eligibility and policy status         |
+| `eos_probe_devices`      | Verify device readiness by testing connectivity, authentication, and command execution |
+| `eos_run_show`           | Run one or more `show` commands against a host or group target                         |
+| `eos_get_facts`          | Collect a fixed core set of device facts (version, model, serial, etc.)                |
+| `eos_get_running_config` | Retrieve running configuration text, optionally filtered by section                    |
 
-Key constraints:
+`eos_run_show` accepts only commands that begin with `show` and rejects shell metacharacters and CLI output modifiers before contacting the device. `eos_get_running_config` requires a section filter when targeting a group and automatically enters enable mode.
 
-- `eos_run_show` accepts only trimmed, single-line commands that are `show` or begin with `show `, and rejects CLI output modifiers or shell metacharacters before device contact.
-- `eos_get_running_config` requires a trimmed, single-line `section` filter when targeting a group; section filters reject the same risky metacharacters as show commands.
-- `eos_get_running_config` automatically enters enable mode via eAPI since `show running-config` requires privileged access.
-- All read tools fail closed if the resolved target contains ineligible or read-denied hosts.
+All read tools fail closed if the resolved target contains ineligible or read-denied hosts.
 
-### Write tools
+### Write tools (planned)
 
-| Tool | Purpose |
-|------|---------|
+This will require some thought if we want to even expose write funcitons or just keep it all read-only.
+
+| Tool                 | Purpose                                                              |
+| -------------------- | -------------------------------------------------------------------- |
 | `eos_preview_config` | Dry-run a configuration change and produce a signed preview artifact |
-| `eos_apply_config` | Apply a previously previewed configuration change to running config |
-| `eos_save_config` | Persist the current running config to startup config |
+| `eos_apply_config`   | Apply a previously previewed configuration change to running config  |
+| `eos_save_config`    | Persist the current running config to startup config                 |
 
-These tools are covered in detail in the [Write-path workflow](#write-path-workflow) section below.
+These tools are covered in the [Write-path workflow](#write-path-workflow) section below.
 
-### Local CLI commands
+### CLI commands
 
-The server also ships local admin subcommands for operator use outside of MCP:
+The server also ships CLI subcommands for operator use outside of MCP:
 
 - `validate-inventory` — parse and validate inventory with optional startup-equivalent checks
 - `print-server-info` — display runtime configuration summary
@@ -75,7 +74,6 @@ Ad hoc out-of-inventory targets (raw IPs, hostnames not in the file) are never a
 ### Supported formats
 
 The server accepts exactly one inventory file at startup, in either of two YAML schemas. The inventory is not watched for changes at runtime — to pick up edits, restart the server.
-
 
 **Canonical Ansible-style YAML** — the `all.children` group hierarchy familiar from Ansible network automation:
 
@@ -112,15 +110,6 @@ groups:
     hosts: [leaf1]
 ```
 
-### Structural validation
-
-- Unknown structural keys are errors.
-- Unknown keys inside `vars` blocks are allowed (forward compatibility).
-- Duplicate YAML keys are hard errors.
-- YAML anchors and aliases are allowed but validated after resolution.
-- Host and group names must match `^[A-Za-z0-9_.-]+$` and must not collide with each other.
-- Group `children` relationships must form an acyclic graph.
-
 ### Platform eligibility
 
 EOS eligibility is determined by effective inherited variables:
@@ -153,11 +142,8 @@ This means operators can lock out entire branches of the inventory from writes b
 
 ### Fail-closed enforcement
 
-For any operational tool call:
-
 - If target resolution yields zero eligible EOS devices: error.
 - If a group target mixes allowed and disallowed devices for the requested operation: error (not partial success).
-- If a write target includes any device below the minimum supported EOS version: error.
 - The special `all` group may be targeted by read tools but is **always forbidden** as a write target.
 
 **Design tradeoff:** Failing the entire operation when a group contains a mix of allowed and disallowed hosts is deliberately strict. The alternative — executing against the allowed subset — risks operators not realizing that some devices were silently skipped. We chose to require operators to target explicitly allowed groups or individual hosts.
@@ -168,15 +154,9 @@ For any operational tool call:
 
 - HTTPS only; no HTTP fallback.
 - TLS certificate validation is **on by default**.
-- Per-host or per-group override via `mcp_validate_certs: false` (or `ansible_httpapi_validate_certs: false`) for lab and development environments.
-- Optional global custom CA bundle via server config (`caFile`).
+- Per-host or per-group override via `mcp_validate_certs: false` for lab and development environments.
+- Optional global custom CA bundle via server config.
 - No client-certificate authentication in the current design.
-
-### Endpoint resolution
-
-- Connection endpoint is `ansible_host` if present, otherwise the inventory host name.
-- Fixed eAPI path: `/command-api`.
-- Default port: `443`, overridable via `ansible_httpapi_port`.
 
 ### Credentials
 
@@ -201,97 +181,43 @@ Additional safeguards:
 
 **Design tradeoff:** Requiring all credentials to be present and valid at startup (rather than resolving them lazily at first use) means the server fails fast with a clear error message. The cost is that the operator must have all environment variables exported before starting the server, even for devices they may not immediately query.
 
-## Write-path workflow
+## Write-path workflow (TBD)
+
+> The write path described below is designed but not yet implemented. The current release is read-only.
 
 Configuration changes follow a deliberate multi-step workflow designed to prevent accidental or unreviewed changes.
 
-### Step 1: Preview (`eos_preview_config`)
+### Step 1: Preview
 
-The operator (or AI assistant) submits a set of configuration commands or config text. The server:
+The operator (or AI assistant) submits a set of configuration commands. The server validates and normalizes them, executes a dry-run on each target device (preferring config sessions), and returns structured per-device preview results along with a **signed preview artifact** — an opaque, HMAC-signed blob that captures the exact intended change, bound to the current server instance and inventory snapshot.
 
-1. Validates and normalizes the commands.
-2. Resolves the target to a set of devices.
-3. Executes a dry-run on each device (preferring config sessions).
-4. Returns structured per-device preview results.
-5. Returns a **signed preview artifact** — an opaque, HMAC-signed blob that captures the exact intended change.
+### Step 2: Apply
 
-The preview artifact is:
+To apply the change, the caller must provide the signed preview artifact and explicit confirmation flags. The server re-validates the commands on each device at apply time — the prior preview never substitutes for apply-time validation. If the preview used config sessions but only direct-mode is available at apply time (a weaker execution path), the apply is rejected.
 
-- Bound to the current server instance and inventory snapshot.
-- Timestamped with a configurable maximum age.
-- Invalidated by server restart.
+### Step 3: Save
 
-### Step 2: Apply (`eos_apply_config`)
-
-To apply the change, the caller must provide:
-
-- The signed `preview_artifact` from the preview step.
-- Explicit confirmation flags (`confirm: true`, plus `confirm_group_write: true` for group targets).
-- Change metadata matching what was used during preview (`change_reason`, and optionally `ticket_id` / `change_id`).
-
-The server re-validates the commands on each device at apply time — the prior preview never substitutes for apply-time validation. If the preview used config sessions but only direct-mode is available at apply time (a weaker execution path), the apply is rejected.
-
-### Step 3: Save (`eos_save_config`)
-
-`eos_save_config` is a separate, explicit action that persists the current running config to startup config. It requires its own confirmation flags (`confirm: true`, `confirm_persist_current_state: true`).
-
-This is intentionally not bundled with apply: the operator should have a chance to verify the running-config change before deciding to persist it.
+Persisting the running config to startup config is a separate, explicit action with its own confirmation flags. This is intentionally not bundled with apply: the operator should have a chance to verify the running-config change before deciding to persist it.
 
 **Design tradeoff:** The preview-then-apply workflow adds friction compared to a single "push config" operation. This is intentional. In network automation, configuration changes to production devices benefit from an explicit review step, and the signed artifact ensures that what was reviewed is exactly what gets applied. The cost is two tool calls instead of one; the benefit is auditability and protection against stale or modified changes.
 
-### Config input and validation
-
-Write tools accept configuration as either:
-
-- `commands` — an explicit list of command strings, or
-- `config_text` — a block of configuration text (split on newlines, trimmed, blank lines and full-line comments removed)
-
-Exactly one must be provided. The server validates commands against a denylist of dangerous or control-plane commands (e.g., reload, session management). The server owns all session and persistence mechanics — operators provide only the configuration intent.
-
 ### Execution mode
 
-- **Config sessions** are preferred for both preview and apply.
-- **Direct-config mode** (configure terminal) is available as a fallback but is **disabled by default**.
-- Direct-config fallback must be explicitly enabled in the server config.
+- **Config sessions** are preferred for both preview and apply (atomic commit/rollback).
+- **Direct-config mode** (configure terminal) is available as a fallback but is **disabled by default** and requires explicit opt-in.
 - If preview used sessions, apply cannot fall back to direct mode.
 
 **Design tradeoff:** Config sessions provide atomic commit/rollback semantics and are the safer execution mode. Direct-config mode is available for devices or EOS versions that do not support sessions, but requiring explicit opt-in ensures operators are aware they are accepting weaker transactional guarantees.
 
 ## Concurrency and failure model
 
-### Device fan-out
-
-Group operations execute in parallel against resolved devices, with configurable limits:
-
-- Device concurrency (how many devices are contacted simultaneously).
-- Maximum read and write target counts.
-- Maximum command counts per request.
-
-### Write locking
+Group operations execute in parallel against resolved devices, with configurable limits on device concurrency, maximum target counts, and command counts per request.
 
 - Read tools may run concurrently with no restrictions.
-- Only **one write-path operation** may run at a time (across preview, apply, and save).
-- A second concurrent write request is immediately rejected — there is no queue.
-- Read operations remain available during an active write.
-
-### Group write failure
-
-- The full target set is resolved and pre-validated before execution begins.
-- On the first device failure: the overall operation is marked failed, in-flight devices may finish, but no new devices are scheduled.
-- There is **no cross-device rollback guarantee**. If three of five devices succeed before a failure on the fourth, the three successful devices retain their changes.
+- Only **one write-path operation** may run at a time — a second concurrent write request is immediately rejected (no queue). Read operations remain available during an active write.
+- On the first device failure in a group write: the overall operation is marked failed and no new devices are scheduled, but there is **no cross-device rollback guarantee**.
 
 **Design tradeoff:** Cross-device rollback would require two-phase commit semantics that EOS config sessions do not natively support across devices. Rather than implementing a fragile orchestration layer, the server reports exactly which devices succeeded and which failed, leaving the operator to decide how to remediate. This is consistent with how most network automation tools handle multi-device changes.
-
-### Cancellation and timeout
-
-On cancellation or overall timeout during a write operation:
-
-- No new devices are scheduled.
-- In-flight device operations are allowed to finish.
-- Uncommitted config sessions are aborted/discarded where possible.
-- No rollback guarantees for already-applied direct-config changes.
-
-Separate configurable timeouts exist for per-device read operations, per-device write operations, and overall operation duration. Overall read-operation timeout aborts in-flight eAPI requests and stops scheduling new devices. There are no automatic retries.
 
 ## Summary of key security choices
 
@@ -315,8 +241,7 @@ Separate configurable timeouts exist for per-device read operations, per-device 
 We are particularly interested in feedback on:
 
 - **Inventory format** — Do the two supported schemas cover your environment? Would you need multi-file inventory support, dynamic inventory, or integration with an external source of truth?
-- **Policy model** — Is deny-dominant write policy the right default? Are there cases where you would need a child group to re-enable writes that a parent disabled?
 - **Credential handling** — Does the `mcp_password_env` indirection work for your secret management workflow? Would you need integration with vault systems or other secret backends?
-- **Write-path workflow** — Is the preview/apply/save separation appropriate for your change management process? Is the signed-artifact approach helpful or overly complex for your use case?
 - **Fail-closed behavior** — Are there scenarios where partial execution against a mixed group would be preferable to failing the entire operation?
 - **Targeting model** — Is single-target-per-call sufficient, or would you need multi-target or pattern-based targeting?
+- **Language/packaging choice** — Is typescript/node/npm acceptable or is that a challenge operationally?
