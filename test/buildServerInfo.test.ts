@@ -22,7 +22,9 @@ describe("buildServerInfo", () => {
         maxReadTargets: 50,
         maxWriteTargets: 10,
         maxShowCommandsPerRequest: 5,
+        maxLoggingMessagesPerRequest: 1000,
         maxConfigCommandsPerRequest: 20,
+        maxResponseSizeBytes: 1_048_576,
         previewMaxAgeMs: 900_000,
         logWriteCommands: false,
         secretEnvPrefixes: ["EOS_MCP_"],
@@ -34,5 +36,6 @@ describe("buildServerInfo", () => {
     expect(info.runtime_mode).toBe("read-only");
     expect(info.inventory.basename).toBe("lab.yml");
     expect(info.capabilities.tool_prefix).toBe("eos_");
+    expect(info.limits.max_logging_messages_per_request).toBe(1000);
   });
 });

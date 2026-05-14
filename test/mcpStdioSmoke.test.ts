@@ -47,7 +47,8 @@ describe("stdio MCP smoke test", () => {
           "eos_get_server_info",
           "eos_list_inventory",
           "eos_probe_devices",
-          "eos_run_show"
+          "eos_run_show",
+          "eos_show_logging"
         ]);
 
         const serverInfo = await client.callTool({

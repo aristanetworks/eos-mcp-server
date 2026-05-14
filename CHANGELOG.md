@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0-beta
+
+- Adds `eos_show_logging` for bounded, threshold-filtered EOS logging retrieval.
+- Adds `maxLoggingMessagesPerRequest` config and exposes it through server info.
+- Updates integration tests to resolve containerlab devices by hostname instead of ephemeral IPs.
+
 ## 0.4.0-beta
 
 - Hardens eAPI response handling with invalid-JSON errors and runCmds result-count validation.

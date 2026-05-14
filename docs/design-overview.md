@@ -31,10 +31,11 @@ The write path is designed but still under consideration.
 | `eos_list_inventory`     | Operational view of loaded hosts and groups with eligibility and policy status         |
 | `eos_probe_devices`      | Verify device readiness by testing connectivity, authentication, and command execution |
 | `eos_run_show`           | Run one or more `show` commands against a host or group target                         |
+| `eos_show_logging`       | Retrieve bounded logging output using a minimum severity threshold and message count    |
 | `eos_get_facts`          | Collect a fixed core set of device facts (version, model, serial, etc.)                |
 | `eos_get_running_config` | Retrieve running configuration text, optionally filtered by section                    |
 
-`eos_run_show` accepts only commands that begin with `show` and rejects shell metacharacters and CLI output modifiers before contacting the device. `eos_get_running_config` requires a section filter when targeting a group and automatically enters enable mode.
+`eos_run_show` accepts only commands that begin with `show` and rejects shell metacharacters and CLI output modifiers before contacting the device. `eos_show_logging` is a token-conscious convenience wrapper around `show logging threshold <severity> <count>` and returns unparsed text. `eos_get_running_config` requires a section filter when targeting a group and automatically enters enable mode.
 
 All read tools fail closed if the resolved target contains ineligible or read-denied hosts.
 

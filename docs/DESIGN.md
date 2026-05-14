@@ -37,6 +37,7 @@ The first shippable release is intentionally limited to safe read-only operation
 - inventory listing and server introspection
 - connectivity probing
 - `show` command execution
+- bounded logging retrieval
 - fixed-schema fact gathering
 - running-config retrieval
 
@@ -68,6 +69,7 @@ A later phase may add:
 - `eos_probe_devices`
 - `eos_get_facts`
 - `eos_run_show`
+- `eos_show_logging`
 - `eos_get_running_config`
 
 ### Phase 2: planned write-path tools
@@ -91,6 +93,7 @@ No separate local non-MCP write interface is planned.
   - `eos_probe_devices`
   - `eos_get_facts`
   - `eos_run_show`
+  - `eos_show_logging`
   - `eos_get_running_config`
   - `eos_preview_config`
   - `eos_apply_config`
@@ -269,6 +272,7 @@ But not:
 - Relative paths in config are resolved relative to the config file directory
 - Relative CLI paths resolve from current working directory
 - Optional `version: 1` supported
+- `maxLoggingMessagesPerRequest` caps the `eos_show_logging` request `message_count`; it defaults to 1000 and cannot exceed the EOS CLI bound of 9999
 
 ## Read Tool Semantics
 
@@ -285,6 +289,16 @@ But not:
 - `json` fails if structured output is unavailable
 - Results are normalized/sanitized by default
 - Raw payloads are optional via explicit flag
+
+### `eos_show_logging`
+- Accepts host or group target
+- Convenience wrapper for bounded troubleshooting log retrieval; it is not a safety boundary and does not remove `show logging` access from `eos_run_show`
+- Accepts structured filters only: `minimum_severity` and `message_count`
+- `minimum_severity` defaults to `warnings` and uses threshold semantics, so a request for warnings includes warnings and more urgent messages
+- `message_count` defaults to 100 and is capped by `maxLoggingMessagesPerRequest`
+- Generates `show logging threshold <minimum_severity> <message_count>` and always requests text output
+- Returns unparsed `log_text` plus the generated command for transparency
+- Does not use enable mode and does not perform log-content redaction
 
 ### `eos_get_facts`
 - Accepts host or group target
@@ -470,6 +484,7 @@ On cancellation or overall timeout during a write-path operation:
 - Enforce both transport-level device HTTP response limits and final read-tool result response-size limits
 - Prefer explicit narrowing/chunking guidance rather than silent truncation
 - `eos_get_running_config` especially encourages section-filtered access
+- `eos_show_logging` encourages lower `message_count`, fewer target devices, or a higher `minimum_severity`
 
 ## Error Model and Result Shape
 

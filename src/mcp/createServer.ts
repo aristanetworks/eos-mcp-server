@@ -13,6 +13,7 @@ import { buildGetServerInfoToolResult, getServerInfoInputSchema } from "./tools/
 import { buildListInventoryToolResult, listInventoryInputSchema } from "./tools/listInventory.js";
 import { buildProbeDevicesToolResult, probeDevicesInputSchema } from "./tools/probeDevices.js";
 import { buildRunShowToolResult, runShowInputSchema } from "./tools/runShow.js";
+import { buildShowLoggingToolResult, showLoggingInputSchema } from "./tools/showLogging.js";
 
 interface McpRuntimeDependencies {
   runtimeContext: ServerRuntimeContext;
@@ -46,6 +47,12 @@ function buildToolDefinitions(deps: McpRuntimeDependencies) {
       description: "Run one or more EOS show commands against a host or group target. Supports auto/json/text output modes with strict show-only validation.",
       inputSchema: runShowInputSchema,
       handler: async (args: z.infer<typeof runShowInputSchema>) => buildRunShowToolResult(deps.inventoryModel, deps.config, args, deps.eapiClient)
+    },
+    {
+      name: "eos_show_logging",
+      description: "Retrieve bounded EOS logging output for a host or group target using a minimum severity threshold and message-count limit.",
+      inputSchema: showLoggingInputSchema,
+      handler: async (args: z.infer<typeof showLoggingInputSchema>) => buildShowLoggingToolResult(deps.inventoryModel, deps.config, args, deps.eapiClient)
     },
     {
       name: "eos_get_facts",

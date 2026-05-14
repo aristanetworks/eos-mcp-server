@@ -43,6 +43,7 @@ export async function loadServerConfig(options: CliOptions): Promise<ResolvedSer
     maxReadTargets: fileConfig.maxReadTargets,
     maxWriteTargets: fileConfig.maxWriteTargets,
     maxShowCommandsPerRequest: fileConfig.maxShowCommandsPerRequest,
+    maxLoggingMessagesPerRequest: fileConfig.maxLoggingMessagesPerRequest,
     maxConfigCommandsPerRequest: fileConfig.maxConfigCommandsPerRequest,
     maxResponseSizeBytes: fileConfig.maxResponseSizeBytes,
     previewMaxAgeMs: fileConfig.previewMaxAgeMs,

@@ -36,6 +36,7 @@ export function buildServerInfo(context: ServerRuntimeContext): ServerInfo {
       max_read_targets: context.config.maxReadTargets,
       max_write_targets: context.config.maxWriteTargets,
       max_show_commands_per_request: context.config.maxShowCommandsPerRequest,
+      max_logging_messages_per_request: context.config.maxLoggingMessagesPerRequest,
       max_config_commands_per_request: context.config.maxConfigCommandsPerRequest,
       max_response_size_bytes: context.config.maxResponseSizeBytes,
       preview_max_age_ms: context.config.previewMaxAgeMs
