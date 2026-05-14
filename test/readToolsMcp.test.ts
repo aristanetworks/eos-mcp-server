@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import { buildRunShowToolResult } from "../src/mcp/tools/runShow.js";
+import { buildShowLoggingToolResult } from "../src/mcp/tools/showLogging.js";
 import { buildGetFactsToolResult } from "../src/mcp/tools/getFacts.js";
 import { buildGetRunningConfigToolResult } from "../src/mcp/tools/getRunningConfig.js";
 import { buildConfig, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
@@ -30,6 +31,37 @@ describe("read MCP tool adapters", () => {
         target: "leaf1",
         commands: ["show version"],
         output_format: "json"
+      },
+      runner
+    );
+
+    expect((result.structuredContent as { summary: { success_count: number } }).summary.success_count).toBe(1);
+  });
+
+  it("buildShowLoggingToolResult returns structured content", async () => {
+    setTestPasswordEnv();
+    const model = await loadInventoryModel(
+      await writeTempInventory([
+        "hosts:",
+        "  leaf1:",
+        "    ansible_host: 10.0.0.11",
+        "    ansible_network_os: eos"
+      ])
+    );
+
+    const runner = {
+      runShowCommands: vi.fn(async () => ({ result: [{ output: "warning log" }] }))
+    };
+
+    const result = await buildShowLoggingToolResult(
+      model,
+      buildConfig({
+        defaultConnection: { ansibleUser: "admin", mcpPasswordEnv: "EOS_MCP_PASSWORD" }
+      }),
+      {
+        target: "leaf1",
+        minimum_severity: "warnings",
+        message_count: 100
       },
       runner
     );

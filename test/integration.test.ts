@@ -1,5 +1,4 @@
 import net from "node:net";
-import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { getRunningConfig } from "../src/configuration/getRunningConfig.js";
 import { EapiClient } from "../src/eapi/client.js";
@@ -9,14 +8,23 @@ import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import type { InventoryModel } from "../src/inventory/types.js";
 import { probeDevices } from "../src/probe/probeDevices.js";
 import { runShow } from "../src/show/runShow.js";
+import { showLogging } from "../src/logging/showLogging.js";
 import type { ResolvedServerConfig } from "../src/config/schema.js";
-import { buildConfig } from "./helpers.js";
+import { buildConfig, writeTempInventory } from "./helpers.js";
 
-const INVENTORY_PATH = path.resolve("clab/clab-testlab/ansible-inventory.yml");
-const SINGLE_HOST = "clab-testlab-node1-1";
-const SINGLE_HOST_IP = "172.20.20.5";
+const HOST_NAMES = [
+  "clab-testlab-node1-1",
+  "clab-testlab-node1-2",
+  "clab-testlab-node2-1",
+  "clab-testlab-node2-2",
+  "clab-testlab-node2-3",
+  "clab-testlab-node2-4",
+  "clab-testlab-node2-5",
+  "clab-testlab-node2-6"
+] as const;
+const SINGLE_HOST = HOST_NAMES[0];
 const GROUP_NAME = "arista_ceos";
-const TOTAL_HOSTS = 8;
+const TOTAL_HOSTS = HOST_NAMES.length;
 
 const INTEGRATION = process.env.INTEGRATION === "1";
 
@@ -44,14 +52,27 @@ describe.runIf(INTEGRATION)("integration: EOS read-path tools", () => {
   let runner: EosCommandRunner;
 
   beforeAll(async () => {
-    const reachable = await tcpProbe(SINGLE_HOST_IP, 443, 5_000);
+    const reachable = await tcpProbe(SINGLE_HOST, 443, 5_000);
     if (!reachable) {
       throw new Error(
-        `clab device ${SINGLE_HOST} unreachable at ${SINGLE_HOST_IP}:443 -- is containerlab running?`
+        `clab device ${SINGLE_HOST} unreachable by hostname at ${SINGLE_HOST}:443 -- is containerlab running and are clab hostnames resolvable?`
       );
     }
 
-    model = await loadInventoryModel(INVENTORY_PATH);
+    const inventoryPath = await writeTempInventory([
+      "all:",
+      "  children:",
+      `    ${GROUP_NAME}:`,
+      "      vars:",
+      "        ansible_user: admin",
+      "        ansible_password: admin",
+      "        ansible_network_os: eos",
+      "        mcp_validate_certs: false",
+      "      hosts:",
+      ...HOST_NAMES.map((host) => `        ${host}: {}`)
+    ], "eos-mcp-integration-");
+
+    model = await loadInventoryModel(inventoryPath);
     config = buildConfig();
     runner = new EapiClient();
   }, 30_000);
@@ -68,7 +89,7 @@ describe.runIf(INTEGRATION)("integration: EOS read-path tools", () => {
     expect(result.results).toHaveLength(1);
     expect(result.results[0]?.status).toBe("success");
     expect(result.results[0]?.inventory_hostname).toBe(SINGLE_HOST);
-    expect(result.results[0]?.resolved_endpoint).toBe(SINGLE_HOST_IP);
+    expect(result.results[0]?.resolved_endpoint).toBe(SINGLE_HOST);
     expect(result.results[0]?.raw_result).toBeDefined();
   }, 30_000);
 
@@ -136,6 +157,35 @@ describe.runIf(INTEGRATION)("integration: EOS read-path tools", () => {
 
     const commandResults = result.results[0]?.command_results;
     expect(commandResults).toHaveLength(2);
+  }, 30_000);
+
+  it("retrieves bounded logging output for a single host", async () => {
+    const result = await showLogging(
+      model,
+      config,
+      {
+        target: SINGLE_HOST,
+        minimumSeverity: "warnings",
+        messageCount: 10
+      },
+      runner
+    );
+
+    expect(result.target).toBe(SINGLE_HOST);
+    expect(result.target_type).toBe("host");
+    expect(result.minimum_severity).toBe("warnings");
+    expect(result.message_count).toBe(10);
+    expect(result.resolved_devices).toEqual([SINGLE_HOST]);
+    expect(result.summary.total_count).toBe(1);
+    expect(result.summary.success_count).toBe(1);
+    expect(result.summary.failed_count).toBe(0);
+
+    const deviceResult = result.results[0];
+    expect(deviceResult?.status).toBe("success");
+    expect(deviceResult?.inventory_hostname).toBe(SINGLE_HOST);
+    expect(deviceResult?.resolved_endpoint).toBe(SINGLE_HOST);
+    expect(deviceResult?.command).toBe("show logging threshold warnings 10");
+    expect(typeof deviceResult?.log_text).toBe("string");
   }, 30_000);
 
   it("gets facts for a single host", async () => {

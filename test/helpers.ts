@@ -21,6 +21,7 @@ export function buildConfig(overrides: Partial<ResolvedServerConfig> = {}): Reso
     maxReadTargets: 50,
     maxWriteTargets: 10,
     maxShowCommandsPerRequest: 5,
+    maxLoggingMessagesPerRequest: 1000,
     maxConfigCommandsPerRequest: 20,
     maxResponseSizeBytes: 1_048_576,
     previewMaxAgeMs: 900_000,

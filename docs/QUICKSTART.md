@@ -35,9 +35,9 @@ all:
         mcp_password_env: EOS_MCP_PASSWORD
       hosts:
         leaf1:
-          ansible_host: 10.0.0.11
+          ansible_host: 192.0.2.11
         leaf2:
-          ansible_host: 10.0.0.12
+          ansible_host: 192.0.2.12
 ```
 
 If your devices use self-signed certificates, add `mcp_validate_certs: false` (or `ansible_httpapi_validate_certs: false`) under `vars`:
@@ -92,14 +92,6 @@ To make it available across all your projects, add `-s user`:
 
 ```bash
 claude mcp add -s user eos -- eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
-```
-
-### For Arista internal users
-
-When using the proxy with `lclaude` there may be issues with passing the password and adding the server name, so just add the server without specifying the name:
-
-```bash
-lclaude mcp add -e EOS_MCP_PASSWORD=arista -- eos-mcp-server serve --inventory inventory.yml
 ```
 
 ### Passing the password to Claude Code

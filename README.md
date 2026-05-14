@@ -8,6 +8,7 @@ Phase 1 of this project intentionally ships a **read-only MVP**. The server can:
 - list inventory hosts/groups
 - probe EOS device readiness
 - run `show` commands
+- retrieve bounded logging output for troubleshooting
 - collect a fixed set of device facts
 - retrieve running configuration
 
@@ -21,6 +22,7 @@ Implemented MCP tools:
 - `eos_list_inventory`
 - `eos_probe_devices`
 - `eos_run_show`
+- `eos_show_logging`
 - `eos_get_facts`
 - `eos_get_running_config`
 
@@ -162,9 +164,9 @@ all:
         mcp_password_env: EOS_MCP_PASSWORD
       hosts:
         leaf1:
-          ansible_host: 10.0.0.11
+          ansible_host: 192.0.2.11
         leaf2:
-          ansible_host: 10.0.0.12
+          ansible_host: 192.0.2.12
 ```
 
 ### Simplified YAML example
@@ -177,10 +179,10 @@ vars:
 
 hosts:
   leaf1:
-    ansible_host: 10.0.0.11
+    ansible_host: 192.0.2.11
     ansible_network_os: eos
   leaf2:
-    ansible_host: 10.0.0.12
+    ansible_host: 192.0.2.12
     ansible_network_os: eos
 
 groups:
@@ -241,7 +243,7 @@ The default allowed env var prefix is `EOS_MCP_`, so names like `EOS_MCP_PASSWOR
 Example:
 
 ```bash
-export EOS_MCP_PASSWORD='admin'
+export EOS_MCP_PASSWORD='replace-with-device-password'
 ```
 
 ## TLS behavior
@@ -266,7 +268,7 @@ all:
         mcp_validate_certs: false
       hosts:
         leaf1:
-          ansible_host: 10.0.0.11
+          ansible_host: 192.0.2.11
 ```
 
 ### Prefer a CA bundle when possible
@@ -295,6 +297,7 @@ overallOperationTimeoutMs: 30000
 deviceConcurrency: 5
 maxReadTargets: 50
 maxShowCommandsPerRequest: 5
+maxLoggingMessagesPerRequest: 1000
 maxResponseSizeBytes: 1048576
 secretEnvPrefixes:
   - EOS_MCP_
@@ -314,6 +317,7 @@ Useful config fields for the read-only MVP:
 - `deviceConcurrency`
 - `maxReadTargets`
 - `maxShowCommandsPerRequest`
+- `maxLoggingMessagesPerRequest`
 - `maxResponseSizeBytes`
 - `secretEnvPrefixes`
 - `defaultConnection.ansibleUser`
@@ -321,7 +325,7 @@ Useful config fields for the read-only MVP:
 - `defaultConnection.mcpValidateCerts`
 - `defaultConnection.mcpPasswordEnv`
 
-`readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole tool call and aborts in-flight device requests once the limit is reached. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized read-tool result.
+`readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized read-tool result.
 
 `defaultConnection.mcpPasswordEnv` is a fallback password source. A host or inherited inventory value for `mcp_password_env` or `ansible_password` overrides it. Setting both `mcp_password_env` and `ansible_password` for the same host remains invalid.
 
@@ -466,6 +470,22 @@ Input examples:
   "include_raw": false
 }
 ```
+
+### `eos_show_logging`
+
+Retrieves bounded EOS logging output for a host or group target. The tool always uses text output and generates `show logging threshold <minimum_severity> <message_count>`. `minimum_severity` is a threshold, so `warnings` includes warning and more urgent log messages. Defaults are `minimum_severity: "warnings"` and `message_count: 100`; `message_count` is capped by `maxLoggingMessagesPerRequest`.
+
+Input example:
+
+```json
+{
+  "target": "leaf1",
+  "minimum_severity": "warnings",
+  "message_count": 100
+}
+```
+
+Allowed severities are `emergencies`, `alerts`, `critical`, `errors`, `warnings`, `notifications`, `informational`, and `debugging`.
 
 ### `eos_get_facts`
 
@@ -630,7 +650,7 @@ For `eos_get_running_config`, group targets require a `section` value.
 
 ### Response too large
 
-Read tools are bounded by `maxResponseSizeBytes`. The server rejects oversized device HTTP responses before buffering them fully, and also rejects oversized aggregate tool results with narrowing guidance.
+Read tools are bounded by `maxResponseSizeBytes`. The server rejects oversized device HTTP responses before buffering them fully, and also rejects oversized aggregate tool results with narrowing guidance. For `eos_show_logging`, reduce `message_count`, target fewer devices, or raise `minimum_severity`.
 
 ### Policy denied when probing a device
 

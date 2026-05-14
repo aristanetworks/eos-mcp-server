@@ -18,6 +18,7 @@ describe("loadServerConfig", () => {
 
     expect(config.enableWrite).toBe(false);
     expect(config.allowDirectConfigFallback).toBe(false);
+    expect(config.maxLoggingMessagesPerRequest).toBe(1000);
   });
 
   it("rejects --enable-write for the read-only MVP", async () => {
@@ -40,6 +41,22 @@ describe("loadServerConfig", () => {
     await expect(loadServerConfig({ command: "serve", configPath })).rejects.toThrow(
       "allowDirectConfigFallback is not supported in the read-only MVP"
     );
+  });
+
+  it("loads the logging message-count limit from config", async () => {
+    const configPath = await writeTempConfig(["maxLoggingMessagesPerRequest: 250"]);
+
+    const config = await loadServerConfig({ command: "serve", configPath });
+
+    expect(config.maxLoggingMessagesPerRequest).toBe(250);
+  });
+
+  it("rejects logging message-count limits beyond EOS command bounds", async () => {
+    const configPath = await writeTempConfig(["maxLoggingMessagesPerRequest: 10000"]);
+
+    await expect(loadServerConfig({ command: "serve", configPath })).rejects.toMatchObject({
+      code: "config_schema_invalid"
+    } satisfies Partial<AppError>);
   });
 
   it("wraps config schema errors in AppError", async () => {
