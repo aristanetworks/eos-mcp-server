@@ -2,7 +2,8 @@ import { z } from "zod";
 import type { ResolvedServerConfig } from "../../config/schema.js";
 import type { EosCommandRunner } from "../../eapi/types.js";
 import type { InventoryModel } from "../../inventory/types.js";
-import { LOGGING_SEVERITIES, showLogging } from "../../logging/showLogging.js";
+import { LOGGING_SEVERITIES } from "../../logging/loggingQuery.js";
+import { showLogging } from "../../logging/showLogging.js";
 import { buildJsonToolResult } from "../toolResult.js";
 
 export const showLoggingInputSchema = z
