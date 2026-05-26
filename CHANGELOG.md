@@ -2,8 +2,11 @@
 
 ## Unreleased
 
+## 0.5.1-beta
+
 - Fixes `eos_run_show` being advertised with an empty input schema by moving its `command` XOR `commands` validation from a Zod `.superRefine()` into the tool handler; the wrapping `ZodEffects` was hiding `.shape` from the MCP SDK's schema normalizer, leaving callers unable to pass arguments.
 - Adds a stdio smoke regression that asserts every tool with arguments advertises a non-empty `inputSchema.properties` containing `target`.
+- Refactors logging request validation and EOS logging command construction into a dedicated Logging Query module.
 
 ## 0.5.0-beta
 
