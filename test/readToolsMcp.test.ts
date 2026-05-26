@@ -30,12 +30,75 @@ describe("read MCP tool adapters", () => {
       {
         target: "leaf1",
         commands: ["show version"],
-        output_format: "json"
+        output_format: "json",
+        include_raw: false
       },
       runner
     );
 
     expect((result.structuredContent as { summary: { success_count: number } }).summary.success_count).toBe(1);
+  });
+
+  it("buildRunShowToolResult rejects when both command and commands are provided", async () => {
+    setTestPasswordEnv();
+    const model = await loadInventoryModel(
+      await writeTempInventory([
+        "hosts:",
+        "  leaf1:",
+        "    ansible_host: 10.0.0.11",
+        "    ansible_network_os: eos"
+      ])
+    );
+
+    const runner = { runShowCommands: vi.fn() };
+
+    await expect(
+      buildRunShowToolResult(
+        model,
+        buildConfig({
+          defaultConnection: { ansibleUser: "admin", mcpPasswordEnv: "EOS_MCP_PASSWORD" }
+        }),
+        {
+          target: "leaf1",
+          command: "show version",
+          commands: ["show version"],
+          output_format: "auto",
+          include_raw: false
+        },
+        runner
+      )
+    ).rejects.toMatchObject({ code: "show_commands_input_invalid" });
+    expect(runner.runShowCommands).not.toHaveBeenCalled();
+  });
+
+  it("buildRunShowToolResult rejects when neither command nor commands are provided", async () => {
+    setTestPasswordEnv();
+    const model = await loadInventoryModel(
+      await writeTempInventory([
+        "hosts:",
+        "  leaf1:",
+        "    ansible_host: 10.0.0.11",
+        "    ansible_network_os: eos"
+      ])
+    );
+
+    const runner = { runShowCommands: vi.fn() };
+
+    const promise = buildRunShowToolResult(
+      model,
+      buildConfig({
+        defaultConnection: { ansibleUser: "admin", mcpPasswordEnv: "EOS_MCP_PASSWORD" }
+      }),
+      {
+        target: "leaf1",
+        output_format: "auto",
+        include_raw: false
+      },
+      runner
+    );
+
+    await expect(promise).rejects.toMatchObject({ code: "show_commands_input_invalid" });
+    expect(runner.runShowCommands).not.toHaveBeenCalled();
   });
 
   it("buildShowLoggingToolResult returns structured content", async () => {

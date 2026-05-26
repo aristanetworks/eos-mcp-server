@@ -51,6 +51,29 @@ describe("stdio MCP smoke test", () => {
           "eos_show_logging"
         ]);
 
+        // Regression: every tool that takes arguments must advertise a non-empty
+        // input schema. A bare `.refine()` / `.superRefine()` on the schema turns
+        // the ZodObject into a ZodEffects, which the MCP SDK silently strips down
+        // to `{ type: "object", properties: {} }` — leaving callers unable to pass
+        // any arguments.
+        const toolsWithArgs = [
+          "eos_get_facts",
+          "eos_get_running_config",
+          "eos_probe_devices",
+          "eos_run_show",
+          "eos_show_logging"
+        ];
+        for (const name of toolsWithArgs) {
+          const tool = tools.tools.find((entry) => entry.name === name);
+          expect(tool, `${name} should be advertised`).toBeDefined();
+          const properties = (tool?.inputSchema as { properties?: Record<string, unknown> } | undefined)?.properties;
+          expect(properties, `${name} inputSchema.properties must be defined`).toBeDefined();
+          expect(
+            Object.keys(properties ?? {}),
+            `${name} inputSchema.properties must include at least "target"`
+          ).toContain("target");
+        }
+
         const serverInfo = await client.callTool({
           name: "eos_get_server_info",
           arguments: {}
