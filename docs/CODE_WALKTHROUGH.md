@@ -58,10 +58,12 @@ The core read behavior is implemented as service modules:
 - `src/probe/probeDevices.ts`: runs `show version` to verify readiness.
 - `src/eapi/commands.ts`: normalizes single-line EOS command inputs, rejects risky CLI modifiers/metacharacters, and validates `show` command boundaries.
 - `src/show/runShow.ts`: validates strict `show` commands and runs them with `auto`, `json`, or `text` behavior.
+- `src/logging/loggingQuery.ts`: validates Log Severity and message-count inputs, applies logging defaults/limits, and builds the EOS logging command.
+- `src/logging/showLogging.ts`: executes the bounded Logging Query and returns unparsed log text.
 - `src/facts/getFacts.ts`: collects fixed facts from `show version`.
 - `src/configuration/getRunningConfig.ts`: returns running config text, requiring `section` for group targets. Uses enable mode since `show running-config` requires privileged access.
 
-All four services accept an `EosCommandRunner` (defined in `src/eapi/types.ts`) rather than defining their own runner interfaces.
+All device-facing read services accept an `EosCommandRunner` (defined in `src/eapi/types.ts`) rather than defining their own runner interfaces.
 
 Shared read orchestration lives in `src/operations/readExecution.ts`. It centralizes target resolution, target limits, concurrency, overall timeout cancellation, connection resolution, common per-device result fields, result summaries (including the shared `DeviceResultSummary` type used by all result interfaces), final result-envelope response-size enforcement, and per-device `AppError.code` preservation.
 
@@ -69,7 +71,7 @@ Shared type-narrowing utilities (`isObject`, `readString`, `readBoolean`, `readN
 
 ## MCP Layer
 
-The MCP server is assembled in `src/mcp/createServer.ts`. It creates the official SDK `McpServer`, registers six read-only tools, and connects over stdio.
+The MCP server is assembled in `src/mcp/createServer.ts`. It creates the official SDK `McpServer`, registers seven read-only tools, and connects over stdio.
 
 Tool adapters live under `src/mcp/tools/`:
 
@@ -77,6 +79,7 @@ Tool adapters live under `src/mcp/tools/`:
 - `listInventory.ts`
 - `probeDevices.ts`
 - `runShow.ts`
+- `showLogging.ts`
 - `getFacts.ts`
 - `getRunningConfig.ts`
 
@@ -98,7 +101,7 @@ Tests mirror the source layout:
 
 - Inventory and target behavior: `inventory.test.ts`, `targetResolution.test.ts`
 - eAPI and connection behavior: `eapiClient.test.ts`, `startupValidation.test.ts`
-- Read services: `probeDevices.test.ts`, `runShow.test.ts`, `getFacts.test.ts`, `getRunningConfig.test.ts`
+- Read services: `probeDevices.test.ts`, `runShow.test.ts`, `loggingQuery.test.ts`, `showLogging.test.ts`, `getFacts.test.ts`, `getRunningConfig.test.ts`
 - MCP adapters and stdio: `readToolsMcp.test.ts`, `probeDevicesTool.test.ts`, `listInventoryTool.test.ts`, `mcpStdioSmoke.test.ts`
 - Package/static policy: `packagePolicy.test.ts`
 - Shared test helpers: `test/helpers.ts`

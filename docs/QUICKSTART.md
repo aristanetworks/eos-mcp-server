@@ -132,6 +132,7 @@ Once connected, Claude Code has access to these tools:
 | `eos_list_inventory`     | List inventory hosts and groups          |
 | `eos_probe_devices`      | Check device reachability                |
 | `eos_run_show`           | Run `show` commands on devices           |
+| `eos_show_logging`       | Retrieve bounded logging output          |
 | `eos_get_facts`          | Collect device facts from `show version` |
 | `eos_get_running_config` | Retrieve running configuration           |
 

@@ -172,4 +172,5 @@ VLAN 100 (`VLAN100`) active on all leaves, member of `Vx1` only, empty MAC table
 | `eos_get_facts` | Collect model, version, serial, uptime, system MAC |
 | `eos_get_running_config` | Retrieve running config (full for hosts, section for groups) |
 | `eos_run_show` | Run arbitrary `show ...` commands; returns JSON or text |
+| `eos_show_logging` | Retrieve bounded logging output with minimum severity threshold |
 | `eos_get_server_info` | Show server capabilities, runtime mode, inventory summary |

@@ -28,6 +28,7 @@ Implemented and test-backed today:
   - `eos_list_inventory`
   - `eos_probe_devices`
   - `eos_run_show`
+  - `eos_show_logging`
   - `eos_get_facts`
   - `eos_get_running_config`
 - MCP stdio server wiring
@@ -74,6 +75,7 @@ The Phase 1 release should provide:
   - `eos_list_inventory`
   - `eos_probe_devices`
   - `eos_run_show`
+  - `eos_show_logging`
   - `eos_get_facts`
   - `eos_get_running_config`
 - local admin commands:
@@ -100,7 +102,7 @@ Command results normalized into `NormalizedCommandResult[]` with `{ command, out
 All plain source `throw new Error(...)` calls converted to `throw new AppError(code, message)` with a consistent error taxonomy. Per-device read failures preserve underlying `AppError.code` values when available. `eos_probe_devices` raw result is now behind `include_raw` flag (default false). 7 tests cover request-level and per-device error taxonomy, with 2 tests for probe raw opt-in.
 
 #### 4. Real EOS / cEOS integration validation -- COMPLETED
-All 11 integration tests pass against cEOS 4.34.3M. All 8 lab devices probed successfully. Normalized output confirmed working against real devices. TLS behavior validated in lab scenarios.
+All 12 integration tests pass against cEOS 4.34.3M. All 8 lab devices probed successfully. Normalized output confirmed working against real devices. TLS behavior validated in lab scenarios.
 
 #### 5. Release prep and examples -- COMPLETED
 - package `prepack` builds from source before `npm pack`
@@ -123,7 +125,7 @@ All 11 integration tests pass against cEOS 4.34.3M. All 8 lab devices probed suc
 - default MCP responses are sanitized and stable; raw payloads require explicit opt-in
 
 #### Step 3: real-device validation -- COMPLETED
-- all 11 integration tests pass against cEOS 4.34.3M
+- all 12 integration tests pass against cEOS 4.34.3M
 - 8 lab devices probed successfully
 - normalized output confirmed working against real devices
 
@@ -136,7 +138,7 @@ All 11 integration tests pass against cEOS 4.34.3M. All 8 lab devices probed suc
 ### Phase 1 exit criteria
 Phase 1 is ready to ship when:
 - the server remains strictly read-only at startup -- MET
-- all six read MCP tools work end-to-end against real EOS/cEOS -- MET (cEOS 4.34.3M, 11 integration tests, 8 lab devices)
+- all seven read MCP tools work end-to-end against real EOS/cEOS -- MET (cEOS 4.34.3M, 12 integration tests, 8 lab devices)
 - operator docs exist and cover inventory, secrets, and TLS usage -- MET
 - response-size behavior is explicit and predictable -- MET (`maxResponseSizeBytes` enforced with structured errors and narrowing guidance)
 - `validate-inventory` meaningfully supports the intended operator workflow -- MET
@@ -210,9 +212,10 @@ Not all of these are required for Phase 1. For the read-only MVP, the most valua
   - bad TLS / cert validation
   - unknown target
   - oversized request
-- real cEOS/EOS integration tests -- ADDED (11 integration tests passing against cEOS 4.34.3M):
+- real cEOS/EOS integration tests -- ADDED (12 integration tests passing against cEOS 4.34.3M):
   - probe
   - run-show
+  - show-logging
   - get-facts
   - get-running-config
 

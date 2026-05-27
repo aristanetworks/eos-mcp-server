@@ -98,6 +98,7 @@ Implemented and registered:
 - `eos_list_inventory`
 - `eos_probe_devices`
 - `eos_run_show`
+- `eos_show_logging`
 - `eos_get_facts`
 - `eos_get_running_config`
 
@@ -109,8 +110,8 @@ Not yet implemented:
 ## Automated Validation Status
 
 Current automated status:
-- **22 test files** (21 active, 1 integration file skipped by default)
-- **104 passing tests** plus 11 skipped integration tests in the default run
+- **24 test files** (23 active, 1 integration file skipped by default)
+- **125 passing tests** plus 12 skipped integration tests in the default run
 - `npm test` ✅
 - `npm run build` ✅
 - `npm run typecheck` ✅
@@ -130,6 +131,7 @@ Covered areas now include:
 - eAPI client request formation
 - probe behavior (with include_raw opt-in)
 - run-show behavior (with normalized output and include_raw)
+- Logging Query validation and show-logging behavior
 - get-facts behavior
 - running-config behavior
 - MCP read-tool adapters
@@ -200,7 +202,7 @@ The following strict behaviors are already reflected in the implementation:
 - `npm pack` now runs `npm run build` through the package `prepack` hook
 
 ### cEOS integration validation
-- all 11 integration tests pass against cEOS 4.34.3M (8-node containerlab topology)
+- all 12 integration tests pass against cEOS 4.34.3M (8-node containerlab topology)
 - all 8 devices probed successfully via CLI
 - normalized `eos_run_show` output confirmed working against real devices
 - minimum supported EOS version for read operations documented as 4.20
@@ -212,12 +214,12 @@ The following strict behaviors are already reflected in the implementation:
 - validated against real-world 35-host inventory with 6 leaf groups under multiple parents
 
 ### Release packaging
-- `npm pack --dry-run` verified with `prepack` build hook: 57.0 KB, 135 files, no test or dev artifacts
+- `npm pack --dry-run` verified with `prepack` build hook: 81.3 KB, 162 files, no test or dev artifacts
 - clean `npm install` from `.tgz` confirmed working with CLI `--version` and `--help`
 
 ## Phase 1 Status
 
-**Phase 1 is complete.** All read-path tools are implemented, tested (109 automated tests plus 11 skipped integration tests in the default run), documented, and validated against real cEOS devices. The server is ready for the read-only MVP release.
+**Phase 1 is complete.** All read-path tools are implemented, tested (125 automated tests plus 12 skipped integration tests in the default run), documented, and validated against real cEOS devices. The server is ready for the read-only MVP release.
 
 ## Recommended Resume Point
 
