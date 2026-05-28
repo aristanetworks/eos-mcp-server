@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.5.2-beta
+
+- Refreshes the `qs` transitive dependency lock to clear the current `npm audit` finding.
+- Adds fail-closed validation for known security-sensitive inventory variable types before effective policy evaluation.
+
 ## 0.5.1-beta
 
 - Fixes `eos_run_show` being advertised with an empty input schema by moving its `command` XOR `commands` validation from a Zod `.superRefine()` into the tool handler; the wrapping `ZodEffects` was hiding `.shape` from the MCP SDK's schema normalizer, leaving callers unable to pass arguments.

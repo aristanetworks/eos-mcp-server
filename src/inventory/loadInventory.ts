@@ -11,6 +11,7 @@ import type {
   InventoryValidationResult
 } from "./types.js";
 import { validateNormalizedInventory } from "./validateNormalized.js";
+import { validateKnownInventoryVarTypes } from "./varValidation.js";
 
 interface ParsedInventoryResult {
   schemaKind?: InventorySchemaKind;
@@ -84,6 +85,7 @@ async function parseAndValidateInventory(inventoryPath: string): Promise<ParsedI
     }
 
     validateNormalizedInventory(normalized, context);
+    validateKnownInventoryVarTypes(normalized, context);
 
     if (context.errors.length > 0) {
       return buildParsedInventoryResult({

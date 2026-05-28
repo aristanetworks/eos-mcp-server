@@ -82,6 +82,84 @@ describe("inventory validation", () => {
     expect(result.errors.some((error) => error.message.includes("mcp_write_allowed"))).toBe(true);
   });
 
+  it("rejects non-boolean read policy values instead of defaulting open", async () => {
+    const filePath = await writeTempInventory([
+      "hosts:",
+      "  leaf1:",
+      "    ansible_host: 10.0.0.11",
+      "    ansible_network_os: eos",
+      "    mcp_read_allowed: \"false\""
+    ]);
+
+    const result = await validateInventory(filePath);
+    expect(result.ok).toBe(false);
+    expect(result.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "inventory_var_type_invalid",
+          path: "hosts.leaf1.mcp_read_allowed"
+        })
+      ])
+    );
+  });
+
+  it("rejects string write policy values before deny-dominant evaluation", async () => {
+    const filePath = await writeTempInventory([
+      "vars:",
+      "  ansible_network_os: eos",
+      "  mcp_write_allowed: \"false\"",
+      "groups:",
+      "  lab:",
+      "    vars:",
+      "      mcp_write_allowed: true",
+      "    hosts: [leaf1]",
+      "hosts:",
+      "  leaf1:",
+      "    ansible_host: 10.0.0.11"
+    ]);
+
+    const result = await validateInventory(filePath);
+    expect(result.ok).toBe(false);
+    expect(result.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "inventory_var_type_invalid",
+          path: "vars.mcp_write_allowed"
+        })
+      ])
+    );
+  });
+
+  it("rejects invalid known connection and platform variable types", async () => {
+    const filePath = await writeTempInventory([
+      "vars:",
+      "  ansible_network_os: true",
+      "  mcp_validate_certs: \"false\"",
+      "groups:",
+      "  leafs:",
+      "    vars:",
+      "      ansible_httpapi_validate_certs: \"false\"",
+      "    hosts: [leaf1]",
+      "hosts:",
+      "  leaf1:",
+      "    ansible_host: 10.0.0.11",
+      "    ansible_httpapi_port: bad-port",
+      "    mcp_password_env: \"\""
+    ]);
+
+    const result = await validateInventory(filePath);
+    expect(result.ok).toBe(false);
+    expect(result.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "inventory_var_type_invalid", path: "vars.ansible_network_os" }),
+        expect.objectContaining({ code: "inventory_var_type_invalid", path: "vars.mcp_validate_certs" }),
+        expect.objectContaining({ code: "inventory_var_type_invalid", path: "groups.leafs.vars.ansible_httpapi_validate_certs" }),
+        expect.objectContaining({ code: "inventory_var_type_invalid", path: "hosts.leaf1.ansible_httpapi_port" }),
+        expect.objectContaining({ code: "inventory_var_type_invalid", path: "hosts.leaf1.mcp_password_env" })
+      ])
+    );
+  });
+
   it("rejects unknown structural keys in simplified groups", async () => {
     const filePath = await writeTempInventory([
       "hosts:",
