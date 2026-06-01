@@ -49,9 +49,9 @@ describe("response-size enforcement", () => {
       const model = await buildSingleHostModel();
       const largePayload = "x".repeat(10_000);
       const runner = {
-        runShowCommands: vi.fn(async () => ({
-          result: [{ output: largePayload }]
-        }))
+        runShowCommands: vi.fn(async () => [
+          { command: "show version", output_format: "text", output: largePayload }
+        ])
       };
 
       await expect(
@@ -67,9 +67,9 @@ describe("response-size enforcement", () => {
       setTestPasswordEnv();
       const model = await buildSingleHostModel();
       const runner = {
-        runShowCommands: vi.fn(async () => ({
-          result: [{ output: "small" }]
-        }))
+        runShowCommands: vi.fn(async () => [
+          { command: "show version", output_format: "text", output: "small" }
+        ])
       };
 
       const result = await runShow(
@@ -88,9 +88,9 @@ describe("response-size enforcement", () => {
       const model = await buildGroupModel();
       const largePayload = "x".repeat(10_000);
       const runner = {
-        runShowCommands: vi.fn(async () => ({
-          result: [{ output: largePayload }]
-        }))
+        runShowCommands: vi.fn(async () => [
+          { command: "show version", output_format: "text", output: largePayload }
+        ])
       };
 
       try {
@@ -115,9 +115,9 @@ describe("response-size enforcement", () => {
       const model = await buildSingleHostModel();
       const largeConfig = "interface Ethernet1\n".repeat(5_000);
       const runner = {
-        runShowCommands: vi.fn(async () => ({
-          result: [{ output: largeConfig }]
-        }))
+        runShowCommands: vi.fn(async () => [
+          { command: "show running-config", output_format: "text", output: largeConfig }
+        ])
       };
 
       await expect(
@@ -130,9 +130,9 @@ describe("response-size enforcement", () => {
       const model = await buildSingleHostModel();
       const largeConfig = "interface Ethernet1\n".repeat(5_000);
       const runner = {
-        runShowCommands: vi.fn(async () => ({
-          result: [{ output: largeConfig }]
-        }))
+        runShowCommands: vi.fn(async () => [
+          { command: "show running-config", output_format: "text", output: largeConfig }
+        ])
       };
 
       try {
@@ -151,9 +151,9 @@ describe("response-size enforcement", () => {
       setTestPasswordEnv();
       const model = await buildSingleHostModel();
       const runner = {
-        runShowCommands: vi.fn(async () => ({
-          result: [{ hostname: "leaf1", version: "4.32.1F" }]
-        }))
+        runShowCommands: vi.fn(async () => [
+          { command: "show version", output_format: "json", output: { hostname: "leaf1", version: "4.32.1F" } }
+        ])
       };
 
       const result = await getFacts(
@@ -174,9 +174,9 @@ describe("response-size enforcement", () => {
         bigField: "y".repeat(10_000)
       };
       const runner = {
-        runShowCommands: vi.fn(async () => ({
-          result: [hugeRawPayload]
-        }))
+        runShowCommands: vi.fn(async () => [
+          { command: "show version", output_format: "json", output: hugeRawPayload, raw_entry: hugeRawPayload }
+        ])
       };
 
       await expect(
@@ -191,9 +191,9 @@ describe("response-size enforcement", () => {
       const model = await buildGroupModel();
       const mediumPayload = "x".repeat(400);
       const runner = {
-        runShowCommands: vi.fn(async () => ({
-          result: [{ output: mediumPayload }]
-        }))
+        runShowCommands: vi.fn(async () => [
+          { command: "show version", output_format: "text", output: mediumPayload }
+        ])
       };
 
       await expect(

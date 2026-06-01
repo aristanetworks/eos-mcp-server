@@ -19,7 +19,9 @@ describe("buildProbeDevicesToolResult", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async () => ({ result: [{ version: "4.32.1F" }] }))
+      runShowCommands: vi.fn(async () => [
+        { command: "show version", output_format: "json", output: { version: "4.32.1F" } }
+      ])
     };
 
     const result = await buildProbeDevicesToolResult(

@@ -1,7 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { AppError } from "../core/errors.js";
+import { AppError, getErrorCode } from "../core/errors.js";
 import { isObject } from "../utils/value.js";
-import { hasEapiResultArray, parseEapiRunCmdsResponse, type EapiCommandOptions, type EapiConnectionConfig, type EapiJsonRpcRequest, type EapiOutputFormat } from "./types.js";
+import {
+  hasEapiResultArray,
+  parseEapiRunCmdsResponse,
+  type EapiCommandOptions,
+  type EapiConnectionConfig,
+  type EapiJsonRpcRequest,
+  type EapiOutputFormat,
+  type EapiOutputMode,
+  type EosCommandResult,
+  type RunShowCommandOptions
+} from "./types.js";
 import { NodeHttpsEapiTransport, type EapiTransport } from "./transport.js";
 
 export class EapiClient {
@@ -14,13 +24,29 @@ export class EapiClient {
   async runShowCommands(
     connection: EapiConnectionConfig,
     commands: string[],
-    format: EapiOutputFormat,
-    options?: EapiCommandOptions
-  ): Promise<unknown> {
-    return this.runCommands(connection, commands, format, options);
+    outputMode: EapiOutputMode,
+    options?: RunShowCommandOptions
+  ): Promise<EosCommandResult[]> {
+    const run = async (format: EapiOutputFormat): Promise<EosCommandResult[]> => {
+      const payload = await this.runCommands(connection, commands, format, options);
+      return buildCommandResults(payload, commands, format, options?.includeRawEntries === true);
+    };
+
+    if (outputMode === "json" || outputMode === "text") {
+      return run(outputMode);
+    }
+
+    try {
+      return await run("json");
+    } catch (error) {
+      if (getErrorCode(error) !== "json_output_unavailable") {
+        throw error;
+      }
+      return run("text");
+    }
   }
 
-  async runCommands(
+  private async runCommands(
     connection: EapiConnectionConfig,
     commands: string[],
     format: EapiOutputFormat,
@@ -73,6 +99,38 @@ export class EapiClient {
 function buildRequestSignal(timeoutMs: number, callerSignal: AbortSignal | undefined): AbortSignal {
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   return callerSignal === undefined ? timeoutSignal : AbortSignal.any([callerSignal, timeoutSignal]);
+}
+
+function buildCommandResults(
+  payload: unknown,
+  commands: string[],
+  outputFormat: EapiOutputFormat,
+  includeRawEntries: boolean
+): EosCommandResult[] {
+  const entries = parseEapiRunCmdsResponse(payload, commands.length).result;
+
+  return commands.map((command, index) => {
+    const rawEntry = entries[index];
+    const output = outputFormat === "text" ? extractStrictTextOutput(rawEntry, command) : rawEntry;
+    return {
+      command,
+      output_format: outputFormat,
+      output,
+      ...(includeRawEntries ? { raw_entry: rawEntry } : {})
+    };
+  });
+}
+
+function extractStrictTextOutput(entry: unknown, command: string): string {
+  if (typeof entry === "string") {
+    return entry;
+  }
+
+  if (isObject(entry) && typeof entry.output === "string") {
+    return entry.output;
+  }
+
+  throw new AppError("eapi_text_output_invalid", `Unexpected text output payload for command ${command}`);
 }
 
 async function parseJsonResponse(response: { json(): Promise<unknown> }, connection: EapiConnectionConfig): Promise<unknown> {

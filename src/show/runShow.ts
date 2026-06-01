@@ -1,7 +1,7 @@
-import { AppError, getErrorCode } from "../core/errors.js";
+import { AppError } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { normalizeShowCommand } from "../eapi/commands.js";
-import { extractEapiTextOutput, parseEapiRunCmdsResponse, type EapiConnectionConfig, type EosCommandRunner } from "../eapi/types.js";
+import type { EosCommandResult, EosCommandRunner } from "../eapi/types.js";
 import type { InventoryModel } from "../inventory/types.js";
 import {
   buildReadDeviceFailure,
@@ -19,10 +19,7 @@ export interface RunShowOptions {
   includeRaw?: boolean;
 }
 
-export interface NormalizedCommandResult {
-  command: string;
-  output: unknown;
-}
+export type NormalizedCommandResult = EosCommandResult;
 
 export interface RunShowResult {
   target: string;
@@ -36,7 +33,6 @@ export interface RunShowResult {
     status: "success" | "failed";
     actual_output_format?: "json" | "text";
     command_results?: NormalizedCommandResult[];
-    raw_result?: unknown;
     error_code?: string;
     message?: string;
   }>;
@@ -55,16 +51,18 @@ export async function runShow(
     target: options.target,
     operationName: "eos_run_show",
     run: async (host, connection, signal) => {
-      const { payload, actualFormat } = await executeShow(runner, connection, commands, options.outputFormat, signal);
-      const normalizedResults = normalizeCommandResults(payload, commands, actualFormat);
+      const commandResults = await runner.runShowCommands(connection, commands, options.outputFormat, {
+        signal,
+        includeRawEntries: options.includeRaw === true
+      });
+      const firstResult = commandResults[0];
 
       return buildReadDeviceSuccess(host, {
-        actual_output_format: actualFormat,
-        command_results: normalizedResults,
-        ...(options.includeRaw ? { raw_result: payload } : {})
+        actual_output_format: firstResult?.output_format ?? "json",
+        command_results: commandResults
       });
     },
-    onError: (host, error) => buildReadDeviceFailure(host, mapShowErrorCode(error, options.outputFormat), error)
+    onError: (host, error) => buildReadDeviceFailure(host, "show_command_failed", error)
   });
 
   return buildReadOperationResultEnvelope(options.target, operation, {
@@ -79,71 +77,10 @@ export async function runShow(
   });
 }
 
-async function executeShow(
-  runner: EosCommandRunner,
-  connection: EapiConnectionConfig,
-  commands: string[],
-  outputFormat: "auto" | "json" | "text",
-  signal: AbortSignal
-): Promise<{ payload: unknown; actualFormat: "json" | "text" }> {
-  const run = async (format: "json" | "text"): Promise<{ payload: unknown; actualFormat: "json" | "text" }> => ({
-    payload: await runner.runShowCommands(connection, commands, format, { signal }),
-    actualFormat: format
-  });
-
-  if (outputFormat === "json") {
-    return run("json");
-  }
-
-  if (outputFormat === "text") {
-    return run("text");
-  }
-
-  try {
-    return await run("json");
-  } catch (error) {
-    if (getErrorCode(error) !== "json_output_unavailable") {
-      throw error;
-    }
-
-    return run("text");
-  }
-}
-
 function normalizeShowCommands(commands: string[]): string[] {
   if (commands.length === 0) {
     throw new AppError("show_commands_missing", "runShow requires at least one command");
   }
 
   return commands.map((command) => normalizeShowCommand(command));
-}
-
-function normalizeCommandResults(
-  payload: unknown,
-  commands: string[],
-  actualFormat: "json" | "text"
-): NormalizedCommandResult[] {
-  const eapiResults = parseEapiRunCmdsResponse(payload, commands.length).result;
-
-  return commands.map((command, index) => {
-    const rawEntry = eapiResults[index];
-    const output = actualFormat === "text" ? extractTextOutput(rawEntry) : rawEntry;
-    return { command, output };
-  });
-}
-
-function extractTextOutput(entry: unknown): string {
-  const textOutput = extractEapiTextOutput(entry);
-  if (textOutput !== undefined) {
-    return textOutput;
-  }
-  return typeof entry === "string" ? entry : JSON.stringify(entry);
-}
-
-function mapShowErrorCode(error: unknown, outputFormat: "auto" | "json" | "text"): string {
-  if (outputFormat === "json" && getErrorCode(error) === "json_output_unavailable") {
-    return "json_output_unavailable";
-  }
-
-  return "show_command_failed";
 }

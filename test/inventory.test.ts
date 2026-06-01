@@ -226,6 +226,28 @@ describe("inventory validation", () => {
     delete process.env.EOS_MCP_PASSWORD;
   });
 
+  it("accepts canonical hosts with null bodies as empty host vars", async () => {
+    process.env.EOS_MCP_PASSWORD = "secret";
+    const filePath = await writeTempInventory([
+      "all:",
+      "  vars:",
+      "    ansible_user: admin",
+      "    ansible_network_os: eos",
+      "    mcp_password_env: EOS_MCP_PASSWORD",
+      "  children:",
+      "    leafs:",
+      "      hosts:",
+      "        leaf1:",
+      "        leaf2:"
+    ]);
+
+    const model = await loadInventoryModel(filePath);
+    expect(model.hosts.map((host) => host.inventoryHostname)).toEqual(["leaf1", "leaf2"]);
+    expect(model.hostMap.get("leaf1")?.effectiveVars.ansible_user).toBe("admin");
+    expect(model.groupMap.get("leafs")?.resolvedHosts).toEqual(["leaf1", "leaf2"]);
+    delete process.env.EOS_MCP_PASSWORD;
+  });
+
   it("rejects unknown top-level keys in canonical inventory", async () => {
     const filePath = await writeTempInventory([
       "all:",

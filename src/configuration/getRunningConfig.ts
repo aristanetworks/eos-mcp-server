@@ -1,7 +1,7 @@
 import { AppError } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { normalizeSingleLineEosInput } from "../eapi/commands.js";
-import { extractEapiTextOutput, parseEapiRunCmdsResponse, type EosCommandRunner } from "../eapi/types.js";
+import type { EosCommandResult, EosCommandRunner } from "../eapi/types.js";
 import type { InventoryModel } from "../inventory/types.js";
 import {
   buildReadDeviceFailure,
@@ -67,16 +67,11 @@ export async function getRunningConfig(
   });
 }
 
-function extractConfigText(rawResult: unknown): string {
-  const results = parseEapiRunCmdsResponse(rawResult, 1).result;
-  const first = results[0];
+function extractConfigText(commandResults: EosCommandResult[]): string {
+  const first = commandResults[0]?.output;
 
   if (typeof first === "string") {
     return first;
-  }
-  const textOutput = extractEapiTextOutput(first);
-  if (textOutput !== undefined) {
-    return textOutput;
   }
 
   throw new AppError("running_config_payload_invalid", "Unexpected running-config payload structure");

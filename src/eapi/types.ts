@@ -2,6 +2,7 @@ import { AppError } from "../core/errors.js";
 import { isObject } from "../utils/value.js";
 
 export type EapiOutputFormat = "json" | "text";
+export type EapiOutputMode = EapiOutputFormat | "auto";
 
 export interface EapiConnectionConfig {
   inventoryHostname: string;
@@ -20,13 +21,24 @@ export interface EapiCommandOptions {
   signal?: AbortSignal;
 }
 
+export interface RunShowCommandOptions extends EapiCommandOptions {
+  includeRawEntries?: boolean;
+}
+
+export interface EosCommandResult {
+  command: string;
+  output_format: EapiOutputFormat;
+  output: unknown;
+  raw_entry?: unknown;
+}
+
 export interface EosCommandRunner {
   runShowCommands(
     connection: EapiConnectionConfig,
     commands: string[],
-    format: EapiOutputFormat,
-    options?: EapiCommandOptions
-  ): Promise<unknown>;
+    outputMode: EapiOutputMode,
+    options?: RunShowCommandOptions
+  ): Promise<EosCommandResult[]>;
 }
 
 export function hasEapiResultArray(payload: unknown): payload is { result: unknown[] } {
@@ -51,17 +63,6 @@ export function parseEapiRunCmdsResponse(payload: unknown, expectedResultCount?:
   }
 
   return { result: payload.result, raw: payload };
-}
-
-export function extractEapiResults(payload: unknown): unknown[] {
-  return parseEapiRunCmdsResponse(payload).result;
-}
-
-export function extractEapiTextOutput(entry: unknown): string | undefined {
-  if (isObject(entry) && "output" in entry && typeof entry.output === "string") {
-    return entry.output;
-  }
-  return undefined;
 }
 
 export interface EapiJsonRpcRequest {

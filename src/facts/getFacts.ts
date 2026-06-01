@@ -1,6 +1,6 @@
 import { AppError } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
-import { parseEapiRunCmdsResponse, type EosCommandRunner } from "../eapi/types.js";
+import type { EosCommandResult, EosCommandRunner } from "../eapi/types.js";
 import type { InventoryModel } from "../inventory/types.js";
 import {
   buildReadDeviceFailure,
@@ -34,7 +34,7 @@ export interface GetFactsResult {
       uptime?: number;
       system_mac?: string;
     };
-    raw_result?: unknown;
+    command_results?: EosCommandResult[];
     error_code?: string;
     message?: string;
   }>;
@@ -50,8 +50,11 @@ export async function getFacts(
     target: options.target,
     operationName: "eos_get_facts",
     run: async (host, connection, signal) => {
-      const rawResult = await runner.runShowCommands(connection, ["show version"], "json", { signal });
-      const versionPayload = extractPrimaryPayload(rawResult);
+      const commandResults = await runner.runShowCommands(connection, ["show version"], "json", {
+        signal,
+        includeRawEntries: options.include_raw
+      });
+      const versionPayload = extractPrimaryPayload(commandResults);
 
       const factDeviceHostname = readString(versionPayload.hostname);
       const factModel = readString(versionPayload.modelName);
@@ -70,7 +73,7 @@ export async function getFacts(
           ...(factUptime !== undefined ? { uptime: factUptime } : {}),
           ...(factSystemMac !== undefined ? { system_mac: factSystemMac } : {})
         },
-        ...(options.include_raw ? { raw_result: rawResult } : {})
+        ...(options.include_raw ? { command_results: commandResults } : {})
       });
     },
     onError: (host, error) => buildReadDeviceFailure(host, "facts_collection_failed", error)
@@ -80,14 +83,13 @@ export async function getFacts(
     responseSizeLimit: {
       config,
       operationName: "eos_get_facts",
-      narrowingGuidance: "Reduce the number of target devices or set include_raw to false to omit raw device payloads."
+      narrowingGuidance: "Reduce the number of target devices or set include_raw to false to omit raw per-command eAPI entries."
     }
   });
 }
 
-function extractPrimaryPayload(rawResult: unknown): Record<string, unknown> {
-  const results = parseEapiRunCmdsResponse(rawResult, 1).result;
-  const first = results[0];
+function extractPrimaryPayload(commandResults: EosCommandResult[]): Record<string, unknown> {
+  const first = commandResults[0]?.output;
 
   if (typeof first === "object" && first !== null) {
     return first as Record<string, unknown>;

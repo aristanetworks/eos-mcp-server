@@ -1,6 +1,6 @@
 import { AppError } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
-import { extractEapiTextOutput, parseEapiRunCmdsResponse, type EosCommandRunner } from "../eapi/types.js";
+import type { EosCommandResult, EosCommandRunner } from "../eapi/types.js";
 import type { InventoryModel } from "../inventory/types.js";
 import { buildLoggingQuery, type LoggingSeverity } from "./loggingQuery.js";
 import {
@@ -73,17 +73,11 @@ export async function showLogging(
   });
 }
 
-function extractLogText(rawResult: unknown): string {
-  const results = parseEapiRunCmdsResponse(rawResult, 1).result;
-  const first = results[0];
+function extractLogText(commandResults: EosCommandResult[]): string {
+  const first = commandResults[0]?.output;
 
   if (typeof first === "string") {
     return first;
-  }
-
-  const textOutput = extractEapiTextOutput(first);
-  if (textOutput !== undefined) {
-    return textOutput;
   }
 
   throw new AppError("logging_payload_invalid", "Unexpected logging payload structure");

@@ -28,7 +28,9 @@ describe("showLogging", () => {
   it("runs a bounded threshold logging command with defaults", async () => {
     const { model, config } = await buildSingleHostShowLoggingFixture();
     const runner = {
-      runShowCommands: vi.fn(async () => ({ result: [{ output: "Nov 1 leaf1 Event\n" }] }))
+      runShowCommands: vi.fn(async () => [
+        { command: "show logging threshold warnings 100", output_format: "text", output: "Nov 1 leaf1 Event\n" }
+      ])
     };
 
     const result = await showLogging(
@@ -71,7 +73,9 @@ describe("showLogging", () => {
     ]);
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async () => ({ result: [{ output: "error log\n" }] }))
+      runShowCommands: vi.fn(async () => [
+        { command: "show logging threshold errors 50", output_format: "text", output: "error log\n" }
+      ])
     };
 
     const result = await showLogging(
@@ -146,7 +150,9 @@ describe("showLogging", () => {
   it("fails a device result when the logging payload is not text output", async () => {
     const { model, config } = await buildSingleHostShowLoggingFixture();
     const runner = {
-      runShowCommands: vi.fn(async () => ({ result: [{ entries: [] }] }))
+      runShowCommands: vi.fn(async () => [
+        { command: "show logging threshold warnings 100", output_format: "json", output: { entries: [] } }
+      ])
     };
 
     const result = await showLogging(

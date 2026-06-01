@@ -21,9 +21,9 @@ describe("probeDevices", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async (_connection, commands, format) => ({
-        result: [{ version: "4.32.1F", commands, format }]
-      }))
+      runShowCommands: vi.fn(async (_connection, commands, format) => [
+        { command: commands[0], output_format: format, output: { version: "4.32.1F", commands, format } }
+      ])
     };
 
     const result = await probeDevices(
@@ -81,7 +81,7 @@ describe("probeDevices", () => {
     expect(result.results[0]?.error_code).toBe("probe_failed");
   });
 
-  it("excludes raw_result when include_raw is false", async () => {
+  it("excludes command_results when include_raw is false", async () => {
     setTestPasswordEnv();
     const inventoryPath = await writeTempInventory([
       "vars:",
@@ -96,9 +96,9 @@ describe("probeDevices", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async () => ({
-        result: [{ version: "4.32.1F" }]
-      }))
+      runShowCommands: vi.fn(async () => [
+        { command: "show version", output_format: "json", output: { version: "4.32.1F" } }
+      ])
     };
 
     const result = await probeDevices(
@@ -115,10 +115,10 @@ describe("probeDevices", () => {
 
     expect(result.summary.success_count).toBe(1);
     expect(result.results[0]?.status).toBe("success");
-    expect(result.results[0]?.raw_result).toBeUndefined();
+    expect(result.results[0]?.command_results).toBeUndefined();
   });
 
-  it("includes raw_result when include_raw is true", async () => {
+  it("includes raw entries in command_results when include_raw is true", async () => {
     setTestPasswordEnv();
     const inventoryPath = await writeTempInventory([
       "vars:",
@@ -132,10 +132,11 @@ describe("probeDevices", () => {
     ]);
 
     const model = await loadInventoryModel(inventoryPath);
+    const rawEntry = { version: "4.32.1F" };
     const runner = {
-      runShowCommands: vi.fn(async () => ({
-        result: [{ version: "4.32.1F" }]
-      }))
+      runShowCommands: vi.fn(async () => [
+        { command: "show version", output_format: "json", output: rawEntry, raw_entry: rawEntry }
+      ])
     };
 
     const result = await probeDevices(
@@ -152,7 +153,13 @@ describe("probeDevices", () => {
 
     expect(result.summary.success_count).toBe(1);
     expect(result.results[0]?.status).toBe("success");
-    expect(result.results[0]?.raw_result).toBeDefined();
+    expect(runner.runShowCommands).toHaveBeenCalledWith(
+      expect.anything(),
+      ["show version"],
+      "json",
+      expect.objectContaining({ includeRawEntries: true })
+    );
+    expect(result.results[0]?.command_results?.[0]?.raw_entry).toEqual(rawEntry);
   });
 
   it("rejects read-denied targets before device contact", async () => {
