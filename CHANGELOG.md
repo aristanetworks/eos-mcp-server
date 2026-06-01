@@ -4,8 +4,7 @@
 
 - Upgrades Node.js requirement to v24 LTS (Krypton).
 - Updates GitHub Actions workflows to use Node 24/26.
-
-## Unreleased
+- Refactoring how json/text outputs are handled
 
 ## 0.5.2-beta
 
