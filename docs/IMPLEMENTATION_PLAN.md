@@ -96,7 +96,7 @@ The main Phase 1 gaps have been closed or explicitly scoped:
 `maxResponseSizeBytes` config field (default 1 MB) added and enforced in both the production HTTPS transport and the shared final read-tool result envelope. Oversized device HTTP responses are rejected before full buffering, and oversized aggregate tool results return `AppError("response_size_exceeded")` with structured details and per-tool narrowing guidance. Tests cover transport-level caps, aggregate limit enforcement, error shape, and guidance rendering.
 
 #### 2. `eos_run_show` output shaping cleanup -- COMPLETED
-Command results normalized into `NormalizedCommandResult[]` with `{ command, output }` pairs. Raw eAPI payload exposure is now behind an `include_raw` opt-in flag (default false). 4 tests cover the normalized shape and raw opt-in behavior.
+Command results normalized into command-aligned result entries with `{ command, output_format, output }`. Raw eAPI detail is behind an `include_raw` opt-in flag (default false) and attaches as `raw_entry` on each command result. 4 tests cover the normalized shape and raw opt-in behavior.
 
 #### 3. Error-model polish for operator workflows -- COMPLETED
 All plain source `throw new Error(...)` calls converted to `throw new AppError(code, message)` with a consistent error taxonomy. Per-device read failures preserve underlying `AppError.code` values when available. `eos_probe_devices` raw result is now behind `include_raw` flag (default false). 7 tests cover request-level and per-device error taxonomy, with 2 tests for probe raw opt-in.
@@ -121,8 +121,8 @@ All 12 integration tests pass against cEOS 4.34.3M. All 8 lab devices probed suc
 
 #### Step 2: read-path result-shape cleanup -- COMPLETED
 - `eos_run_show` output normalized into `NormalizedCommandResult[]` with `{ command, output }`
-- `eos_probe_devices` raw result moved behind `include_raw` opt-in
-- default MCP responses are sanitized and stable; raw payloads require explicit opt-in
+- `eos_probe_devices` raw eAPI detail moved behind `include_raw` opt-in and is exposed as per-command `raw_entry` data
+- default MCP responses are sanitized and stable; raw per-command eAPI entries require explicit opt-in
 
 #### Step 3: real-device validation -- COMPLETED
 - all 12 integration tests pass against cEOS 4.34.3M

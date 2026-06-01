@@ -47,9 +47,9 @@ describe("runShow", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async (_connection, commands, format) => ({
-        result: commands.map((command) => ({ command, format }))
-      }))
+      runShowCommands: vi.fn(async (_connection, commands, format) =>
+        commands.map((command) => ({ command, output_format: format, output: { command, format } }))
+      )
     };
 
     const result = await runShow(
@@ -87,10 +87,9 @@ describe("runShow", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi
-        .fn()
-        .mockRejectedValueOnce(new AppError("json_output_unavailable", "json output unavailable"))
-        .mockResolvedValueOnce({ result: [{ output: "EOS text output" }] })
+      runShowCommands: vi.fn(async () => [
+        { command: "show version", output_format: "text", output: "EOS text output" }
+      ])
     };
 
     const result = await runShow(
@@ -110,7 +109,13 @@ describe("runShow", () => {
     );
 
     expect(result.results[0]?.actual_output_format).toBe("text");
-    expect(runner.runShowCommands).toHaveBeenCalledTimes(2);
+    expect(runner.runShowCommands).toHaveBeenCalledTimes(1);
+    expect(runner.runShowCommands).toHaveBeenCalledWith(
+      expect.anything(),
+      ["show version"],
+      "auto",
+      expect.objectContaining({ includeRawEntries: false })
+    );
   });
 
   it("explicit json mode fails when json output is unavailable", async () => {
@@ -239,9 +244,9 @@ describe("runShow", () => {
   it("trims commands before dispatch", async () => {
     const { model, config } = await buildSingleHostRunShowFixture();
     const runner = {
-      runShowCommands: vi.fn(async (_connection, commands) => ({
-        result: commands.map((command) => ({ command }))
-      }))
+      runShowCommands: vi.fn(async (_connection, commands) =>
+        commands.map((command) => ({ command, output_format: "json", output: { command } }))
+      )
     };
 
     const result = await runShow(
@@ -267,9 +272,13 @@ describe("runShow", () => {
   it("returns normalized command_results by default", async () => {
     const { model, config } = await buildSingleHostRunShowFixture();
     const runner = {
-      runShowCommands: vi.fn(async () => ({
-        result: [{ version: "4.32.1F", modelName: "DCS-7050SX3-48YC8" }]
-      }))
+      runShowCommands: vi.fn(async () => [
+        {
+          command: "show version",
+          output_format: "json",
+          output: { version: "4.32.1F", modelName: "DCS-7050SX3-48YC8" }
+        }
+      ])
     };
 
     const result = await runShow(
@@ -287,18 +296,19 @@ describe("runShow", () => {
     expect(deviceResult.command_results).toEqual([
       {
         command: "show version",
+        output_format: "json",
         output: { version: "4.32.1F", modelName: "DCS-7050SX3-48YC8" }
       }
     ]);
-    expect(deviceResult.raw_result).toBeUndefined();
+    expect(deviceResult.command_results?.[0]?.raw_entry).toBeUndefined();
   });
 
   it("fails a device result when eapi result count does not match commands", async () => {
     const { model, config } = await buildSingleHostRunShowFixture();
     const runner = {
-      runShowCommands: vi.fn(async () => ({
-        result: []
-      }))
+      runShowCommands: vi.fn(async () => {
+        throw new AppError("eapi_payload_invalid", "Unexpected eAPI payload structure: expected 1 result entries but received 0");
+      })
     };
 
     const result = await runShow(
@@ -314,15 +324,15 @@ describe("runShow", () => {
 
     expect(result.results[0]?.status).toBe("failed");
     expect(result.results[0]?.error_code).toBe("eapi_payload_invalid");
-    expect(result.results[0]?.message).toContain("expected 1 result entries");
+    expect(result.results[0]?.message).toMatch(/expected \d+ result entries/);
   });
 
   it("returns text output in normalized command_results", async () => {
     const { model, config } = await buildSingleHostRunShowFixture();
     const runner = {
-      runShowCommands: vi.fn(async () => ({
-        result: [{ output: "Arista DCS-7050SX3-48YC8\n" }]
-      }))
+      runShowCommands: vi.fn(async () => [
+        { command: "show version", output_format: "text", output: "Arista DCS-7050SX3-48YC8\n" }
+      ])
     };
 
     const result = await runShow(
@@ -340,18 +350,24 @@ describe("runShow", () => {
     expect(deviceResult.command_results).toEqual([
       {
         command: "show version",
+        output_format: "text",
         output: "Arista DCS-7050SX3-48YC8\n"
       }
     ]);
   });
 
-  it("includes raw_result when include_raw is true", async () => {
+  it("attaches raw entries to command_results when include_raw is true", async () => {
     const { model, config } = await buildSingleHostRunShowFixture();
-    const eapiPayload = {
-      result: [{ version: "4.32.1F", modelName: "DCS-7050SX3-48YC8" }]
-    };
+    const rawEntry = { version: "4.32.1F", modelName: "DCS-7050SX3-48YC8" };
     const runner = {
-      runShowCommands: vi.fn(async () => eapiPayload)
+      runShowCommands: vi.fn(async () => [
+        {
+          command: "show version",
+          output_format: "json",
+          output: rawEntry,
+          raw_entry: rawEntry
+        }
+      ])
     };
 
     const result = await runShow(
@@ -366,19 +382,23 @@ describe("runShow", () => {
       runner
     );
 
+    expect(runner.runShowCommands).toHaveBeenCalledWith(
+      expect.anything(),
+      ["show version"],
+      "json",
+      expect.objectContaining({ includeRawEntries: true })
+    );
     const deviceResult = result.results[0]!;
-    expect(deviceResult.raw_result).toEqual(eapiPayload);
+    expect(deviceResult.command_results?.[0]?.raw_entry).toEqual(rawEntry);
   });
 
   it("normalizes multiple command results in order", async () => {
     const { model, config } = await buildSingleHostRunShowFixture();
     const runner = {
-      runShowCommands: vi.fn(async () => ({
-        result: [
-          { version: "4.32.1F" },
-          { hostname: "leaf1" }
-        ]
-      }))
+      runShowCommands: vi.fn(async () => [
+        { command: "show version", output_format: "json", output: { version: "4.32.1F" } },
+        { command: "show hostname", output_format: "json", output: { hostname: "leaf1" } }
+      ])
     };
 
     const result = await runShow(
@@ -394,8 +414,8 @@ describe("runShow", () => {
 
     const deviceResult = result.results[0]!;
     expect(deviceResult.command_results).toEqual([
-      { command: "show version", output: { version: "4.32.1F" } },
-      { command: "show hostname", output: { hostname: "leaf1" } }
+      { command: "show version", output_format: "json", output: { version: "4.32.1F" } },
+      { command: "show hostname", output_format: "json", output: { hostname: "leaf1" } }
     ]);
   });
 

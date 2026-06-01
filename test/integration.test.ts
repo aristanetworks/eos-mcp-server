@@ -90,7 +90,7 @@ describe.runIf(INTEGRATION)("integration: EOS read-path tools", () => {
     expect(result.results[0]?.status).toBe("success");
     expect(result.results[0]?.inventory_hostname).toBe(SINGLE_HOST);
     expect(result.results[0]?.resolved_endpoint).toBe(SINGLE_HOST);
-    expect(result.results[0]?.raw_result).toBeDefined();
+    expect(result.results[0]?.command_results?.[0]?.raw_entry).toBeDefined();
   }, 30_000);
 
   it("probes all devices in a group", async () => {
@@ -143,6 +143,26 @@ describe.runIf(INTEGRATION)("integration: EOS read-path tools", () => {
 
     const commandResults = deviceResult?.command_results;
     expect(commandResults?.[0]?.output).toMatch(/Arista|Software image version/i);
+  }, 30_000);
+
+  it("falls back from json to text in auto mode for text-only show output", async () => {
+    const result = await runShow(
+      model,
+      config,
+      { target: SINGLE_HOST, commands: ["show logging threshold warnings 10"], outputFormat: "auto" },
+      runner
+    );
+
+    expect(result.requested_output_format).toBe("auto");
+
+    const deviceResult = result.results[0];
+    expect(deviceResult?.status).toBe("success");
+    expect(deviceResult?.actual_output_format).toBe("text");
+
+    const commandResult = deviceResult?.command_results?.[0];
+    expect(commandResult?.command).toBe("show logging threshold warnings 10");
+    expect(commandResult?.output_format).toBe("text");
+    expect(typeof commandResult?.output).toBe("string");
   }, 30_000);
 
   it("runs multiple show commands on a single host", async () => {
@@ -208,7 +228,7 @@ describe.runIf(INTEGRATION)("integration: EOS read-path tools", () => {
     expect((facts.eos_version as string).length).toBeGreaterThan(0);
     expect(typeof facts.model).toBe("string");
     expect(typeof facts.system_mac).toBe("string");
-    expect(deviceResult?.raw_result).toBeUndefined();
+    expect(deviceResult?.command_results).toBeUndefined();
   }, 30_000);
 
   it("gets facts with include_raw=true", async () => {
@@ -222,10 +242,7 @@ describe.runIf(INTEGRATION)("integration: EOS read-path tools", () => {
     const deviceResult = result.results[0];
     expect(deviceResult?.status).toBe("success");
     expect(deviceResult?.facts).toBeDefined();
-    expect(deviceResult?.raw_result).toBeDefined();
-
-    const rawResult = deviceResult?.raw_result as { result: unknown[] };
-    expect(Array.isArray(rawResult.result)).toBe(true);
+    expect(deviceResult?.command_results?.[0]?.raw_entry).toBeDefined();
   }, 30_000);
 
   it("gets full running config for a single host", async () => {

@@ -1,5 +1,5 @@
 import type { ResolvedServerConfig } from "../config/schema.js";
-import type { EosCommandRunner } from "../eapi/types.js";
+import type { EosCommandResult, EosCommandRunner } from "../eapi/types.js";
 import type { InventoryModel } from "../inventory/types.js";
 import {
   buildReadDeviceFailure,
@@ -25,7 +25,7 @@ export interface ProbeDevicesResult {
     status: "success" | "failed";
     error_code?: string;
     message?: string;
-    raw_result?: unknown;
+    command_results?: EosCommandResult[];
   }>;
 }
 
@@ -39,9 +39,12 @@ export async function probeDevices(
     target: options.target,
     operationName: "eos_probe_devices",
     run: async (host, connection, signal) => {
-      const showVersionResult = await runner.runShowCommands(connection, ["show version"], "json", { signal });
+      const commandResults = await runner.runShowCommands(connection, ["show version"], "json", {
+        signal,
+        includeRawEntries: options.include_raw
+      });
       return buildReadDeviceSuccess(host, {
-        ...(options.include_raw ? { raw_result: showVersionResult } : {})
+        ...(options.include_raw ? { command_results: commandResults } : {})
       });
     },
     onError: (host, error) => buildReadDeviceFailure(host, "probe_failed", error)

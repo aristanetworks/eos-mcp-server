@@ -226,7 +226,83 @@ describe("EapiClient", () => {
     const connection = buildConnection();
 
     const result = await client.runShowCommands(connection, ["show running-config"], "text", { enable: true });
-    expect(result).toEqual({ result: [{ output: "! running-config\n" }] });
+    expect(result).toEqual([
+      {
+        command: "show running-config",
+        output_format: "text",
+        output: "! running-config\n"
+      }
+    ]);
+  });
+
+  it("attaches raw entries when requested", async () => {
+    const rawEntry = { version: "4.32.1F" };
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: [rawEntry] }),
+      text: async () => JSON.stringify({ result: [rawEntry] })
+    }));
+
+    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const connection = buildConnection();
+
+    const result = await client.runShowCommands(connection, ["show version"], "json", { includeRawEntries: true });
+    expect(result).toEqual([
+      {
+        command: "show version",
+        output_format: "json",
+        output: rawEntry,
+        raw_entry: rawEntry
+      }
+    ]);
+  });
+
+  it("auto mode falls back from JSON to text when structured output is unavailable", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ error: { code: 1002, message: "Cannot convert to JSON" } }),
+        text: async () => JSON.stringify({ error: { code: 1002, message: "Cannot convert to JSON" } })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ result: [{ output: "text output" }] }),
+        text: async () => JSON.stringify({ result: [{ output: "text output" }] })
+      });
+
+    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const connection = buildConnection();
+
+    const result = await client.runShowCommands(connection, ["show version"], "auto");
+
+    expect(result).toEqual([
+      {
+        command: "show version",
+        output_format: "text",
+        output: "text output"
+      }
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects unexpected text output payloads", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: [{ entries: [] }] }),
+      text: async () => JSON.stringify({ result: [{ entries: [] }] })
+    }));
+
+    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const connection = buildConnection();
+
+    await expect(client.runShowCommands(connection, ["show logging"], "text")).rejects.toMatchObject({
+      code: "eapi_text_output_invalid"
+    });
   });
 
   it("does not prepend enable when enable option is omitted", async () => {

@@ -19,7 +19,9 @@ describe("read MCP tool adapters", () => {
     );
 
     const runner = {
-      runShowCommands: vi.fn(async () => ({ result: [{ version: "4.32.1F" }] }))
+      runShowCommands: vi.fn(async () => [
+        { command: "show version", output_format: "json", output: { version: "4.32.1F" } }
+      ])
     };
 
     const result = await buildRunShowToolResult(
@@ -113,7 +115,9 @@ describe("read MCP tool adapters", () => {
     );
 
     const runner = {
-      runShowCommands: vi.fn(async () => ({ result: [{ output: "warning log" }] }))
+      runShowCommands: vi.fn(async () => [
+        { command: "show logging threshold warnings 100", output_format: "text", output: "warning log" }
+      ])
     };
 
     const result = await buildShowLoggingToolResult(
@@ -144,9 +148,9 @@ describe("read MCP tool adapters", () => {
     );
 
     const runner = {
-      runShowCommands: vi.fn(async () => ({
-        result: [{ hostname: "leaf1", modelName: "DCS-7050", version: "4.32.1F" }]
-      }))
+      runShowCommands: vi.fn(async () => [
+        { command: "show version", output_format: "json", output: { hostname: "leaf1", modelName: "DCS-7050", version: "4.32.1F" } }
+      ])
     };
 
     const result = await buildGetFactsToolResult(
@@ -176,7 +180,9 @@ describe("read MCP tool adapters", () => {
     );
 
     const runner = {
-      runShowCommands: vi.fn(async () => ({ result: [{ output: "hostname leaf1" }] }))
+      runShowCommands: vi.fn(async () => [
+        { command: "show running-config", output_format: "text", output: "hostname leaf1" }
+      ])
     };
 
     const result = await buildGetRunningConfigToolResult(

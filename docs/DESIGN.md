@@ -617,7 +617,7 @@ All major Phase 1 gaps have been closed:
 - ~~add operator-facing package documentation~~ — done (`README.md`, `docs/QUICKSTART.md`)
 - ~~make `validate-inventory`'s default/effective mode truly distinct from `inventory-only`~~ — done
 - ~~enforce response-size limits and explicit narrowing guidance~~ — done (`maxResponseSizeBytes`, per-tool guidance)
-- ~~tighten `eos_run_show` output shaping~~ — done (normalized `{ command, output }` pairs, `include_raw` opt-in)
+- ~~tighten `eos_run_show` output shaping~~ — done (command-aligned `{ command, output_format, output }` results, per-command `raw_entry` via `include_raw` opt-in)
 - ~~finish real cEOS/EOS integration validation and choose/document a minimum supported EOS version~~ — done (cEOS 4.34.3M, minimum 4.20)
 - ~~polish shared request/per-device error taxonomy~~ — done (all source errors use `AppError` with machine-readable codes; per-device results preserve underlying `AppError.code`)
 - ~~codify basic read-command denylist behavior~~ — done (risky output modifiers and shell metacharacters are rejected for read command inputs)

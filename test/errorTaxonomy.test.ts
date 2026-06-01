@@ -129,7 +129,11 @@ describe("error taxonomy", () => {
             defaultConnection: { ansibleUser: "admin", mcpPasswordEnv: "EOS_MCP_PASSWORD" }
           }),
           { target: "leaf1", commands: ["show version"], outputFormat: "text" },
-          { runShowCommands: vi.fn(async () => ({ result: [{ output: "x".repeat(1000) }] })) }
+          {
+            runShowCommands: vi.fn(async () => [
+              { command: "show version", output_format: "text", output: "x".repeat(1000) }
+            ])
+          }
         );
         expect.fail("should have thrown");
       } catch (error) {
@@ -182,7 +186,11 @@ describe("error taxonomy", () => {
           defaultConnection: { ansibleUser: "admin", mcpPasswordEnv: "EOS_MCP_PASSWORD" }
         }),
         { target: "leaf1", include_raw: false },
-        { runShowCommands: vi.fn(async () => ({ result: ["unexpected text output"] })) }
+        {
+          runShowCommands: vi.fn(async () => [
+            { command: "show version", output_format: "text", output: "unexpected text output" }
+          ])
+        }
       );
 
       expect(result.results[0]?.status).toBe("failed");

@@ -450,7 +450,7 @@ Rules:
 - every command is trimmed, must be a single line, and must be `show` or begin with `show `
 - commands with CLI output modifiers or shell metacharacters such as `|`, `>`, `<`, `;`, `&`, backticks, or `$` are rejected before device contact
 - `output_format` is one of `auto`, `json`, `text`
-- `include_raw` optionally includes the raw eAPI response payload
+- `include_raw` optionally attaches each command's raw eAPI result entry as `raw_entry` inside `command_results`
 
 Input examples:
 

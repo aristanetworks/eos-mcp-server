@@ -242,7 +242,7 @@ function walkCanonicalGroup(
       validateSafeName(hostName, "host", context, `${groupName}.hosts.${hostName}`);
       hostNames.push(hostName);
 
-      if (hostNode !== undefined && !isObject(hostNode)) {
+      if (hostNode !== undefined && hostNode !== null && !isObject(hostNode)) {
         context.errors.push({
           code: "inventory_host_invalid",
           message: `Canonical host ${hostName} must be a mapping/object`,

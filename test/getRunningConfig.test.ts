@@ -15,9 +15,9 @@ describe("getRunningConfig", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async (_connection, commands) => ({
-        result: [{ output: `ran ${commands[0]}` }]
-      }))
+      runShowCommands: vi.fn(async (_connection, commands) => [
+        { command: commands[0], output_format: "text", output: `ran ${commands[0]}` }
+      ])
     };
 
     const result = await getRunningConfig(
@@ -76,9 +76,9 @@ describe("getRunningConfig", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async (_connection: unknown, _commands: unknown, _format: unknown, _options: unknown) => ({
-        result: [{ output: "! running-config\n" }]
-      }))
+      runShowCommands: vi.fn(async (_connection: unknown, commands: string[]) => [
+        { command: commands[0] ?? "show running-config", output_format: "text", output: "! running-config\n" }
+      ])
     };
 
     await getRunningConfig(
@@ -115,9 +115,9 @@ describe("getRunningConfig", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async (_connection, commands) => ({
-        result: [{ output: `ran ${commands[0]}` }]
-      }))
+      runShowCommands: vi.fn(async (_connection, commands) => [
+        { command: commands[0], output_format: "text", output: `ran ${commands[0]}` }
+      ])
     };
 
     const result = await getRunningConfig(

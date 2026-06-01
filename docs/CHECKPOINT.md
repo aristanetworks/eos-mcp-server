@@ -185,7 +185,7 @@ The following strict behaviors are already reflected in the implementation:
 - 4 new tests for normalized vs raw output shapes
 
 ### `eos_probe_devices` raw result opt-in
-- `raw_result` is now opt-in via `include_raw` flag (default false), matching `eos_get_facts` pattern
+- raw eAPI detail is now opt-in via `include_raw` flag (default false) and is attached per command result as `raw_entry`, matching the command-aligned result shape
 - MCP tool schema updated with `include_raw: z.boolean().optional().default(false)`
 - 2 new tests for include_raw behavior
 
