@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.3-beta
+
+- Upgrades Node.js requirement to v24 LTS (Krypton).
+- Updates GitHub Actions workflows to use Node 24/26.
+
 ## Unreleased
 
 ## 0.5.2-beta
