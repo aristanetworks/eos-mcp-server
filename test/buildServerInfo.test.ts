@@ -37,5 +37,14 @@ describe("buildServerInfo", () => {
     expect(info.inventory.basename).toBe("lab.yml");
     expect(info.capabilities.tool_prefix).toBe("eos_");
     expect(info.limits.max_logging_messages_per_request).toBe(1000);
+    expect(info).not.toHaveProperty("write_path_status");
+    expect(info.inventory).not.toHaveProperty("write_allowed_hosts");
+    expect(info.capabilities).not.toHaveProperty("write_enabled");
+    expect(info.capabilities).not.toHaveProperty("direct_config_fallback_enabled");
+    expect(info.limits).not.toHaveProperty("write_timeout_ms");
+    expect(info.limits).not.toHaveProperty("max_write_targets");
+    expect(info.limits).not.toHaveProperty("max_config_commands_per_request");
+    expect(info.limits).not.toHaveProperty("preview_max_age_ms");
+    expect(info.logging).not.toHaveProperty("log_write_commands");
   });
 });

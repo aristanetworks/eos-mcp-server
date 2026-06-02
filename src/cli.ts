@@ -4,6 +4,37 @@ import { APP_NAME, APP_VERSION } from "./core/version.js";
 export type CommandName = "serve" | "validate-inventory" | "print-server-info" | "probe";
 
 const COMMAND_NAMES = new Set<string>(["serve", "validate-inventory", "print-server-info", "probe"]);
+const OPTION_NAMES = new Set<string>([
+  "--help",
+  "-h",
+  "--version",
+  "-V",
+  "--config",
+  "--inventory",
+  "--enable-write",
+  "--allow-direct-config-fallback",
+  "--actor",
+  "--json",
+  "--inventory-only",
+  "--target"
+]);
+
+const COMMAND_OPTIONS: Record<CommandName, ReadonlySet<string>> = {
+  "serve": new Set([
+    "--help",
+    "-h",
+    "--version",
+    "-V",
+    "--config",
+    "--inventory",
+    "--actor",
+    "--enable-write",
+    "--allow-direct-config-fallback"
+  ]),
+  "validate-inventory": new Set(["--help", "-h", "--version", "-V", "--config", "--inventory", "--inventory-only", "--json"]),
+  "print-server-info": new Set(["--help", "-h", "--version", "-V", "--config", "--inventory", "--json"]),
+  "probe": new Set(["--help", "-h", "--version", "-V", "--config", "--inventory", "--target", "--json"])
+};
 
 export interface CliOptions {
   command: CommandName;
@@ -43,6 +74,9 @@ export function parseCliArgs(argv: string[]): CliOptions {
 
   while (index < argv.length) {
     const arg = argv[index];
+    if (arg !== undefined && OPTION_NAMES.has(arg)) {
+      assertOptionAllowed(command, arg);
+    }
 
     switch (arg) {
       case "--help":
@@ -113,6 +147,12 @@ export function parseCliArgs(argv: string[]): CliOptions {
   return options;
 }
 
+function assertOptionAllowed(command: CommandName, option: string): void {
+  if (!COMMAND_OPTIONS[command].has(option)) {
+    throw new AppError("cli_option_not_allowed", `Option ${option} is not valid for command ${command}`);
+  }
+}
+
 const VERSION_BANNER = `${APP_NAME} v${APP_VERSION}`;
 
 const HELP_TOP = `${VERSION_BANNER}
@@ -129,10 +169,6 @@ Commands:
 Global options:
   --config <path>       Path to server config YAML file
   --inventory <path>    Path to inventory YAML file
-  --actor <name>        Actor label for audit logging
-  --enable-write        Enable write-path tools (currently rejected)
-  --allow-direct-config-fallback
-                        Allow direct-config mode as fallback
   -h, --help            Show this help message
   -V, --version         Show version number
 
@@ -146,9 +182,6 @@ Options:
   --config <path>       Path to server config YAML file
   --inventory <path>    Path to inventory YAML file
   --actor <name>        Actor label for audit logging
-  --enable-write        Enable write-path tools (currently rejected)
-  --allow-direct-config-fallback
-                        Allow direct-config mode as fallback
   -h, --help            Show this help message`;
 
 const HELP_VALIDATE_INVENTORY = `Usage: ${APP_NAME} validate-inventory [options]

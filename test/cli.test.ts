@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { parseCliArgs } from "../src/cli.js";
+import { describe, expect, it, vi } from "vitest";
+import { parseCliArgs, printHelp } from "../src/cli.js";
 
 describe("parseCliArgs", () => {
   it("parses local probe command arguments", () => {
@@ -8,6 +8,20 @@ describe("parseCliArgs", () => {
       inventoryPath: "inventory.yml",
       target: "leafs",
       json: true
+    });
+  });
+
+  it("parses hidden write startup flags for serve", () => {
+    expect(parseCliArgs(["--enable-write", "--allow-direct-config-fallback"])).toMatchObject({
+      command: "serve",
+      enableWrite: true,
+      allowDirectConfigFallback: true
+    });
+
+    expect(parseCliArgs(["serve", "--enable-write"])).toMatchObject({
+      command: "serve",
+      explicitCommand: true,
+      enableWrite: true
     });
   });
 
@@ -71,5 +85,49 @@ describe("parseCliArgs", () => {
     expect(result.version).toBe(true);
     expect(result.command).toBe("probe");
     expect(result.explicitCommand).toBe(true);
+  });
+
+  it("keeps serve-only and reserved flags out of top-level public help", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    let output = "";
+
+    try {
+      printHelp(parseCliArgs(["--help"]));
+      output = log.mock.calls.map((call) => call.join(" ")).join("\n");
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(output).not.toContain("--actor");
+    expect(output).not.toContain("--enable-write");
+    expect(output).not.toContain("--allow-direct-config-fallback");
+  });
+
+  it("advertises actor only in serve help", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    let serveOutput = "";
+    let printServerInfoOutput = "";
+
+    try {
+      printHelp(parseCliArgs(["serve", "--help"]));
+      printHelp(parseCliArgs(["print-server-info", "--help"]));
+      serveOutput = log.mock.calls[0]?.join(" ") ?? "";
+      printServerInfoOutput = log.mock.calls[1]?.join(" ") ?? "";
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(serveOutput).toContain("--actor");
+    expect(printServerInfoOutput).not.toContain("--actor");
+  });
+
+  it.each([
+    [["serve", "--json"], "Option --json is not valid for command serve"],
+    [["validate-inventory", "--target", "leaf1"], "Option --target is not valid for command validate-inventory"],
+    [["probe", "--inventory-only"], "Option --inventory-only is not valid for command probe"],
+    [["print-server-info", "--target", "leaf1"], "Option --target is not valid for command print-server-info"],
+    [["print-server-info", "--actor", "ci"], "Option --actor is not valid for command print-server-info"]
+  ])("rejects command-specific invalid options: %j", (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(message);
   });
 });
