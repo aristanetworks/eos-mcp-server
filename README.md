@@ -35,7 +35,7 @@ Implemented local CLI commands:
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 24+
 - Arista EOS devices reachable via eAPI over HTTPS
 - EOS 4.20 or later (read-path tested against cEOS 4.34.3M)
 - Inventory in one of the supported YAML formats
@@ -447,7 +447,7 @@ Runs one or more `show` commands.
 Rules:
 
 - exactly one of `command` or `commands`
-- every command is trimmed, must be a single line, and must be `show` or begin with `show `
+- every command is trimmed, must be a single line, and must be `show` or begin with `show`
 - commands with CLI output modifiers or shell metacharacters such as `|`, `>`, `<`, `;`, `&`, backticks, or `$` are rejected before device contact
 - `output_format` is one of `auto`, `json`, `text`
 - `include_raw` optionally attaches each command's raw eAPI result entry as `raw_entry` inside `command_results`
