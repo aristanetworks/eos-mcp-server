@@ -87,7 +87,17 @@ async function installPackage(tarballPath: string, projectDir: string): Promise<
   await fs.writeFile(path.join(projectDir, "package.json"), JSON.stringify({ private: true }, null, 2));
   await runCommand(
     npmCommand,
-    ["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--save=false", tarballPath],
+    [
+      "install",
+      "--offline=false",
+      "--prefer-offline=false",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      "--package-lock=false",
+      "--save=false",
+      tarballPath
+    ],
     projectDir,
     120_000
   );
