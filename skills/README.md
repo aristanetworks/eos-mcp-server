@@ -11,6 +11,7 @@ Operational skills for interacting with Arista EOS devices via the `eos` MCP ser
 | [check-evpn-multicast-health](check-evpn-multicast-health.md) | EVPN multicast, IMET, SMET, S-PMSI, OISM, PEG | Audit EVPN multicast health for L2 optimized multicast and L3 EVPN multicast/IRB |
 | [check-igmp-health](check-igmp-health.md) | IGMP snooping, multicast groups, querier | Audit IGMP snooping state, group membership, querier election |
 | [check-interface-health](check-interface-health.md) | Interface status, errors, errdisabled, optics | Audit interface link state, error counters, traffic rates, and transceiver health |
+| [check-port-channel-health](check-port-channel-health.md) | Port-Channel, LAG, LACP, bundled members, dot1q-tunnel | Audit Port-Channel/LACP members and switchport mode/VLAN state |
 | [check-pim-health](check-pim-health.md) | PIM neighbors, RP, mroute, multicast routing | Audit PIM-SM adjacencies, RP election, multicast routing table |
 | [check-route-health](check-route-health.md) | Routes, VRF, routing table, FIB | Audit routing table and VRF health — route counts, protocol status, hardware resources |
 | [check-vlan-health](check-vlan-health.md) | VLAN, SVI, trunk, MAC table | Audit VLAN health — status, port membership, SVI state, trunk config, MAC anomalies |
