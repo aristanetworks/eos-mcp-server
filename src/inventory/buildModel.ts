@@ -36,7 +36,6 @@ export function buildInventoryModel(
       effectiveVars,
       eligible: eligibility.eligible,
       readAllowed: access.readAllowed,
-      writeAllowed: access.writeAllowed,
       ineligibilityReasons: eligibility.ineligibilityReasons,
       groupMemberships: [...lineageGroups].sort()
     });
@@ -87,8 +86,7 @@ export function buildInventoryModel(
     totalHostCount: hosts.length,
     totalGroupCount: groups.length,
     eosEligibleHostCount: hosts.filter((host) => host.eligible).length,
-    readAllowedHostCount: hosts.filter((host) => host.readAllowed).length,
-    writeAllowedHostCount: hosts.filter((host) => host.writeAllowed).length
+    readAllowedHostCount: hosts.filter((host) => host.readAllowed).length
   };
 
   return {

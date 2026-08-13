@@ -13,34 +13,11 @@ async function writeTempConfig(lines: string[]): Promise<string> {
 }
 
 describe("loadServerConfig", () => {
-  it("keeps the server read-only by default", async () => {
+  it("uses read-operation defaults", async () => {
     const config = await loadServerConfig({ command: "serve" });
 
-    expect(config.enableWrite).toBe(false);
-    expect(config.allowDirectConfigFallback).toBe(false);
+    expect(config.readTimeoutMs).toBe(10_000);
     expect(config.maxLoggingMessagesPerRequest).toBe(1000);
-  });
-
-  it("rejects --enable-write for the read-only MVP", async () => {
-    await expect(loadServerConfig({ command: "serve", enableWrite: true })).rejects.toThrow(
-      "enableWrite is not supported in the read-only MVP"
-    );
-  });
-
-  it("rejects enableWrite in the config file for the read-only MVP", async () => {
-    const configPath = await writeTempConfig(["enableWrite: true"]);
-
-    await expect(loadServerConfig({ command: "serve", configPath })).rejects.toThrow(
-      "enableWrite is not supported in the read-only MVP"
-    );
-  });
-
-  it("rejects allowDirectConfigFallback in the config file for the read-only MVP", async () => {
-    const configPath = await writeTempConfig(["allowDirectConfigFallback: true"]);
-
-    await expect(loadServerConfig({ command: "serve", configPath })).rejects.toThrow(
-      "allowDirectConfigFallback is not supported in the read-only MVP"
-    );
   });
 
   it("loads the logging message-count limit from config", async () => {
@@ -59,7 +36,7 @@ describe("loadServerConfig", () => {
     } satisfies Partial<AppError>);
   });
 
-  it("wraps config schema errors in AppError", async () => {
+  it("rejects unknown config keys", async () => {
     const configPath = await writeTempConfig(["unknownKey: true"]);
 
     await expect(loadServerConfig({ command: "serve", configPath })).rejects.toMatchObject({

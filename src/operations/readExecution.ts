@@ -55,10 +55,7 @@ export async function executeReadOperation<TDeviceResult extends ReadDeviceResul
     onError: (host: InventoryHostModel, error: unknown) => TDeviceResult;
   }
 ): Promise<ExecuteReadOperationResult<TDeviceResult>> {
-  const resolvedTarget = resolveInventoryTarget(model, {
-    target: options.target,
-    operationKind: "read"
-  });
+  const resolvedTarget = resolveInventoryTarget(model, { target: options.target });
   enforceReadTargetLimit(config, resolvedTarget.resolvedHosts.length);
   options.validateTarget?.(resolvedTarget);
 
@@ -68,7 +65,7 @@ export async function executeReadOperation<TDeviceResult extends ReadDeviceResul
     (signal) =>
       mapWithConcurrency(resolvedTarget.resolvedHosts, config.deviceConcurrency, async (host) => {
         try {
-          const connection = resolveEapiConnection(config, host, "read");
+          const connection = resolveEapiConnection(config, host);
           return await options.run(host, connection, signal);
         } catch (error) {
           return options.onError(host, error);

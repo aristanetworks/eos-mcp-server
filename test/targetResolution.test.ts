@@ -23,60 +23,29 @@ describe("target resolution and inventory listing", () => {
     ]);
 
     const model = await loadInventoryModel(filePath);
-    const result = resolveInventoryTarget(model, {
-      target: "dc1",
-      operationKind: "read"
-    });
+    const result = resolveInventoryTarget(model, { target: "dc1" });
 
     expect(result.resolvedHosts.map((host) => host.inventoryHostname)).toEqual(["leaf1", "leaf2"]);
   });
 
-  it("fails closed for write targets containing policy-denied hosts", async () => {
+  it("fails closed for a group containing read-denied hosts", async () => {
     const filePath = await writeTempInventory([
       "vars:",
       "  ansible_network_os: eos",
       "groups:",
-      "  writable:",
-      "    vars:",
-      "      mcp_write_allowed: true",
-      "    hosts: [leaf1]",
       "  mixed:",
-      "    children: [writable]",
-      "    hosts: [leaf2]",
+      "    hosts: [leaf1, leaf2]",
       "hosts:",
       "  leaf1:",
       "    ansible_host: 10.0.0.11",
       "  leaf2:",
-      "    ansible_host: 10.0.0.12"
+      "    ansible_host: 10.0.0.12",
+      "    mcp_read_allowed: false"
     ]);
 
     const model = await loadInventoryModel(filePath);
 
-    expect(() =>
-      resolveInventoryTarget(model, {
-        target: "mixed",
-        operationKind: "write"
-      })
-    ).toThrow(/policy/i);
-  });
-
-  it("rejects write targeting of the special all group", async () => {
-    const filePath = await writeTempInventory([
-      "vars:",
-      "  ansible_network_os: eos",
-      "hosts:",
-      "  leaf1:",
-      "    ansible_host: 10.0.0.11"
-    ]);
-
-    const model = await loadInventoryModel(filePath);
-
-    expect(() =>
-      resolveInventoryTarget(model, {
-        target: "all",
-        operationKind: "write"
-      })
-    ).toThrow(/all/i);
+    expect(() => resolveInventoryTarget(model, { target: "mixed" })).toThrow(/policy/i);
   });
 
   it("builds a default inventory view with only eligible hosts but all groups", async () => {

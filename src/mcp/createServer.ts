@@ -74,8 +74,7 @@ export async function startMcpServer(config: ResolvedServerConfig, inventoryMode
     instanceId: randomUUID(),
     startedAt: new Date().toISOString(),
     config,
-    inventorySummary: inventoryModel.summary,
-    writePathStatus: "idle"
+    inventorySummary: inventoryModel.summary
   };
 
   const eapiClient = new EapiClient();

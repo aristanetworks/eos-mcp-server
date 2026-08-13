@@ -1,6 +1,5 @@
 import type { InventoryVars, NormalizedInventory, ValidationContext } from "./internalTypes.js";
 import { stableValueKey } from "./internalUtils.js";
-import { validateWritePolicyContradictions } from "./writePolicy.js";
 
 export function resolveEffectiveHostVars(
   hostName: string,
@@ -51,7 +50,6 @@ export function resolveEffectiveHostVars(
     effectiveVars[key] = value;
   }
 
-  validateWritePolicyContradictions(hostName, inventory.globalVars, lineageGroups, hostVars, inventory, groupDepths, context);
   return effectiveVars;
 }
 

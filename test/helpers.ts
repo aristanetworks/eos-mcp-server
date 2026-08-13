@@ -9,23 +9,16 @@ export function buildConfig(overrides: Partial<ResolvedServerConfig> = {}): Reso
   return {
     configPath: undefined,
     inventoryPath: "/tmp/inventory.yml",
-    enableWrite: false,
-    allowDirectConfigFallback: false,
     actor: undefined,
     logFile: undefined,
     caFile: undefined,
     readTimeoutMs: 10_000,
-    writeTimeoutMs: 30_000,
     overallOperationTimeoutMs: undefined,
     deviceConcurrency: 5,
     maxReadTargets: 50,
-    maxWriteTargets: 10,
     maxShowCommandsPerRequest: 5,
     maxLoggingMessagesPerRequest: 1000,
-    maxConfigCommandsPerRequest: 20,
     maxResponseSizeBytes: 1_048_576,
-    previewMaxAgeMs: 900_000,
-    logWriteCommands: false,
     secretEnvPrefixes: ["EOS_MCP_"],
     defaultConnection: {},
     ...overrides
@@ -63,7 +56,6 @@ export function buildHost(overrides: Partial<InventoryHostModel> = {}): Inventor
     effectiveVars: {},
     eligible: true,
     readAllowed: true,
-    writeAllowed: false,
     ineligibilityReasons: [],
     groupMemberships: [],
     ...overrides
@@ -84,8 +76,7 @@ export function buildInventoryModel(hostOverrides: Partial<InventoryHostModel> =
       totalHostCount: 1,
       totalGroupCount: 1,
       eosEligibleHostCount: host.eligible ? 1 : 0,
-      readAllowedHostCount: host.readAllowed ? 1 : 0,
-      writeAllowedHostCount: host.writeAllowed ? 1 : 0
+      readAllowedHostCount: host.readAllowed ? 1 : 0
     },
     hosts: [host],
     groups: [],

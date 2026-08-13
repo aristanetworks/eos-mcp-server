@@ -6,7 +6,6 @@ export interface ServerRuntimeContext {
   startedAt: string;
   config: ResolvedServerConfig;
   inventorySummary?: InventorySummary;
-  writePathStatus: "idle" | "preview_in_progress" | "apply_in_progress" | "save_in_progress";
 }
 
 export interface ServerInfo {

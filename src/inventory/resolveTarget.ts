@@ -1,11 +1,8 @@
 import { AppError } from "../core/errors.js";
 import type { InventoryHostModel, InventoryModel } from "./types.js";
 
-export type OperationKind = "read" | "write";
-
 export interface ResolveInventoryTargetOptions {
   target: string;
-  operationKind: OperationKind;
 }
 
 export interface ResolvedInventoryTarget {
@@ -24,15 +21,11 @@ export function resolveInventoryTarget(
   model: InventoryModel,
   options: ResolveInventoryTargetOptions
 ): ResolvedInventoryTarget {
-  const { target, operationKind } = options;
-
-  if (operationKind === "write" && target === "all") {
-    throw new InventoryResolutionError("write_target_all_forbidden", "The special group all is read-only and may not be used for write operations");
-  }
+  const { target } = options;
 
   const directHost = model.hostMap.get(target);
   if (directHost) {
-    validateHostsForOperation([directHost], operationKind, target);
+    validateHostsForOperation([directHost], target);
     return {
       target,
       targetType: "host",
@@ -53,7 +46,7 @@ export function resolveInventoryTarget(
     return host;
   });
 
-  validateHostsForOperation(resolvedHosts, operationKind, target);
+  validateHostsForOperation(resolvedHosts, target);
 
   return {
     target,
@@ -64,7 +57,6 @@ export function resolveInventoryTarget(
 
 function validateHostsForOperation(
   hosts: InventoryHostModel[],
-  operationKind: OperationKind,
   target: string
 ): void {
   if (hosts.length === 0) {
@@ -79,12 +71,7 @@ function validateHostsForOperation(
       continue;
     }
 
-    if (operationKind === "read" && !host.readAllowed) {
-      deniedHosts.push(host.inventoryHostname);
-      continue;
-    }
-
-    if (operationKind === "write" && !host.writeAllowed) {
+    if (!host.readAllowed) {
       deniedHosts.push(host.inventoryHostname);
       continue;
     }
@@ -93,7 +80,7 @@ function validateHostsForOperation(
   if (deniedHosts.length > 0) {
     throw new InventoryResolutionError(
       "policy_denied",
-      `Policy denied: target ${target} includes host(s) not permitted for ${operationKind}: ${deniedHosts.sort().join(", ")}`
+      `Policy denied: target ${target} includes host(s) not permitted for read operations: ${deniedHosts.sort().join(", ")}`
     );
   }
 }

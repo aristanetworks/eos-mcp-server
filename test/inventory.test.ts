@@ -3,15 +3,13 @@ import { loadInventoryModel, loadInventorySummary, validateInventory } from "../
 import { writeTempInventory } from "./helpers.js";
 
 describe("inventory validation", () => {
-  it("computes eligibility and policy counts from simplified inventory inheritance", async () => {
+  it("computes eligibility and read-policy counts from simplified inventory inheritance", async () => {
     const filePath = await writeTempInventory([
       "vars:",
       "  ansible_user: admin",
       "  ansible_network_os: eos",
       "groups:",
-      "  writable_leafs:",
-      "    vars:",
-      "      mcp_write_allowed: true",
+      "  leafs:",
       "    hosts: [leaf1]",
       "hosts:",
       "  leaf1:",
@@ -24,7 +22,6 @@ describe("inventory validation", () => {
     expect(summary.totalGroupCount).toBe(2);
     expect(summary.eosEligibleHostCount).toBe(1);
     expect(summary.readAllowedHostCount).toBe(1);
-    expect(summary.writeAllowedHostCount).toBe(1);
   });
 
   it("rejects simplified inventory group cycles", async () => {
@@ -62,26 +59,6 @@ describe("inventory validation", () => {
     expect(result.errors.some((error) => error.message.includes("leaf2"))).toBe(true);
   });
 
-  it("rejects contradictory deny-dominant write policy", async () => {
-    const filePath = await writeTempInventory([
-      "vars:",
-      "  ansible_network_os: eos",
-      "  mcp_write_allowed: false",
-      "groups:",
-      "  lab:",
-      "    vars:",
-      "      mcp_write_allowed: true",
-      "    hosts: [leaf1]",
-      "hosts:",
-      "  leaf1:",
-      "    ansible_host: 10.0.0.11"
-    ]);
-
-    const result = await validateInventory(filePath);
-    expect(result.ok).toBe(false);
-    expect(result.errors.some((error) => error.message.includes("mcp_write_allowed"))).toBe(true);
-  });
-
   it("rejects non-boolean read policy values instead of defaulting open", async () => {
     const filePath = await writeTempInventory([
       "hosts:",
@@ -98,33 +75,6 @@ describe("inventory validation", () => {
         expect.objectContaining({
           code: "inventory_var_type_invalid",
           path: "hosts.leaf1.mcp_read_allowed"
-        })
-      ])
-    );
-  });
-
-  it("rejects string write policy values before deny-dominant evaluation", async () => {
-    const filePath = await writeTempInventory([
-      "vars:",
-      "  ansible_network_os: eos",
-      "  mcp_write_allowed: \"false\"",
-      "groups:",
-      "  lab:",
-      "    vars:",
-      "      mcp_write_allowed: true",
-      "    hosts: [leaf1]",
-      "hosts:",
-      "  leaf1:",
-      "    ansible_host: 10.0.0.11"
-    ]);
-
-    const result = await validateInventory(filePath);
-    expect(result.ok).toBe(false);
-    expect(result.errors).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: "inventory_var_type_invalid",
-          path: "vars.mcp_write_allowed"
         })
       ])
     );

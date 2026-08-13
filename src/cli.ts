@@ -11,8 +11,6 @@ const OPTION_NAMES = new Set<string>([
   "-V",
   "--config",
   "--inventory",
-  "--enable-write",
-  "--allow-direct-config-fallback",
   "--actor",
   "--json",
   "--inventory-only",
@@ -27,9 +25,7 @@ const COMMAND_OPTIONS: Record<CommandName, ReadonlySet<string>> = {
     "-V",
     "--config",
     "--inventory",
-    "--actor",
-    "--enable-write",
-    "--allow-direct-config-fallback"
+    "--actor"
   ]),
   "validate-inventory": new Set(["--help", "-h", "--version", "-V", "--config", "--inventory", "--inventory-only", "--json"]),
   "print-server-info": new Set(["--help", "-h", "--version", "-V", "--config", "--inventory", "--json"]),
@@ -43,8 +39,6 @@ export interface CliOptions {
   version?: boolean;
   configPath?: string;
   inventoryPath?: string;
-  enableWrite?: boolean;
-  allowDirectConfigFallback?: boolean;
   actor?: string;
   json?: boolean;
   inventoryOnly?: boolean;
@@ -105,14 +99,6 @@ export function parseCliArgs(argv: string[]): CliOptions {
         index += 2;
         break;
       }
-      case "--enable-write":
-        options.enableWrite = true;
-        index += 1;
-        break;
-      case "--allow-direct-config-fallback":
-        options.allowDirectConfigFallback = true;
-        index += 1;
-        break;
       case "--actor": {
         const value = argv[index + 1];
         if (!value) {

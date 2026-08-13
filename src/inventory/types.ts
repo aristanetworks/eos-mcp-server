@@ -8,7 +8,6 @@ export interface InventorySummary {
   totalGroupCount: number;
   eosEligibleHostCount: number | null;
   readAllowedHostCount: number | null;
-  writeAllowedHostCount: number | null;
 }
 
 export interface InventoryValidationError {
@@ -31,7 +30,6 @@ export interface InventoryHostModel {
   effectiveVars: Record<string, unknown>;
   eligible: boolean;
   readAllowed: boolean;
-  writeAllowed: boolean;
   ineligibilityReasons: string[];
   groupMemberships: string[];
 }

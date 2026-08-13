@@ -31,7 +31,7 @@ npm run dev -- serve --inventory path/to/inventory.yaml
 
 # CLI usage after build
 node dist/index.js --version
-node dist/index.js serve --inventory path/to/inventory.yaml [--config path/to/config.yaml] [--enable-write]
+node dist/index.js serve --inventory path/to/inventory.yaml [--config path/to/config.yaml]
 node dist/index.js validate-inventory --inventory path/to/inventory.yaml [--json] [--inventory-only]
 node dist/index.js print-server-info [--inventory path/to/inventory.yaml] [--json]
 ```
@@ -66,8 +66,6 @@ This is a TypeScript ESM-only Node 20+ MCP server that exposes Arista EOS networ
 - **Inventory is authoritative**: targets must be inventory host/group names; no ad hoc IPs
 - **Canonical groups merge**: a group referenced under multiple parents has its hosts/children unioned and vars merged (later wins), matching Ansible semantics
 - **Fail-closed**: mixed eligibility in a group target is an error, not a partial success
-- **`mcp_write_allowed` is deny-dominant**: a child cannot override an ancestor's `false`
-- **`all` is write-forbidden**: enforced in `resolveInventoryTarget`
 - **Password source**: exactly one of `mcp_password_env` (preferred) or `ansible_password` must resolve per host; env var names must match an allowed prefix (`EOS_MCP_` by default)
 - **`eos_run_show`**: only single-line `show ...` commands accepted; commands are trimmed and validated before dispatch
 - **`eos_get_running_config`**: group targets require an explicit single-line `section` string; automatically enters enable mode via eAPI since `show running-config` requires privileged access
@@ -80,7 +78,7 @@ This is a TypeScript ESM-only Node 20+ MCP server that exposes Arista EOS networ
 
 ### Implementation status
 
-Read-path tools are fully implemented and tested (86 unit tests, 11 integration tests against cEOS 4.34.3M). Phase 1 read-only MVP is complete. The write path (`eos_preview_config`, `eos_apply_config`, `eos_save_config`) is not yet implemented. The next planned work is Phase 2: global write lock and runtime orchestration (see `docs/CHECKPOINT.md`).
+Read-only tools are fully implemented and tested. The product boundary is permanent: configuration-changing operations are out of scope.
 
 ### Documentation
 
@@ -88,7 +86,7 @@ Project documentation lives in `docs/`:
 
 - `docs/design-overview.md` — design overview for evaluators
 - `docs/DESIGN.md` — detailed design specification
-- `docs/IMPLEMENTATION_PLAN.md` — execution plan and phase tracking
+- `docs/IMPLEMENTATION_PLAN.md` — implemented scope and maintenance priorities
 - `docs/CHECKPOINT.md` — current implementation status
 - `docs/CODE_WALKTHROUGH.md` — source layout and module guide
 

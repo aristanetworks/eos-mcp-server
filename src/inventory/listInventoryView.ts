@@ -6,7 +6,6 @@ export interface ListInventoryView {
     resolved_endpoint: string;
     eligible: boolean;
     read_allowed: boolean;
-    write_allowed: boolean;
     ineligibility_reasons: string[];
     group_memberships: string[];
   }>;
@@ -35,7 +34,6 @@ export function buildListInventoryView(
       resolved_endpoint: host.resolvedEndpoint,
       eligible: host.eligible,
       read_allowed: host.readAllowed,
-      write_allowed: host.writeAllowed,
       ineligibility_reasons: [...host.ineligibilityReasons],
       group_memberships: [...host.groupMemberships]
     }));

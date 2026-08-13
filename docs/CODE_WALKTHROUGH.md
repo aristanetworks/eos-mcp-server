@@ -34,9 +34,8 @@ Supporting inventory modules:
 - `src/inventory/types.ts`: inventory model types.
 - `src/inventory/effectiveVars.ts`: global/group/host variable inheritance and same-depth conflict handling.
 - `src/inventory/graph.ts`: group parent maps, group depths, host lineage, direct memberships, and resolved group hosts.
-- `src/inventory/policy.ts`: EOS eligibility and read/write access evaluation.
+- `src/inventory/policy.ts`: EOS eligibility and read access evaluation.
 - `src/inventory/resolveTarget.ts`: host/group target resolution and policy fail-closed checks.
-- `src/inventory/writePolicy.ts`: deny-dominant write-policy contradiction checks.
 - `src/inventory/listInventoryView.ts`: sanitized inventory view for MCP output.
 
 ## Connection And eAPI

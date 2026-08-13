@@ -42,8 +42,7 @@ async function main(): Promise<void> {
         instanceId: randomUUID(),
         startedAt: new Date().toISOString(),
         config,
-        ...(inventoryModel !== undefined ? { inventorySummary: inventoryModel.summary } : {}),
-        writePathStatus: "idle"
+        ...(inventoryModel !== undefined ? { inventorySummary: inventoryModel.summary } : {})
       };
       printServerInfo(runtimeContext, cli.json ?? false);
       return;

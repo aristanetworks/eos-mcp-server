@@ -4,7 +4,8 @@
 
 - Upgrades Node.js requirement to v24 LTS (Krypton).
 - Updates GitHub Actions workflows to use Node 24/26.
-- Refactoring how json/text outputs are handled
+- Refactoring how json/text outputs are handled.
+- Removes configuration-changing scaffolding; the server is permanently read-only.
 
 ## 0.5.2-beta
 
@@ -27,7 +28,7 @@
 
 - Hardens eAPI response handling with invalid-JSON errors and runCmds result-count validation.
 - Centralizes final read-tool response-size enforcement on the shared result envelope so tool-specific metadata is included in the limit check.
-- Refactors inventory model construction into focused effective-vars, graph, and write-policy modules.
+- Refactors inventory model construction into focused effective-vars, graph, and access-policy modules.
 - Refactors MCP tool registration into shared tool definitions.
 - Improves config file read failures with machine-readable `AppError` details.
 - Sanitizes packaged example inventories and release documentation for public distribution.

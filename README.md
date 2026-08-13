@@ -2,7 +2,7 @@
 
 Read-only MCP server for Arista EOS eAPI (JSON-RPC over HTTPS).
 
-Phase 1 of this project intentionally ships a **read-only MVP**. The server can:
+This project is permanently **read-only**. The server can:
 
 - introspect its own runtime and inventory
 - list inventory hosts/groups
@@ -12,7 +12,7 @@ Phase 1 of this project intentionally ships a **read-only MVP**. The server can:
 - collect a fixed set of device facts
 - retrieve running configuration
 
-It cannot modify device configuration yet. Startup attempts to enable write mode are currently rejected.
+It never exposes configuration-changing operations.
 
 ## Current status
 
@@ -307,7 +307,7 @@ defaultConnection:
   mcpValidateCerts: false
 ```
 
-Useful config fields for the read-only MVP:
+Supported config fields:
 
 - `inventory`
 - `actor`
@@ -328,15 +328,6 @@ Useful config fields for the read-only MVP:
 `readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized read-tool result.
 
 `defaultConnection.mcpPasswordEnv` is a fallback password source. A host or inherited inventory value for `mcp_password_env` or `ansible_password` overrides it. Setting both `mcp_password_env` and `ansible_password` for the same host remains invalid.
-
-### Read-only guardrail
-
-These are reserved for future work and are currently rejected if set:
-
-- `enableWrite`
-- `allowDirectConfigFallback`
-- CLI `--enable-write`
-- CLI `--allow-direct-config-fallback`
 
 ## CLI usage
 
@@ -669,14 +660,11 @@ The read-path tools have been validated against cEOS 4.34.3M. The minimum suppor
 
 Older EOS versions may work for basic `show` commands but are not tested. The `auto` output format falls back to text when JSON output is unavailable, so most read operations will still function on older releases.
 
-The write path (Phase 2) will enforce a stricter minimum EOS version for config session support.
-
-## Design notes for the current MVP
+## Design notes
 
 - inventory is the trust boundary
 - reads are fail-closed on ineligible or denied targets
-- write-mode startup is intentionally blocked in Phase 1
-- the current release target is a documented, test-backed read-only server
+- the server exposes only documented read-only operations
 
 ## Project docs
 
@@ -684,7 +672,7 @@ Additional design and planning docs in the `docs/` directory:
 
 - `docs/design-overview.md` — design overview for evaluators
 - `docs/DESIGN.md` — detailed design specification
-- `docs/IMPLEMENTATION_PLAN.md` — execution plan and phase tracking
+- `docs/IMPLEMENTATION_PLAN.md` — implemented scope and maintenance priorities
 - `docs/CHECKPOINT.md` — current implementation status
 - `docs/CODE_WALKTHROUGH.md` — source layout and module guide
 - `docs/QUICKSTART.md` — quick start tutorial

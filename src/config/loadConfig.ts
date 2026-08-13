@@ -31,35 +31,22 @@ export async function loadServerConfig(options: CliOptions): Promise<ResolvedSer
   const merged = {
     configPath: resolvedConfigPath,
     inventoryPath: resolveMaybePath(fileConfig.inventory, resolvedConfigPath),
-    enableWrite: fileConfig.enableWrite,
-    allowDirectConfigFallback: fileConfig.allowDirectConfigFallback,
     actor: fileConfig.actor,
     logFile: resolveMaybePath(fileConfig.logFile, resolvedConfigPath),
     caFile: resolveMaybePath(fileConfig.caFile, resolvedConfigPath),
     readTimeoutMs: fileConfig.readTimeoutMs,
-    writeTimeoutMs: fileConfig.writeTimeoutMs,
     overallOperationTimeoutMs: fileConfig.overallOperationTimeoutMs,
     deviceConcurrency: fileConfig.deviceConcurrency,
     maxReadTargets: fileConfig.maxReadTargets,
-    maxWriteTargets: fileConfig.maxWriteTargets,
     maxShowCommandsPerRequest: fileConfig.maxShowCommandsPerRequest,
     maxLoggingMessagesPerRequest: fileConfig.maxLoggingMessagesPerRequest,
-    maxConfigCommandsPerRequest: fileConfig.maxConfigCommandsPerRequest,
     maxResponseSizeBytes: fileConfig.maxResponseSizeBytes,
-    previewMaxAgeMs: fileConfig.previewMaxAgeMs,
-    logWriteCommands: fileConfig.logWriteCommands,
     secretEnvPrefixes: fileConfig.secretEnvPrefixes,
     defaultConnection: fileConfig.defaultConnection
   };
 
   if (options.inventoryPath) {
     merged.inventoryPath = resolvePathFromCwd(options.inventoryPath);
-  }
-  if (options.enableWrite !== undefined) {
-    merged.enableWrite = options.enableWrite;
-  }
-  if (options.allowDirectConfigFallback !== undefined) {
-    merged.allowDirectConfigFallback = options.allowDirectConfigFallback;
   }
   if (options.actor !== undefined) {
     merged.actor = options.actor;

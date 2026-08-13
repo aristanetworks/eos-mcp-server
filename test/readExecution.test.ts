@@ -42,7 +42,6 @@ describe("buildReadOperationResultEnvelope", () => {
       effectiveVars: {},
       eligible: true,
       readAllowed: true,
-      writeAllowed: false,
       ineligibilityReasons: [],
       groupMemberships: []
     };

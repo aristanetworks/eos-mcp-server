@@ -11,20 +11,6 @@ describe("parseCliArgs", () => {
     });
   });
 
-  it("parses hidden write startup flags for serve", () => {
-    expect(parseCliArgs(["--enable-write", "--allow-direct-config-fallback"])).toMatchObject({
-      command: "serve",
-      enableWrite: true,
-      allowDirectConfigFallback: true
-    });
-
-    expect(parseCliArgs(["serve", "--enable-write"])).toMatchObject({
-      command: "serve",
-      explicitCommand: true,
-      enableWrite: true
-    });
-  });
-
   it("sets help when --help is the first argument", () => {
     const result = parseCliArgs(["--help"]);
     expect(result.help).toBe(true);
@@ -99,8 +85,6 @@ describe("parseCliArgs", () => {
     }
 
     expect(output).not.toContain("--actor");
-    expect(output).not.toContain("--enable-write");
-    expect(output).not.toContain("--allow-direct-config-fallback");
   });
 
   it("advertises actor only in serve help", () => {

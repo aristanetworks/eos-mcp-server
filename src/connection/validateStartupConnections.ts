@@ -15,7 +15,7 @@ export function collectStartupConnectionValidationErrors(
     }
 
     try {
-      resolveEapiConnection(config, host, "read");
+      resolveEapiConnection(config, host);
     } catch (error) {
       errors.push({
         code: getErrorCode(error) ?? "startup_connection_invalid",

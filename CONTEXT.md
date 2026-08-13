@@ -13,7 +13,7 @@ A bounded request for EOS log messages, defined by a minimum **Log Severity** an
 _Avoid_: Log search, logging command
 
 **EOS Command Runner**:
-The module that executes validated EOS commands through eAPI and returns command-aligned results to read and write tools.
+The module that executes validated EOS commands through eAPI and returns command-aligned results to read-only tools.
 _Avoid_: eAPI helper, command service
 
 **Raw eAPI Payload**:

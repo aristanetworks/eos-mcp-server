@@ -9,7 +9,6 @@ export interface HostEligibilityEvaluation {
 
 export interface HostAccessEvaluation {
   readAllowed: boolean;
-  writeAllowed: boolean;
 }
 
 export function evaluateHostEligibility(
@@ -46,8 +45,7 @@ export function evaluateHostAccess(
   effectiveVars: Record<string, unknown>
 ): HostAccessEvaluation {
   return {
-    readAllowed: eligible ? readBoolean(effectiveVars.mcp_read_allowed) ?? true : false,
-    writeAllowed: eligible ? readBoolean(effectiveVars.mcp_write_allowed) ?? false : false
+    readAllowed: eligible ? readBoolean(effectiveVars.mcp_read_allowed) ?? true : false
   };
 }
 
