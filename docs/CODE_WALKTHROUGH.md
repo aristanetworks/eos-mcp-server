@@ -42,13 +42,15 @@ Supporting inventory modules:
 
 Connection resolution is in `src/connection/resolveConnection.ts`. It turns effective host vars plus server config into an eAPI connection: endpoint, username, password, TLS flags, CA file, timeout, and response-size limit.
 
+`src/connection/eosDeviceReader.ts` defines the host-oriented `EosDeviceReader` interface. Its `EapiDeviceReader` adapter owns per-host connection resolution and delegates command execution to the low-level eAPI runner.
+
 Startup credential validation is in `src/connection/validateStartupConnections.ts`.
 
 eAPI protocol and transport are split:
 
 - `src/eapi/client.ts`: builds JSON-RPC `runCmds` requests, handles HTTP errors, invalid JSON, JSON-RPC errors, and unexpected result counts. Supports opt-in enable mode (`{ enable: true }`) for privileged commands by prepending `enable` to the wire commands and stripping the extra result entry transparently. Per-request timeout and caller cancellation are combined with `AbortSignal`.
 - `src/eapi/transport.ts`: production HTTPS transport and test-friendly fetch transport. The production transport enforces `maxResponseSizeBytes` while chunks are received, before buffering an oversized device response.
-- `src/eapi/types.ts`: shared eAPI types, the unified `EosCommandRunner` interface (used by all read-path services), `EapiCommandOptions`, and helpers for validating/drilling into eAPI JSON-RPC response payloads.
+- `src/eapi/types.ts`: shared eAPI types, the low-level `EosCommandRunner` interface used by `EapiDeviceReader`, `EapiCommandOptions`, and helpers for validating/drilling into eAPI JSON-RPC response payloads.
 
 ## Read Tool Services
 
@@ -62,9 +64,9 @@ The core read behavior is implemented as service modules:
 - `src/facts/getFacts.ts`: collects fixed facts from `show version`.
 - `src/configuration/getRunningConfig.ts`: returns running config text, requiring `section` for group targets. Uses enable mode since `show running-config` requires privileged access.
 
-All device-facing read services accept an `EosCommandRunner` (defined in `src/eapi/types.ts`) rather than defining their own runner interfaces.
+All device-facing read services accept an `EosDeviceReader` (defined in `src/connection/eosDeviceReader.ts`). They provide inventory hosts and command intent; the eAPI adapter resolves each host's connection before executing commands.
 
-Shared read orchestration lives in `src/operations/readExecution.ts`. It centralizes target resolution, target limits, concurrency, overall timeout cancellation, connection resolution, common per-device result fields, result summaries (including the shared `DeviceResultSummary` type used by all result interfaces), final result-envelope response-size enforcement, and per-device `AppError.code` preservation.
+Shared read orchestration lives in `src/operations/readExecution.ts`. It centralizes target resolution, target limits, concurrency, overall timeout cancellation, common per-device result fields, result summaries (including the shared `DeviceResultSummary` type used by all result interfaces), final result-envelope response-size enforcement, and per-device `AppError.code` preservation.
 
 Shared type-narrowing utilities (`isObject`, `readString`, `readBoolean`, `readNumber`, etc.) live in `src/utils/value.ts`.
 
