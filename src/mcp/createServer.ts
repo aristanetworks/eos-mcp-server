@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { z } from "zod";
 import type { ResolvedServerConfig } from "../config/schema.js";
+import { EapiDeviceReader, type EosDeviceReader } from "../connection/eosDeviceReader.js";
 import { APP_NAME, APP_VERSION } from "../core/version.js";
 import { EapiClient } from "../eapi/client.js";
 import type { InventoryModel } from "../inventory/types.js";
@@ -19,7 +20,7 @@ interface McpRuntimeDependencies {
   runtimeContext: ServerRuntimeContext;
   inventoryModel: InventoryModel;
   config: ResolvedServerConfig;
-  eapiClient: EapiClient;
+  deviceReader: EosDeviceReader;
 }
 
 function buildToolDefinitions(deps: McpRuntimeDependencies) {
@@ -40,31 +41,31 @@ function buildToolDefinitions(deps: McpRuntimeDependencies) {
       name: "eos_probe_devices",
       description: "Probe EOS device readiness for a host or group target by validating connectivity, authentication, and harmless command execution.",
       inputSchema: probeDevicesInputSchema,
-      handler: async (args: z.infer<typeof probeDevicesInputSchema>) => buildProbeDevicesToolResult(deps.inventoryModel, deps.config, args, deps.eapiClient)
+      handler: async (args: z.infer<typeof probeDevicesInputSchema>) => buildProbeDevicesToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
     },
     {
       name: "eos_run_show",
       description: "Run one or more EOS show commands against a host or group target. Supports auto/json/text output modes with strict show-only validation.",
       inputSchema: runShowInputSchema,
-      handler: async (args: z.infer<typeof runShowInputSchema>) => buildRunShowToolResult(deps.inventoryModel, deps.config, args, deps.eapiClient)
+      handler: async (args: z.infer<typeof runShowInputSchema>) => buildRunShowToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
     },
     {
       name: "eos_show_logging",
       description: "Retrieve bounded EOS logging output for a host or group target using a minimum severity threshold and message-count limit.",
       inputSchema: showLoggingInputSchema,
-      handler: async (args: z.infer<typeof showLoggingInputSchema>) => buildShowLoggingToolResult(deps.inventoryModel, deps.config, args, deps.eapiClient)
+      handler: async (args: z.infer<typeof showLoggingInputSchema>) => buildShowLoggingToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
     },
     {
       name: "eos_get_facts",
       description: "Collect a fixed core set of EOS device facts for a host or group target.",
       inputSchema: getFactsInputSchema,
-      handler: async (args: z.infer<typeof getFactsInputSchema>) => buildGetFactsToolResult(deps.inventoryModel, deps.config, args, deps.eapiClient)
+      handler: async (args: z.infer<typeof getFactsInputSchema>) => buildGetFactsToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
     },
     {
       name: "eos_get_running_config",
       description: "Retrieve running configuration text for a host target, or for a group target when a raw EOS section selector is provided.",
       inputSchema: getRunningConfigInputSchema,
-      handler: async (args: z.infer<typeof getRunningConfigInputSchema>) => buildGetRunningConfigToolResult(deps.inventoryModel, deps.config, args, deps.eapiClient)
+      handler: async (args: z.infer<typeof getRunningConfigInputSchema>) => buildGetRunningConfigToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
     }
   ];
 }
@@ -77,7 +78,7 @@ export async function startMcpServer(config: ResolvedServerConfig, inventoryMode
     inventorySummary: inventoryModel.summary
   };
 
-  const eapiClient = new EapiClient();
+  const deviceReader = new EapiDeviceReader(config, new EapiClient());
 
   const server = new McpServer({
     name: APP_NAME,
@@ -90,7 +91,7 @@ export async function startMcpServer(config: ResolvedServerConfig, inventoryMode
     handler: (args: unknown) => Promise<unknown>
   ) => void;
 
-  for (const tool of buildToolDefinitions({ runtimeContext, inventoryModel, config, eapiClient })) {
+  for (const tool of buildToolDefinitions({ runtimeContext, inventoryModel, config, deviceReader })) {
     registerTool(
       tool.name,
       {

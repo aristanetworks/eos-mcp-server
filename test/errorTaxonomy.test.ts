@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { EapiDeviceReader } from "../src/connection/eosDeviceReader.js";
 import { AppError } from "../src/core/errors.js";
 import { getFacts } from "../src/facts/getFacts.js";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
@@ -156,13 +157,14 @@ describe("error taxonomy", () => {
         ])
       );
 
+      const config = buildConfig({
+        defaultConnection: { ansibleUser: "admin" }
+      });
       const result = await probeDevices(
         model,
-        buildConfig({
-          defaultConnection: { ansibleUser: "admin" }
-        }),
+        config,
         { target: "leaf1", include_raw: false },
-        { runShowCommands: vi.fn() }
+        new EapiDeviceReader(config, { runShowCommands: vi.fn() })
       );
 
       expect(result.results[0]?.status).toBe("failed");

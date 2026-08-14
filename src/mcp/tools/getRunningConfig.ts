@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ResolvedServerConfig } from "../../config/schema.js";
-import type { EosCommandRunner } from "../../eapi/types.js";
+import type { EosDeviceReader } from "../../connection/eosDeviceReader.js";
 import type { InventoryModel } from "../../inventory/types.js";
 import { getRunningConfig } from "../../configuration/getRunningConfig.js";
 import { buildJsonToolResult } from "../toolResult.js";
@@ -16,7 +16,7 @@ export async function buildGetRunningConfigToolResult(
   inventoryModel: InventoryModel,
   config: ResolvedServerConfig,
   args: z.infer<typeof getRunningConfigInputSchema>,
-  runner: EosCommandRunner
+  reader: EosDeviceReader
 ) {
   const payload = await getRunningConfig(
     inventoryModel,
@@ -25,7 +25,7 @@ export async function buildGetRunningConfigToolResult(
       target: args.target,
       ...(args.section !== undefined ? { section: args.section } : {})
     },
-    runner
+    reader
   );
 
   return buildJsonToolResult(payload);

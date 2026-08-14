@@ -1,7 +1,5 @@
 import { AppError, toErrorCode, toErrorMessage } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
-import { resolveEapiConnection } from "../connection/resolveConnection.js";
-import type { EapiConnectionConfig } from "../eapi/types.js";
 import { resolveInventoryTarget, type ResolvedInventoryTarget } from "../inventory/resolveTarget.js";
 import type { InventoryHostModel, InventoryModel } from "../inventory/types.js";
 
@@ -51,7 +49,7 @@ export async function executeReadOperation<TDeviceResult extends ReadDeviceResul
     target: string;
     operationName: string;
     validateTarget?: (resolvedTarget: ResolvedInventoryTarget) => void;
-    run: (host: InventoryHostModel, connection: EapiConnectionConfig, signal: AbortSignal) => Promise<TDeviceResult>;
+    run: (host: InventoryHostModel, signal: AbortSignal) => Promise<TDeviceResult>;
     onError: (host: InventoryHostModel, error: unknown) => TDeviceResult;
   }
 ): Promise<ExecuteReadOperationResult<TDeviceResult>> {
@@ -65,8 +63,7 @@ export async function executeReadOperation<TDeviceResult extends ReadDeviceResul
     (signal) =>
       mapWithConcurrency(resolvedTarget.resolvedHosts, config.deviceConcurrency, async (host) => {
         try {
-          const connection = resolveEapiConnection(config, host);
-          return await options.run(host, connection, signal);
+          return await options.run(host, signal);
         } catch (error) {
           return options.onError(host, error);
         }

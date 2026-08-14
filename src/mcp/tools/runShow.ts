@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ResolvedServerConfig } from "../../config/schema.js";
 import { AppError } from "../../core/errors.js";
-import type { EosCommandRunner } from "../../eapi/types.js";
+import type { EosDeviceReader } from "../../connection/eosDeviceReader.js";
 import type { InventoryModel } from "../../inventory/types.js";
 import { runShow } from "../../show/runShow.js";
 import { buildJsonToolResult } from "../toolResult.js";
@@ -25,7 +25,7 @@ export async function buildRunShowToolResult(
   inventoryModel: InventoryModel,
   config: ResolvedServerConfig,
   args: z.infer<typeof runShowInputSchema>,
-  runner: EosCommandRunner
+  reader: EosDeviceReader
 ) {
   const hasCommand = args.command !== undefined;
   const hasCommands = args.commands !== undefined;
@@ -46,7 +46,7 @@ export async function buildRunShowToolResult(
       outputFormat: args.output_format,
       includeRaw: args.include_raw ?? false
     },
-    runner
+    reader
   );
 
   return buildJsonToolResult(payload);

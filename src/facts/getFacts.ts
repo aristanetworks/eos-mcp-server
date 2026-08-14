@@ -1,6 +1,7 @@
 import { AppError } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
-import type { EosCommandResult, EosCommandRunner } from "../eapi/types.js";
+import type { EosCommandResult } from "../eapi/types.js";
+import type { EosDeviceReader } from "../connection/eosDeviceReader.js";
 import type { InventoryModel } from "../inventory/types.js";
 import {
   buildReadDeviceFailure,
@@ -44,13 +45,13 @@ export async function getFacts(
   model: InventoryModel,
   config: ResolvedServerConfig,
   options: GetFactsOptions,
-  runner: EosCommandRunner
+  reader: EosDeviceReader
 ): Promise<GetFactsResult> {
   const operation = await executeReadOperation<GetFactsResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_get_facts",
-    run: async (host, connection, signal) => {
-      const commandResults = await runner.runShowCommands(connection, ["show version"], "json", {
+    run: async (host, signal) => {
+      const commandResults = await reader.runShowCommands(host, ["show version"], "json", {
         signal,
         includeRawEntries: options.include_raw
       });

@@ -1,8 +1,8 @@
 import net from "node:net";
 import { beforeAll, describe, expect, it } from "vitest";
 import { getRunningConfig } from "../src/configuration/getRunningConfig.js";
+import { EapiDeviceReader, type EosDeviceReader } from "../src/connection/eosDeviceReader.js";
 import { EapiClient } from "../src/eapi/client.js";
-import type { EosCommandRunner } from "../src/eapi/types.js";
 import { getFacts } from "../src/facts/getFacts.js";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import type { InventoryModel } from "../src/inventory/types.js";
@@ -49,7 +49,7 @@ function tcpProbe(host: string, port: number, timeoutMs: number): Promise<boolea
 describe.runIf(INTEGRATION)("integration: EOS read-path tools", () => {
   let model: InventoryModel;
   let config: ResolvedServerConfig;
-  let runner: EosCommandRunner;
+  let runner: EosDeviceReader;
 
   beforeAll(async () => {
     const reachable = await tcpProbe(SINGLE_HOST, 443, 5_000);
@@ -74,7 +74,7 @@ describe.runIf(INTEGRATION)("integration: EOS read-path tools", () => {
 
     model = await loadInventoryModel(inventoryPath);
     config = buildConfig();
-    runner = new EapiClient();
+    runner = new EapiDeviceReader(config, new EapiClient());
   }, 30_000);
 
   it("probes a single host successfully", async () => {

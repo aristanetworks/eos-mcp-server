@@ -1,6 +1,7 @@
 import { AppError } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
-import type { EosCommandResult, EosCommandRunner } from "../eapi/types.js";
+import type { EosCommandResult } from "../eapi/types.js";
+import type { EosDeviceReader } from "../connection/eosDeviceReader.js";
 import type { InventoryModel } from "../inventory/types.js";
 import { buildLoggingQuery, type LoggingSeverity } from "./loggingQuery.js";
 import {
@@ -39,7 +40,7 @@ export async function showLogging(
   model: InventoryModel,
   config: ResolvedServerConfig,
   options: ShowLoggingOptions,
-  runner: EosCommandRunner
+  reader: EosDeviceReader
 ): Promise<ShowLoggingResult> {
   const query = buildLoggingQuery(
     {
@@ -52,10 +53,10 @@ export async function showLogging(
   const operation = await executeReadOperation<ShowLoggingResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_show_logging",
-    run: async (host, connection, signal) =>
+    run: async (host, signal) =>
       buildReadDeviceSuccess(host, {
         command: query.command,
-        log_text: extractLogText(await runner.runShowCommands(connection, [query.command], "text", { signal }))
+        log_text: extractLogText(await reader.runShowCommands(host, [query.command], "text", { signal }))
       }),
     onError: (host, error) => buildReadDeviceFailure(host, "logging_failed", error)
   });

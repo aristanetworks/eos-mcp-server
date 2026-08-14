@@ -1,7 +1,8 @@
 import { AppError } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { normalizeSingleLineEosInput } from "../eapi/commands.js";
-import type { EosCommandResult, EosCommandRunner } from "../eapi/types.js";
+import type { EosCommandResult } from "../eapi/types.js";
+import type { EosDeviceReader } from "../connection/eosDeviceReader.js";
 import type { InventoryModel } from "../inventory/types.js";
 import {
   buildReadDeviceFailure,
@@ -36,7 +37,7 @@ export async function getRunningConfig(
   model: InventoryModel,
   config: ResolvedServerConfig,
   options: GetRunningConfigOptions,
-  runner: EosCommandRunner
+  reader: EosDeviceReader
 ): Promise<GetRunningConfigResult> {
   const section = options.section !== undefined ? normalizeSingleLineEosInput(options.section, "running config section") : undefined;
   const command = section ? `show running-config section ${section}` : "show running-config";
@@ -48,9 +49,9 @@ export async function getRunningConfig(
         throw new AppError("running_config_section_required", "Group targets for eos_get_running_config require a section");
       }
     },
-    run: async (host, connection, signal) =>
+    run: async (host, signal) =>
       buildReadDeviceSuccess(host, {
-        config_text: extractConfigText(await runner.runShowCommands(connection, [command], "text", { enable: true, signal }))
+        config_text: extractConfigText(await reader.runShowCommands(host, [command], "text", { enable: true, signal }))
       }),
     onError: (host, error) => buildReadDeviceFailure(host, "running_config_failed", error)
   });

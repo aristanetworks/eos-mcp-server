@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ResolvedServerConfig } from "../../config/schema.js";
-import type { EosCommandRunner } from "../../eapi/types.js";
+import type { EosDeviceReader } from "../../connection/eosDeviceReader.js";
 import type { InventoryModel } from "../../inventory/types.js";
 import { probeDevices } from "../../probe/probeDevices.js";
 import { buildJsonToolResult } from "../toolResult.js";
@@ -16,13 +16,13 @@ export async function buildProbeDevicesToolResult(
   inventoryModel: InventoryModel,
   config: ResolvedServerConfig,
   args: z.infer<typeof probeDevicesInputSchema>,
-  runner: EosCommandRunner
+  reader: EosDeviceReader
 ) {
   const payload = await probeDevices(
     inventoryModel,
     config,
     { target: args.target, include_raw: args.include_raw ?? false },
-    runner
+    reader
   );
 
   return buildJsonToolResult(payload);

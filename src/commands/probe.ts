@@ -1,3 +1,4 @@
+import { EapiDeviceReader } from "../connection/eosDeviceReader.js";
 import { EapiClient } from "../eapi/client.js";
 import { loadInventoryModel } from "../inventory/loadInventory.js";
 import { probeDevices } from "../probe/probeDevices.js";
@@ -11,7 +12,12 @@ export async function runProbe(config: ResolvedServerConfig, target: string, asJ
   }
 
   const model = await loadInventoryModel(config.inventoryPath);
-  const result = await probeDevices(model, config, { target, include_raw: false }, new EapiClient());
+  const result = await probeDevices(
+    model,
+    config,
+    { target, include_raw: false },
+    new EapiDeviceReader(config, new EapiClient())
+  );
 
   if (asJson) {
     console.log(prettyJson(result));

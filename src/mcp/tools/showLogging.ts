@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ResolvedServerConfig } from "../../config/schema.js";
-import type { EosCommandRunner } from "../../eapi/types.js";
+import type { EosDeviceReader } from "../../connection/eosDeviceReader.js";
 import type { InventoryModel } from "../../inventory/types.js";
 import { LOGGING_SEVERITIES } from "../../logging/loggingQuery.js";
 import { showLogging } from "../../logging/showLogging.js";
@@ -18,7 +18,7 @@ export async function buildShowLoggingToolResult(
   inventoryModel: InventoryModel,
   config: ResolvedServerConfig,
   args: z.infer<typeof showLoggingInputSchema>,
-  runner: EosCommandRunner
+  reader: EosDeviceReader
 ) {
   const payload = await showLogging(
     inventoryModel,
@@ -28,7 +28,7 @@ export async function buildShowLoggingToolResult(
       minimumSeverity: args.minimum_severity,
       messageCount: args.message_count
     },
-    runner
+    reader
   );
 
   return buildJsonToolResult(payload);

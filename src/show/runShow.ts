@@ -1,7 +1,8 @@
 import { AppError } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { normalizeShowCommand } from "../eapi/commands.js";
-import type { EosCommandResult, EosCommandRunner } from "../eapi/types.js";
+import type { EosCommandResult } from "../eapi/types.js";
+import type { EosDeviceReader } from "../connection/eosDeviceReader.js";
 import type { InventoryModel } from "../inventory/types.js";
 import {
   buildReadDeviceFailure,
@@ -42,7 +43,7 @@ export async function runShow(
   model: InventoryModel,
   config: ResolvedServerConfig,
   options: RunShowOptions,
-  runner: EosCommandRunner
+  reader: EosDeviceReader
 ): Promise<RunShowResult> {
   const commands = normalizeShowCommands(options.commands);
   enforceShowCommandLimit(config, commands.length);
@@ -50,8 +51,8 @@ export async function runShow(
   const operation = await executeReadOperation<RunShowResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_run_show",
-    run: async (host, connection, signal) => {
-      const commandResults = await runner.runShowCommands(connection, commands, options.outputFormat, {
+    run: async (host, signal) => {
+      const commandResults = await reader.runShowCommands(host, commands, options.outputFormat, {
         signal,
         includeRawEntries: options.includeRaw === true
       });
