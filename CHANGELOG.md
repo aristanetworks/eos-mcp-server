@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0-beta
+
+- Refactoring EapiDeviceReader to hide connection information
+
 ## 0.5.3-beta
 
 - Upgrades Node.js requirement to v24 LTS (Krypton).

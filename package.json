@@ -1,6 +1,6 @@
 {
   "name": "eos-mcp-server",
-  "version": "0.5.3-beta",
+  "version": "0.6.0-beta",
   "description": "MCP server for Arista EOS eAPI",
   "type": "module",
   "homepage": "https://github.com/aristanetworks/eos-mcp-server#readme",
