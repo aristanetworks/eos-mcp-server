@@ -68,7 +68,7 @@ This is a TypeScript ESM-only Node 20+ MCP server that exposes Arista EOS networ
 - Fail closed: mixed eligibility in a group target is an error, not a partial success.
 - Password source: exactly one of `mcp_password_env` or `ansible_password` must resolve per host. Prefer `mcp_password_env`; env var names must match the configured allowed prefix, `EOS_MCP_` by default.
 - `eos_run_show` only accepts single-line `show` commands, validated and trimmed before dispatch.
-- `eos_get_running_config` group targets require an explicit single-line `section` string.
+- `eos_get_running_config` group targets require an explicit single-line `section` string; it enters eAPI enable mode because `show running-config` requires privileged access.
 - Enable mode is opt-in on the eAPI client via `{ enable: true }` on `runShowCommands` and `runCommands`; it prepends `enable` and strips the extra response entry transparently.
 - `overallOperationTimeoutMs` aborts in-flight read eAPI requests and stops scheduling new devices.
 - `executeReadOperation` enforces `maxResponseSizeBytes`, defaulting to 1 MB, on serialized results.

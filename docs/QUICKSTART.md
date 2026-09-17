@@ -4,10 +4,10 @@ This guide gets you from a `.tgz` package to a working MCP server inside Claude 
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 24+
 - Claude Code installed (`npm install -g @anthropic-ai/claude-code`)
 - One or more Arista EOS devices reachable via eAPI (HTTPS)
-- An `eos-mcp-server-<version>.tgz` package file (build one with `make pack`)
+- An `eos-mcp-server-<version>.tgz` package downloaded from the [latest GitHub release](https://github.com/aristanetworks/eos-mcp-server/releases/latest)
 
 ## 1. Install the package globally
 

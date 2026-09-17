@@ -1,8 +1,11 @@
-# eos-mcp-server
+# eos-mcp-server BETA
+
+**Note: this project is currently in BETA**
+**Note: Support for this open sourced project is _best effort_, it is not currently supported by Arista TAC**
 
 Read-only MCP server for Arista EOS eAPI (JSON-RPC over HTTPS).
 
-This project is permanently **read-only**. The server can:
+This server provides a set of **read-only** tools. The server can:
 
 - introspect its own runtime and inventory
 - list inventory hosts/groups
@@ -13,6 +16,8 @@ This project is permanently **read-only**. The server can:
 - retrieve running configuration
 
 It never exposes configuration-changing operations.
+
+Please be cautious when prompting, there have been occasions where the LLM will go around the MCP server and try to find a way to make config changes through other means. As a best practice, use AAA and restrict the access of the authentication used.
 
 ## Current status
 
@@ -40,106 +45,37 @@ Implemented local CLI commands:
 - EOS 4.20 or later (read-path tested against cEOS 4.34.3M)
 - Inventory in one of the supported YAML formats
 
-## Install
+## Install and get started
 
-### From source
+1. Download the `eos-mcp-server-<version>.tgz` asset from the [latest GitHub release](https://github.com/aristanetworks/eos-mcp-server/releases/latest).
+2. Install the downloaded package globally. Replace the filename with the release you downloaded:
 
-```bash
-npm install
-make build
-```
+   ```bash
+   npm install -g ./eos-mcp-server-<version>.tgz
+   ```
 
-Or equivalently:
+3. Confirm that the command is available:
 
-```bash
-npm install
-npm run build
-npm run lint
-```
+   ```bash
+   eos-mcp-server --help
+   ```
 
-Run the built CLI directly:
+The global install places `eos-mcp-server` on your `PATH`. To remove it later:
 
 ```bash
-node dist/index.js serve --inventory path/to/inventory.yml
+npm uninstall -g eos-mcp-server
 ```
 
-### Package a distributable tarball
+Next, create an inventory, provide the device password, and validate connectivity:
 
 ```bash
-make pack
+export EOS_MCP_PASSWORD='replace-with-device-password'
+
+eos-mcp-server validate-inventory --inventory inventory.yml
+eos-mcp-server probe --inventory inventory.yml --target leaf1
 ```
 
-This runs a clean build and produces an `eos-mcp-server-<version>.tgz` that can be installed elsewhere with `npm install -g`.
-
-`npm pack` also runs `npm run build` through the package `prepack` hook, so distributable tarballs are rebuilt from source before packaging.
-
-### Install on PATH
-
-After building, you can make the `eos-mcp-server` command available globally.
-
-From the project directory:
-
-```bash
-npm install
-make build
-npm link
-```
-
-Or install directly from a local checkout without needing to be inside the directory:
-
-```bash
-npm install -g /absolute/path/to/eos-mcp-server
-```
-
-Either method puts `eos-mcp-server` on your `PATH`, so you can run:
-
-```bash
-eos-mcp-server serve --inventory path/to/inventory.yml
-```
-
-To uninstall later:
-
-```bash
-npm unlink -g eos-mcp-server
-```
-
-### Development mode
-
-```bash
-npm run dev -- serve --inventory path/to/inventory.yml
-```
-
-### Tests
-
-```bash
-make test
-make typecheck
-```
-
-Or equivalently:
-
-```bash
-npm test
-npm run typecheck
-```
-
-## Quick start
-
-1. Create an inventory.
-2. Export a password environment variable.
-3. Validate the inventory.
-4. Probe a host or group.
-5. Start the MCP server over stdio.
-
-Example:
-
-```bash
-export EOS_MCP_PASSWORD='super-secret'
-
-node dist/index.js validate-inventory --inventory inventory.yml
-node dist/index.js probe --inventory inventory.yml --target leaf1
-node dist/index.js serve --inventory inventory.yml
-```
+See [Quickstart: eos-mcp-server with Claude Code](docs/QUICKSTART.md) for a complete inventory example and MCP client setup. For building or contributing from source, see the [developer workflow](docs/DEVELOPMENT.md).
 
 ## Inventory formats
 
