@@ -2,6 +2,7 @@
   "name": "eos-mcp-server",
   "version": "0.6.0-beta",
   "description": "MCP server for Arista EOS eAPI",
+  "license": "Apache-2.0",
   "type": "module",
   "homepage": "https://github.com/aristanetworks/eos-mcp-server#readme",
   "repository": {

@@ -677,3 +677,12 @@ Additional design and planning docs in the `docs/` directory:
 - `docs/CODE_WALKTHROUGH.md` — source layout and module guide
 - `docs/QUICKSTART.md` — quick start tutorial
 - `docs/EXAMPLES.md` — inventory and usage examples
+
+## License
+
+Copyright 2026 Arista Networks, Inc.
+
+This project is licensed under the [Apache License, Version 2.0](LICENSE).
+Apache-2.0 applies to each released version of this repository. Arista may
+offer later versions under additional or different terms, but cannot revoke
+the Apache-2.0 rights granted for versions already released under it.
