@@ -190,6 +190,27 @@ groups:
     hosts: [leaf1, leaf2]
 ```
 
+For an inventory where devices do not share a password, see
+[`example-inventories/multi-password.yaml`](example-inventories/multi-password.yaml).
+Each host sets its own `mcp_password_env` reference, so the actual passwords
+remain in the environment rather than in the inventory file. For example:
+
+```bash
+export EOS_MCP_SPINE1_PASSWORD='spine1-password'
+export EOS_MCP_SPINE2_PASSWORD='spine2-password'
+export EOS_MCP_LEAF1_PASSWORD='leaf1-password'
+export EOS_MCP_LEAF2_PASSWORD='leaf2-password'
+
+eos-mcp-server validate-inventory \
+  --inventory example-inventories/multi-password.yaml
+eos-mcp-server serve --inventory example-inventories/multi-password.yaml
+```
+
+The password environment variable name is resolved independently for each
+host. Host-level values override inherited group or global values, so devices
+can be queried together through the `FABRIC`, `SPINES`, or `LEAFS` targets while
+still using their individual credentials.
+
 ## Important inventory rules
 
 - Targets must be **inventory host or group names**, not IP addresses.
