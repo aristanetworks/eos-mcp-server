@@ -58,7 +58,7 @@ describe("package policy", () => {
     const exampleDir = new URL("../example-inventories/", import.meta.url);
     const entries = (await fs.readdir(exampleDir)).sort();
 
-    expect(entries).toEqual(["canonical-fabric.yaml", "simplified-lab.yaml"]);
+    expect(entries).toEqual(["canonical-fabric.yaml", "multi-password.yaml", "simplified-lab.yaml"]);
 
     const sensitivePatterns = [/ansible_ssh_pass/i, /ansible_password/i, /10\.83\./, /10\.90\./, /arastra/i, /cvpadmin/i, /serial_number/i];
 
