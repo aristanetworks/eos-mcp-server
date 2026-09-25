@@ -9,3 +9,4 @@ demo/
 .codex
 .envrc
 .mcp.json
+.local-artifacts/
