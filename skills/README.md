@@ -18,6 +18,16 @@ Operational skills for interacting with Arista EOS devices via the `eos` MCP ser
 | [rfc-9721-validation](rfc-9721-validation/SKILL.md)                   | EVPN IP mobility, MAC-IP moves, duplicate address detection | Validate RFC 9721 EVPN-IRB IP mobility and duplicate host detection                    |
 | [troubleshoot-segment-routing](troubleshoot-segment-routing/SKILL.md) | Troubleshoot ISIS-SR, missing SIDs or labels, TI-LFA        | Diagnose ISIS Segment Routing faults using a structured validation workflow            |
 | [validate-segment-routing](validate-segment-routing/SKILL.md)         | ISIS-SR, SIDs, SRGB, MPLS labels, TI-LFA                    | Audit ISIS Segment Routing operational state and protection health                     |
+| [mcs-config-validate](mcs-config-validate/SKILL.md)                   | MCS/CVX configuration, Purple switches, CVX clusters       | Validate CVX server and EOS client MCS configuration and known version risks           |
+| [mcs-mounts](mcs-mounts/SKILL.md)                                    | MCS mounts, CVX connections, error 199                     | Diagnose incomplete mounts, cluster asymmetry, and Purple dual-homing                 |
+| [mcs-agents](mcs-agents/SKILL.md)                                    | MCS agent health, crashes, restarts, API status             | Diagnose MCS agents without restarting production agents                               |
+| [multicast-triage](multicast-triage/SKILL.md)                         | Multicast symptoms and diagnostic routing                  | Classify multicast failures and route to the appropriate workflow                     |
+| [multicast-flow-missing](multicast-flow-missing/SKILL.md)             | Missing multicast flow or receiver delivery                | Trace IGMP membership, PIM state, mroute, MFIB, and RPF evidence                      |
+| [multicast-flow-drops](multicast-flow-drops/SKILL.md)                 | Intermittent multicast loss and state cycling              | Correlate IGMP churn, PIM transitions, drops, and forwarding state                   |
+| [multicast-flow-corrupt](multicast-flow-corrupt/SKILL.md)             | Corrupted, duplicated, or mixed multicast flows             | Diagnose interface, ASIC, CoPP, MMU, RPF, aliasing, and PTP evidence                 |
+| [ptp-triage](ptp-triage/SKILL.md)                                     | PTP synchronization and unclear timing symptoms             | Classify PTP issues and route to GM or connectivity diagnostics                        |
+| [ptp-gm](ptp-gm/SKILL.md)                                            | PTP grandmaster election and BMCA                            | Diagnose wrong-GM and GM-oscillation problems                                          |
+| [ptp-debug](ptp-debug/SKILL.md)                                      | PTP connectivity, delay, domain, and packet issues          | Diagnose missing delay responses, source IP, domain, and message failures              |
 
 ## How skills work
 
