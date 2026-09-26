@@ -524,36 +524,39 @@ claude mcp add -s user eos -- node /absolute/path/to/eos-mcp-server/dist/index.j
 
 ### Codex
 
-Add to your project's `codex.json` (or `~/.codex/codex.json` for global):
+Add the server to `.codex/config.toml` in a trusted project, or to
+`~/.codex/config.toml` for all projects. If the project was built locally:
 
-```json
-{
-  "mcpServers": {
-    "eos": {
-      "command": "node",
-      "args": [
-        "/absolute/path/to/eos-mcp-server/dist/index.js",
-        "serve",
-        "--config",
-        "/absolute/path/to/eos-mcp-server.yml"
-      ]
-    }
-  }
-}
+```toml
+[mcp_servers.eos]
+command = "node"
+args = [
+  "/absolute/path/to/eos-mcp-server/dist/index.js",
+  "serve",
+  "--config",
+  "/absolute/path/to/eos-mcp-server.yml"
+]
+env_vars = ["EOS_MCP_PASSWORD"]
 ```
 
 Or if `eos-mcp-server` is on your `PATH`:
 
-```json
-{
-  "mcpServers": {
-    "eos": {
-      "command": "eos-mcp-server",
-      "args": ["serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
-    }
-  }
-}
+```toml
+[mcp_servers.eos]
+command = "eos-mcp-server"
+args = ["serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
+env_vars = ["EOS_MCP_PASSWORD"]
 ```
+
+`serve` is optional because it is the default command, but is shown explicitly
+here for clarity. You can also add the server with:
+
+```bash
+codex mcp add eos -- eos-mcp-server serve --config /absolute/path/to/eos-mcp-server.yml
+```
+
+Then add `env_vars = ["EOS_MCP_PASSWORD"]` to the generated
+`[mcp_servers.eos]` table.
 
 ### Passing secrets to the MCP server
 
@@ -563,7 +566,9 @@ Prefer exporting secrets in the environment that launches the MCP client:
 export EOS_MCP_PASSWORD='super-secret'
 ```
 
-Some MCP clients also support per-server `env` blocks. Avoid committing secrets to client config files when possible.
+For Codex, `env_vars = ["EOS_MCP_PASSWORD"]` forwards that exported variable to
+the server. Other MCP clients may support per-server `env` blocks. Avoid
+committing secret values to client config files when possible.
 
 ## Common troubleshooting
 
