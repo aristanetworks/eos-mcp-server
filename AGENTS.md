@@ -71,6 +71,7 @@ This is a TypeScript ESM-only Node 20+ MCP server that exposes Arista EOS networ
 - `eos_get_running_config` group targets require an explicit single-line `section` string; it enters eAPI enable mode because `show running-config` requires privileged access.
 - Enable mode is opt-in on the eAPI client via `{ enable: true }` on `runShowCommands` and `runCommands`; it prepends `enable` and strips the extra response entry transparently.
 - `overallOperationTimeoutMs` aborts in-flight read eAPI requests and stops scheduling new devices.
+- eAPI requests send `version: "latest"` by default so JSON output uses the current schema; `eapiVersion: 1` in server config pins the original schema. Never hardcode the version in the client.
 - `executeReadOperation` enforces `maxResponseSizeBytes`, defaulting to 1 MB, on serialized results.
 - `eos_run_show` returns normalized `{ command, output }` pairs by default; raw eAPI payloads are opt-in via `include_raw`.
 - `eos_get_facts`, `eos_run_show`, and `eos_probe_devices` support `include_raw`, defaulting to `false`.

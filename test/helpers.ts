@@ -19,6 +19,7 @@ export function buildConfig(overrides: Partial<ResolvedServerConfig> = {}): Reso
     maxShowCommandsPerRequest: 5,
     maxLoggingMessagesPerRequest: 1000,
     maxResponseSizeBytes: 1_048_576,
+    eapiVersion: "latest",
     secretEnvPrefixes: ["EOS_MCP_"],
     defaultConnection: {},
     ...overrides
@@ -45,6 +46,7 @@ export function buildConnection(overrides: Partial<EapiConnectionConfig> = {}): 
     password: "secret",
     validateCerts: true,
     timeoutMs: 10_000,
+    eapiVersion: "latest",
     ...overrides
   };
 }

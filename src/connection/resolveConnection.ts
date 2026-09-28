@@ -63,6 +63,7 @@ export function resolveEapiConnection(
     validateCerts,
     ...(config.caFile !== undefined ? { caFile: config.caFile } : {}),
     timeoutMs: config.readTimeoutMs,
+    eapiVersion: config.eapiVersion,
     maxResponseSizeBytes: config.maxResponseSizeBytes
   };
 }
