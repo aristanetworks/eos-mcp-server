@@ -20,6 +20,28 @@ describe("loadServerConfig", () => {
     expect(config.maxLoggingMessagesPerRequest).toBe(1000);
   });
 
+  it("requests the latest eAPI output version by default", async () => {
+    const config = await loadServerConfig({ command: "serve" });
+
+    expect(config.eapiVersion).toBe("latest");
+  });
+
+  it("allows pinning the eAPI output version to 1", async () => {
+    const configPath = await writeTempConfig(["eapiVersion: 1"]);
+
+    const config = await loadServerConfig({ command: "serve", configPath });
+
+    expect(config.eapiVersion).toBe(1);
+  });
+
+  it.each(["eapiVersion: 2", 'eapiVersion: "1"'])("rejects unsupported eAPI output version (%s)", async (configLine) => {
+    const configPath = await writeTempConfig([configLine]);
+
+    await expect(loadServerConfig({ command: "serve", configPath })).rejects.toMatchObject({
+      code: "config_schema_invalid"
+    } satisfies Partial<AppError>);
+  });
+
   it("loads the logging message-count limit from config", async () => {
     const configPath = await writeTempConfig(["maxLoggingMessagesPerRequest: 250"]);
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1-beta
+
+- eAPI requests now send `version: "latest"` instead of a hardcoded `version: 1`, so JSON output uses each command's current schema (#10). This changes JSON output from `eos_run_show`, `eos_get_facts`, and `eos_probe_devices`; text output is unaffected.
+- Adds the `eapiVersion` config option (`latest` or `1`, default `latest`) to pin the original schema, and exposes it as `capabilities.eapi_version` in server info.
+
 ## 0.6.0-beta
 
 - Refactoring EapiDeviceReader to hide connection information

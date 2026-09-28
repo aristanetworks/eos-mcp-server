@@ -55,6 +55,23 @@ describe("resolveEapiConnection", () => {
     expect(connection.username).toBe("operator");
   });
 
+  it("carries the configured eAPI output version", () => {
+    setTestPasswordEnv("topsecret");
+
+    const connection = resolveEapiConnection(
+      buildConfig({
+        eapiVersion: 1,
+        defaultConnection: {
+          ansibleUser: "admin",
+          mcpPasswordEnv: "EOS_MCP_PASSWORD"
+        }
+      }),
+      buildHost()
+    );
+
+    expect(connection.eapiVersion).toBe(1);
+  });
+
   it("allows host-specific password source to override the server default password env", () => {
     setTestPasswordEnv("topsecret");
 
@@ -181,6 +198,22 @@ describe("EapiClient", () => {
     expect(body.method).toBe("runCmds");
     expect(body.params.cmds).toEqual(["show version"]);
     expect(body.params.format).toBe("json");
+  });
+
+  it("requests the connection's eAPI output version", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: [{ version: "4.32.1F" }] }),
+      text: async () => JSON.stringify({ result: [{ version: "4.32.1F" }] })
+    }));
+
+    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+
+    await client.runShowCommands(buildConnection({ eapiVersion: "latest" }), ["show version"], "json");
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
+    expect(body.params.version).toBe("latest");
   });
 
   it("throws when EOS returns a JSON-RPC error payload", async () => {

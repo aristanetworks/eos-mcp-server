@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const eapiVersionSchema = z.union([z.literal(1), z.literal("latest")]);
+
 export const serverConfigFileSchema = z
   .object({
     version: z.literal(1).optional(),
@@ -14,6 +16,7 @@ export const serverConfigFileSchema = z
     maxShowCommandsPerRequest: z.number().int().positive().optional(),
     maxLoggingMessagesPerRequest: z.number().int().positive().max(9999).optional(),
     maxResponseSizeBytes: z.number().int().positive().optional(),
+    eapiVersion: eapiVersionSchema.optional(),
     secretEnvPrefixes: z.array(z.string().min(1)).optional(),
     defaultConnection: z
       .object({
@@ -40,6 +43,7 @@ export const resolvedServerConfigSchema = z
     maxShowCommandsPerRequest: z.number().int().positive().default(5),
     maxLoggingMessagesPerRequest: z.number().int().positive().max(9999).default(1000),
     maxResponseSizeBytes: z.number().int().positive().default(1_048_576),
+    eapiVersion: eapiVersionSchema.default("latest"),
     secretEnvPrefixes: z.array(z.string().min(1)).default(["EOS_MCP_"]),
     defaultConnection: z
       .object({

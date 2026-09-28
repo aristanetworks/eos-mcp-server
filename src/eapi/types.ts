@@ -3,6 +3,7 @@ import { isObject } from "../utils/value.js";
 
 export type EapiOutputFormat = "json" | "text";
 export type EapiOutputMode = EapiOutputFormat | "auto";
+export type EapiVersion = 1 | "latest";
 
 export interface EapiConnectionConfig {
   inventoryHostname: string;
@@ -13,6 +14,7 @@ export interface EapiConnectionConfig {
   validateCerts: boolean;
   caFile?: string;
   timeoutMs: number;
+  eapiVersion: EapiVersion;
   maxResponseSizeBytes?: number;
 }
 
@@ -69,7 +71,7 @@ export interface EapiJsonRpcRequest {
   jsonrpc: "2.0";
   method: "runCmds";
   params: {
-    version: 1;
+    version: EapiVersion;
     cmds: string[];
     format: EapiOutputFormat;
   };

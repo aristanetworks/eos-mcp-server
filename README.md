@@ -112,6 +112,7 @@ maxReadTargets: 50
 maxShowCommandsPerRequest: 5
 maxLoggingMessagesPerRequest: 1000
 maxResponseSizeBytes: 1048576
+eapiVersion: latest
 secretEnvPrefixes:
   - EOS_MCP_
 defaultConnection:
@@ -132,13 +133,14 @@ Supported config fields:
 - `maxShowCommandsPerRequest`
 - `maxLoggingMessagesPerRequest`
 - `maxResponseSizeBytes`
+- `eapiVersion`
 - `secretEnvPrefixes`
 - `defaultConnection.ansibleUser`
 - `defaultConnection.ansibleHttpapiPort`
 - `defaultConnection.mcpValidateCerts`
 - `defaultConnection.mcpPasswordEnv`
 
-`readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized read-tool result.
+`readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized read-tool result. `eapiVersion` selects the eAPI JSON output schema sent as the `runCmds` `version` parameter: `latest` (the default) returns the current schema for each command, and `1` pins the original schema for consumers that depend on it. It only affects JSON output, so `eos_get_running_config` and `eos_show_logging` are unchanged.
 
 `defaultConnection.mcpPasswordEnv` is a fallback password source. A host or inherited inventory value for `mcp_password_env` or `ansible_password` overrides it. Setting both `mcp_password_env` and `ansible_password` for the same host remains invalid.
 

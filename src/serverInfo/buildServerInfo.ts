@@ -22,7 +22,8 @@ export function buildServerInfo(context: ServerRuntimeContext): ServerInfo {
     capabilities: {
       tool_prefix: "eos_",
       supported_inventory_schemas: ["canonical-ansible-yaml", "simplified-yaml"],
-      output_modes: ["auto", "json", "text"]
+      output_modes: ["auto", "json", "text"],
+      eapi_version: context.config.eapiVersion
     },
     limits: {
       read_timeout_ms: context.config.readTimeoutMs,

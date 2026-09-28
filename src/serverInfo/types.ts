@@ -1,4 +1,5 @@
 import type { ResolvedServerConfig } from "../config/schema.js";
+import type { EapiVersion } from "../eapi/types.js";
 import type { InventorySummary } from "../inventory/types.js";
 
 export interface ServerRuntimeContext {
@@ -26,6 +27,7 @@ export interface ServerInfo {
     tool_prefix: "eos_";
     supported_inventory_schemas: string[];
     output_modes: Array<"auto" | "json" | "text">;
+    eapi_version: EapiVersion;
   };
   limits: {
     read_timeout_ms: number;

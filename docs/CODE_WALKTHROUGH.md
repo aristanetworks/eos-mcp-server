@@ -41,7 +41,7 @@ Supporting inventory modules:
 
 ## Connection And eAPI
 
-Connection resolution is in `src/connection/resolveConnection.ts`. It turns effective host vars plus server config into an eAPI connection: endpoint, username, password, TLS flags, CA file, timeout, and response-size limit.
+Connection resolution is in `src/connection/resolveConnection.ts`. It turns effective host vars plus server config into an eAPI connection: endpoint, username, password, TLS flags, CA file, timeout, eAPI output version, and response-size limit.
 
 `src/connection/eosDeviceReader.ts` defines the host-oriented `EosDeviceReader` interface. Its `EapiDeviceReader` adapter owns per-host connection resolution and delegates command execution to the low-level eAPI runner.
 
@@ -49,7 +49,7 @@ Startup credential validation is in `src/connection/validateStartupConnections.t
 
 eAPI protocol and transport are split:
 
-- `src/eapi/client.ts`: builds JSON-RPC `runCmds` requests, handles HTTP errors, invalid JSON, JSON-RPC errors, and unexpected result counts. Supports opt-in enable mode (`{ enable: true }`) for privileged commands by prepending `enable` to the wire commands and stripping the extra result entry transparently. Per-request timeout and caller cancellation are combined with `AbortSignal`.
+- `src/eapi/client.ts`: builds JSON-RPC `runCmds` requests using the connection's `eapiVersion` (`"latest"` by default, `1` when pinned in config), handles HTTP errors, invalid JSON, JSON-RPC errors, and unexpected result counts. Supports opt-in enable mode (`{ enable: true }`) for privileged commands by prepending `enable` to the wire commands and stripping the extra result entry transparently. Per-request timeout and caller cancellation are combined with `AbortSignal`.
 - `src/eapi/transport.ts`: production HTTPS transport and test-friendly fetch transport. The production transport enforces `maxResponseSizeBytes` while chunks are received, before buffering an oversized device response.
 - `src/eapi/types.ts`: shared eAPI types, the low-level `EosCommandRunner` interface used by `EapiDeviceReader`, `EapiCommandOptions`, and helpers for validating/drilling into eAPI JSON-RPC response payloads.
 

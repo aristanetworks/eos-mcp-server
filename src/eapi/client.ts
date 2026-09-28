@@ -63,7 +63,7 @@ export class EapiClient {
       jsonrpc: "2.0",
       method: "runCmds",
       params: {
-        version: 1,
+        version: connection.eapiVersion,
         cmds: wireCommands,
         format
       },

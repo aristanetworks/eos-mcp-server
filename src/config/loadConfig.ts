@@ -41,6 +41,7 @@ export async function loadServerConfig(options: CliOptions): Promise<ResolvedSer
     maxShowCommandsPerRequest: fileConfig.maxShowCommandsPerRequest,
     maxLoggingMessagesPerRequest: fileConfig.maxLoggingMessagesPerRequest,
     maxResponseSizeBytes: fileConfig.maxResponseSizeBytes,
+    eapiVersion: fileConfig.eapiVersion,
     secretEnvPrefixes: fileConfig.secretEnvPrefixes,
     defaultConnection: fileConfig.defaultConnection
   };
