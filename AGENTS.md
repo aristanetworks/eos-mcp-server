@@ -82,8 +82,7 @@ Read-only tools are implemented and tested. The product boundary is permanent: c
 
 ## Documentation
 
-- `docs/design-overview.md` - design overview for evaluators
-- `docs/DESIGN.md` - detailed design specification
+- `docs/DESIGN.md` - design and specification overview
 - `docs/IMPLEMENTATION_PLAN.md` - implemented scope and maintenance priorities
 - `docs/CHECKPOINT.md` - current implementation status
 - `docs/CODE_WALKTHROUGH.md` - source layout and module guide

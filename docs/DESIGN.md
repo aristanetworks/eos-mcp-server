@@ -2,17 +2,21 @@
 
 ## Scope
 
-EOS MCP Server is an ESM TypeScript MCP server for Arista EOS eAPI. It runs over stdio and is permanently read-only. The implementation exposes operational inspection and diagnostics only.
+EOS MCP Server is an ESM TypeScript MCP server that provides inventory-scoped, read-only access to Arista EOS devices over eAPI (HTTPS). It runs over stdio MCP transport and is permanently read-only: the implementation exposes operational inspection and diagnostics only, and never exposes configuration-changing operations.
 
-## Supported capabilities
+## Tool surface
 
-- Load and validate one inventory at startup.
-- Inspect server metadata and the sanitized inventory view.
-- Probe device readiness.
-- Execute validated single-line EOS `show` commands.
-- Retrieve bounded logging output.
-- Collect fixed device facts.
-- Retrieve running configuration, with a required section selector for groups.
+| Tool | Purpose |
+| --- | --- |
+| `eos_get_server_info` | Sanitized runtime, limits, and inventory summary |
+| `eos_list_inventory` | Eligible hosts and groups |
+| `eos_probe_devices` | Connectivity, authentication, and harmless command check |
+| `eos_run_show` | Validated single-line `show` commands |
+| `eos_show_logging` | Bounded logging retrieval |
+| `eos_get_facts` | Fixed device facts |
+| `eos_get_running_config` | Running configuration retrieval, with a required section selector for groups |
+
+Local CLI commands provide inventory validation, server-info output, and probing.
 
 ## Target boundary
 
@@ -26,7 +30,7 @@ EOS MCP Server is an ESM TypeScript MCP server for Arista EOS eAPI. It runs over
 
 Canonical Ansible-style YAML and simplified YAML are supported. Structural keys are strict; arbitrary variables remain permitted. EOS eligibility requires `ansible_network_os: eos` or `mcp_platform: arista_eos`; conflicting declarations fail validation.
 
-`mcp_read_allowed` defaults to `true` for eligible EOS hosts and follows inherited inventory variable precedence. Operational requests fail closed when any resolved host is ineligible or read-denied. The inventory is the only policy source.
+`mcp_read_allowed` defaults to `true` for eligible EOS hosts and follows inherited inventory variable precedence. Operational requests fail closed when any resolved host is ineligible or read-denied — a mixed or ineligible target fails as a whole, and devices are never silently skipped. The inventory is the only policy source.
 
 ## Connection security
 

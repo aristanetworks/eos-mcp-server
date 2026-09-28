@@ -36,10 +36,10 @@ The server is a test-backed, read-only MCP service for Arista EOS eAPI. The prod
 
 ## Re-entry reading
 
-1. `README.md` for operator usage.
-2. `docs/DESIGN.md` for the authoritative specification.
-3. `docs/CODE_WALKTHROUGH.md` for source navigation.
-4. `src/operations/readExecution.ts` for shared device operation controls.
+1. [`README.md`](../README.md) for operator usage.
+2. [`docs/DESIGN.md`](DESIGN.md) for the authoritative specification.
+3. [`docs/CODE_WALKTHROUGH.md`](CODE_WALKTHROUGH.md) for source navigation.
+4. [`src/operations/readExecution.ts`](../src/operations/readExecution.ts) for shared device operation controls.
 
 ## Validation
 

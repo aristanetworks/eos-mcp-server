@@ -21,20 +21,21 @@ Execution starts at `src/index.ts`. It parses CLI args, loads config, then dispa
 - `print-server-info`: print sanitized server metadata.
 - `probe`: run the same probe logic as the MCP probe tool.
 
-CLI parsing lives in `src/cli.ts`. The app name and version are read from `package.json` at runtime via `src/core/version.ts`.
+CLI parsing lives in `src/cli.ts`. The app name and version are read from `package.json` at runtime via `src/core/version.ts`. Shared error handling lives in `src/core/errors.ts`, which defines `AppError` and the stable machine-readable error codes used across the CLI and MCP layers.
 
 ## Config And Inventory
 
 Config loading is in `src/config/loadConfig.ts`, with Zod schemas in `src/config/schema.ts`. It merges optional config-file values with CLI overrides and resolves paths.
 
-Inventory parsing and modeling is in `src/inventory/loadInventory.ts`. It supports simplified YAML and canonical Ansible-style YAML, validates structure, builds effective host vars, resolves groups, and produces an `InventoryModel`.
+`src/inventory/loadInventory.ts` orchestrates inventory loading. It supports simplified YAML and canonical Ansible-style YAML by delegating to a pipeline: parsing (`src/inventory/parse.ts`), schema detection and normalization (`src/inventory/normalize.ts`), structural and variable-type validation (`src/inventory/validateNormalized.ts`, `src/inventory/varValidation.ts`), and model construction (`src/inventory/buildModel.ts`). Together these validate structure, build effective host vars, resolve groups, and produce an `InventoryModel`.
 
 Supporting inventory modules:
 
-- `src/inventory/types.ts`: inventory model types.
+- `src/inventory/types.ts`: public inventory model types.
+- `src/inventory/internalTypes.ts` / `src/inventory/internalUtils.ts`: shared types and helpers used across the parsing/normalization/validation pipeline.
 - `src/inventory/effectiveVars.ts`: global/group/host variable inheritance and same-depth conflict handling.
 - `src/inventory/graph.ts`: group parent maps, group depths, host lineage, direct memberships, and resolved group hosts.
-- `src/inventory/policy.ts`: EOS eligibility and read access evaluation.
+- `src/inventory/policy.ts`: EOS eligibility and read access evaluation, including the `mcp_read_allowed` fail-closed check.
 - `src/inventory/resolveTarget.ts`: host/group target resolution and policy fail-closed checks.
 - `src/inventory/listInventoryView.ts`: sanitized inventory view for MCP output.
 
@@ -100,9 +101,12 @@ Local CLI commands live in `src/commands/`:
 
 Tests mirror the source layout:
 
+- CLI and config: `cli.test.ts`, `loadConfig.test.ts`, `validateInventoryCommand.test.ts`
 - Inventory and target behavior: `inventory.test.ts`, `targetResolution.test.ts`
-- eAPI and connection behavior: `eapiClient.test.ts`, `startupValidation.test.ts`
-- Read services: `probeDevices.test.ts`, `runShow.test.ts`, `loggingQuery.test.ts`, `showLogging.test.ts`, `getFacts.test.ts`, `getRunningConfig.test.ts`
+- eAPI and connection behavior: `eapiClient.test.ts`, `eosDeviceReader.test.ts`, `startupValidation.test.ts`, `responseSize.test.ts`
+- Read services and orchestration: `probeDevices.test.ts`, `runShow.test.ts`, `loggingQuery.test.ts`, `showLogging.test.ts`, `getFacts.test.ts`, `getRunningConfig.test.ts`, `readExecution.test.ts`
+- Server info and errors: `buildServerInfo.test.ts`, `errors.test.ts`, `errorTaxonomy.test.ts`
 - MCP adapters and stdio: `readToolsMcp.test.ts`, `probeDevicesTool.test.ts`, `listInventoryTool.test.ts`, `mcpStdioSmoke.test.ts`
-- Package/static policy: `packagePolicy.test.ts`
+- Package/static policy: `packagePolicy.test.ts`, `packageSmoke.test.ts`
+- Optional cEOS integration (requires a configured lab): `integration.test.ts`
 - Shared test helpers: `test/helpers.ts`

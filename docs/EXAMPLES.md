@@ -2,13 +2,15 @@
 
 These examples show how to interact with the EOS MCP server through Claude. All examples are drawn from a real cEOSLab testlab session.
 
+This assumes `eos-mcp-server` is already installed and you have an inventory file — see [Install and get started](../README.md#install-and-get-started) or the [Quickstart](QUICKSTART.md) if not.
+
 ---
 
 ## Setup
 
 ### Add the MCP server from `.mcp.json`
 
-Place a `.mcp.json` file in your project directory — Claude Code auto-discovers it without any import command:
+As an alternative to `claude mcp add` (see the README's [Connect to an MCP client](../README.md#connect-to-an-mcp-client)), place a `.mcp.json` file in your project directory — Claude Code auto-discovers it without any import command:
 
 ```json
 {

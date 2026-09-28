@@ -1,11 +1,11 @@
 # eos-mcp-server BETA
 
-**Note: this project is currently in BETA**
-**Note: Support for this open sourced project is _best effort_, it is not currently supported by Arista TAC**
-
 Read-only MCP server for Arista EOS eAPI (JSON-RPC over HTTPS).
 
-This server provides a set of **read-only** tools. The server can:
+> **Beta status:** this project is under active development.
+> **Support:** best-effort only. This open source project is not currently supported by Arista TAC.
+
+This server provides a set of **read-only** tools. It never exposes configuration-changing operations. The server can:
 
 - introspect its own runtime and inventory
 - list inventory hosts/groups
@@ -15,11 +15,24 @@ This server provides a set of **read-only** tools. The server can:
 - collect a fixed set of device facts
 - retrieve running configuration
 
-It never exposes configuration-changing operations.
+> **Security note:** LLMs have occasionally tried to bypass the MCP server and make configuration changes through other means (for example, SSH). As a best practice, use AAA and scope the authentication credentials used by this server to read-only access.
 
-Please be cautious when prompting, there have been occasions where the LLM will go around the MCP server and try to find a way to make config changes through other means. As a best practice, use AAA and restrict the access of the authentication used.
+## Contents
 
-## Current status
+- [What's included](#whats-included)
+- [Requirements](#requirements)
+- [Install and get started](#install-and-get-started)
+- [Server config file](#server-config-file)
+- [Connect to an MCP client](#connect-to-an-mcp-client)
+- [CLI usage](#cli-usage)
+- [MCP tool reference](#mcp-tool-reference)
+- [Inventory formats](#inventory-formats)
+- [Connection and authentication](#connection-and-authentication)
+- [TLS behavior](#tls-behavior)
+- [Common troubleshooting](#common-troubleshooting)
+- [EOS version compatibility](#eos-version-compatibility)
+
+## What's included
 
 Implemented MCP tools:
 
@@ -42,7 +55,7 @@ Implemented local CLI commands:
 
 - Node.js 24+
 - Arista EOS devices reachable via eAPI over HTTPS
-- EOS 4.20 or later (read-path tested against cEOS 4.34.3M)
+- EOS 4.20 or later
 - Inventory in one of the supported YAML formats
 
 ## Install and get started
@@ -75,11 +88,162 @@ eos-mcp-server validate-inventory --inventory inventory.yml
 eos-mcp-server probe --inventory inventory.yml --target leaf1
 ```
 
-See [Quickstart: eos-mcp-server with Claude Code](docs/QUICKSTART.md) for a complete inventory example and MCP client setup. For building or contributing from source, see the [developer workflow](docs/DEVELOPMENT.md).
+See [Quickstart](docs/QUICKSTART.md) for a complete inventory example and MCP client setup. For building or contributing from source, see the [developer workflow](docs/DEVELOPMENT.md).
+
+## Server config file
+
+The server needs an inventory to start. At minimum, provide one of:
+
+- `--inventory <path>` directly, or
+- `--config <path>` pointing at a YAML config file that itself sets `inventory: <path>`
+
+Beyond that minimum, a config file is optional — use one when you want to set additional options such as timeouts, request limits, or a default connection. CLI flags always override config-file values.
+
+Example:
+
+```yaml
+version: 1
+inventory: ./inventory.yml
+actor: lab-user
+readTimeoutMs: 10000
+overallOperationTimeoutMs: 30000
+deviceConcurrency: 5
+maxReadTargets: 50
+maxShowCommandsPerRequest: 5
+maxLoggingMessagesPerRequest: 1000
+maxResponseSizeBytes: 1048576
+secretEnvPrefixes:
+  - EOS_MCP_
+defaultConnection:
+  ansibleUser: admin
+  mcpPasswordEnv: EOS_MCP_PASSWORD
+  mcpValidateCerts: false
+```
+
+Supported config fields:
+
+- `inventory`
+- `actor`
+- `caFile`
+- `readTimeoutMs`
+- `overallOperationTimeoutMs`
+- `deviceConcurrency`
+- `maxReadTargets`
+- `maxShowCommandsPerRequest`
+- `maxLoggingMessagesPerRequest`
+- `maxResponseSizeBytes`
+- `secretEnvPrefixes`
+- `defaultConnection.ansibleUser`
+- `defaultConnection.ansibleHttpapiPort`
+- `defaultConnection.mcpValidateCerts`
+- `defaultConnection.mcpPasswordEnv`
+
+`readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized read-tool result.
+
+`defaultConnection.mcpPasswordEnv` is a fallback password source. A host or inherited inventory value for `mcp_password_env` or `ansible_password` overrides it. Setting both `mcp_password_env` and `ansible_password` for the same host remains invalid.
+
+## Connect to an MCP client
+
+These examples assume you've already installed `eos-mcp-server` per [Install and get started](#install-and-get-started) above, and have an inventory file (and optionally a [server config file](#server-config-file)) ready.
+
+### Generic stdio example
+
+If `eos-mcp-server` is installed on your `PATH`, point it at just an inventory file:
+
+```json
+{
+  "mcpServers": {
+    "eos": {
+      "command": "eos-mcp-server",
+      "args": ["serve", "--inventory", "/absolute/path/to/inventory.yml"]
+    }
+  }
+}
+```
+
+Or use a [server config file](#server-config-file) if you want to set additional options:
+
+```json
+{
+  "mcpServers": {
+    "eos": {
+      "command": "eos-mcp-server",
+      "args": ["serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
+    }
+  }
+}
+```
+
+If you built the project locally instead of installing the package, replace `"command": "eos-mcp-server"` with `"command": "node"` and put `/absolute/path/to/eos-mcp-server/dist/index.js` first in `args`.
+
+### Claude Code
+
+With just an inventory file:
+
+```bash
+claude mcp add eos -- eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
+```
+
+Or with a [server config file](#server-config-file) for additional options:
+
+```bash
+claude mcp add eos -- eos-mcp-server serve --config /absolute/path/to/eos-mcp-server.yml
+```
+
+Add `-s user` before `eos` in either command to make the server available across all your projects instead of just the current one:
+
+```bash
+claude mcp add -s user eos -- eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
+```
+
+### Codex
+
+Add the server to `.codex/config.toml` in a trusted project, or to
+`~/.codex/config.toml` for all projects.
+
+With just an inventory file:
+
+```toml
+[mcp_servers.eos]
+command = "eos-mcp-server"
+args = ["serve", "--inventory", "/absolute/path/to/inventory.yml"]
+env_vars = ["EOS_MCP_PASSWORD"]
+```
+
+Or with a [server config file](#server-config-file) for additional options:
+
+```toml
+[mcp_servers.eos]
+command = "eos-mcp-server"
+args = ["serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
+env_vars = ["EOS_MCP_PASSWORD"]
+```
+
+`serve` is optional because it is the default command, but is shown explicitly
+here for clarity. You can also add the server with:
+
+```bash
+codex mcp add eos -- eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
+```
+
+Then add `env_vars = ["EOS_MCP_PASSWORD"]` to the generated
+`[mcp_servers.eos]` table.
+
+### Passing secrets to the MCP server
+
+Prefer exporting secrets in the environment that launches the MCP client:
+
+```bash
+export EOS_MCP_PASSWORD='super-secret'
+```
+
+For Codex, `env_vars = ["EOS_MCP_PASSWORD"]` forwards that exported variable to
+the server. Other MCP clients may support per-server `env` blocks. Avoid
+committing secret values to client config files when possible.
 
 ## Inventory formats
 
-The server supports exactly one inventory file loaded at startup. The inventory is not watched for changes — to pick up inventory edits, restart the server. Most MCP clients will do this automatically when you restart the client or re-launch the MCP connection. For Claude code quitting and starting a new session will work.
+The server supports exactly one inventory file loaded at startup. The inventory is not watched for changes — to pick up inventory edits, restart the server. Most MCP clients will do this automatically when you restart the client or re-launch the MCP connection.
 
 Supported formats:
 
@@ -157,6 +321,7 @@ still using their individual credentials.
 - EOS eligibility comes from either:
   - `ansible_network_os: eos`
   - `mcp_platform: arista_eos`
+- `mcp_read_allowed` defaults to `true` for eligible EOS hosts. Set it to `false` — inherited like any other variable — to explicitly deny read access to a host or group.
 - Read operations fail closed if the resolved target contains ineligible or read-denied hosts.
 
 ## Connection and authentication
@@ -237,71 +402,17 @@ inventory: inventory.yml
 caFile: /path/to/ca.pem
 ```
 
-## Server config file
-
-A YAML config file is optional.
-
-CLI flags override config-file values.
-
-Example:
-
-```yaml
-version: 1
-inventory: ./inventory.yml
-actor: lab-user
-readTimeoutMs: 10000
-overallOperationTimeoutMs: 30000
-deviceConcurrency: 5
-maxReadTargets: 50
-maxShowCommandsPerRequest: 5
-maxLoggingMessagesPerRequest: 1000
-maxResponseSizeBytes: 1048576
-secretEnvPrefixes:
-  - EOS_MCP_
-defaultConnection:
-  ansibleUser: admin
-  mcpPasswordEnv: EOS_MCP_PASSWORD
-  mcpValidateCerts: false
-```
-
-Supported config fields:
-
-- `inventory`
-- `actor`
-- `caFile`
-- `readTimeoutMs`
-- `overallOperationTimeoutMs`
-- `deviceConcurrency`
-- `maxReadTargets`
-- `maxShowCommandsPerRequest`
-- `maxLoggingMessagesPerRequest`
-- `maxResponseSizeBytes`
-- `secretEnvPrefixes`
-- `defaultConnection.ansibleUser`
-- `defaultConnection.ansibleHttpapiPort`
-- `defaultConnection.mcpValidateCerts`
-- `defaultConnection.mcpPasswordEnv`
-
-`readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized read-tool result.
-
-`defaultConnection.mcpPasswordEnv` is a fallback password source. A host or inherited inventory value for `mcp_password_env` or `ansible_password` overrides it. Setting both `mcp_password_env` and `ansible_password` for the same host remains invalid.
-
 ## CLI usage
 
 If no subcommand is provided, the CLI defaults to `serve`.
-
-```bash
-node dist/index.js --version
-node dist/index.js --help
-```
 
 ### `serve`
 
 Start the MCP server over stdio.
 
 ```bash
-node dist/index.js serve --inventory inventory.yml
-node dist/index.js serve --config eos-mcp-server.yml
+eos-mcp-server serve --inventory inventory.yml
+eos-mcp-server serve --config eos-mcp-server.yml
 ```
 
 On startup, `serve` loads the inventory and validates startup connection requirements for EOS-eligible hosts.
@@ -318,20 +429,13 @@ Default behavior performs:
 
 Use `--inventory-only` to skip the startup connection checks.
 
-```bash
-node dist/index.js validate-inventory --inventory inventory.yml
-node dist/index.js validate-inventory --inventory inventory.yml --json
-node dist/index.js validate-inventory --inventory inventory.yml --inventory-only
-node dist/index.js validate-inventory --config eos-mcp-server.yml
-```
-
 ### `print-server-info`
 
 Print the server's sanitized runtime/config summary.
 
 ```bash
-node dist/index.js print-server-info --inventory inventory.yml
-node dist/index.js print-server-info --config eos-mcp-server.yml --json
+eos-mcp-server print-server-info --inventory inventory.yml
+eos-mcp-server print-server-info --config eos-mcp-server.yml --json
 ```
 
 ### `probe`
@@ -339,8 +443,8 @@ node dist/index.js print-server-info --config eos-mcp-server.yml --json
 Probe a host or group target using the same logic as the MCP tool.
 
 ```bash
-node dist/index.js probe --inventory inventory.yml --target leaf1
-node dist/index.js probe --inventory inventory.yml --target leafs --json
+eos-mcp-server probe --inventory inventory.yml --target leaf1
+eos-mcp-server probe --inventory inventory.yml --target leafs --json
 ```
 
 Human-readable example output:
@@ -467,109 +571,6 @@ Input examples:
 }
 ```
 
-## MCP client setup examples
-
-### Generic stdio example
-
-If you built the project locally:
-
-```json
-{
-  "mcpServers": {
-    "eos": {
-      "command": "node",
-      "args": [
-        "/absolute/path/to/eos-mcp-server/dist/index.js",
-        "serve",
-        "--config",
-        "/absolute/path/to/eos-mcp-server.yml"
-      ]
-    }
-  }
-}
-```
-
-If `eos-mcp-server` is installed on your `PATH`:
-
-```json
-{
-  "mcpServers": {
-    "eos": {
-      "command": "eos-mcp-server",
-      "args": ["serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
-    }
-  }
-}
-```
-
-### Claude Code
-
-Add the server to your project scope using the CLI:
-
-```bash
-claude mcp add eos -- node /absolute/path/to/eos-mcp-server/dist/index.js serve --config /absolute/path/to/eos-mcp-server.yml
-```
-
-Or if `eos-mcp-server` is on your `PATH`:
-
-```bash
-claude mcp add eos -- eos-mcp-server serve --config /absolute/path/to/eos-mcp-server.yml
-```
-
-Use `-s user` to install for all projects instead of just the current one:
-
-```bash
-claude mcp add -s user eos -- node /absolute/path/to/eos-mcp-server/dist/index.js serve --config /absolute/path/to/eos-mcp-server.yml
-```
-
-### Codex
-
-Add the server to `.codex/config.toml` in a trusted project, or to
-`~/.codex/config.toml` for all projects. If the project was built locally:
-
-```toml
-[mcp_servers.eos]
-command = "node"
-args = [
-  "/absolute/path/to/eos-mcp-server/dist/index.js",
-  "serve",
-  "--config",
-  "/absolute/path/to/eos-mcp-server.yml"
-]
-env_vars = ["EOS_MCP_PASSWORD"]
-```
-
-Or if `eos-mcp-server` is on your `PATH`:
-
-```toml
-[mcp_servers.eos]
-command = "eos-mcp-server"
-args = ["serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
-env_vars = ["EOS_MCP_PASSWORD"]
-```
-
-`serve` is optional because it is the default command, but is shown explicitly
-here for clarity. You can also add the server with:
-
-```bash
-codex mcp add eos -- eos-mcp-server serve --config /absolute/path/to/eos-mcp-server.yml
-```
-
-Then add `env_vars = ["EOS_MCP_PASSWORD"]` to the generated
-`[mcp_servers.eos]` table.
-
-### Passing secrets to the MCP server
-
-Prefer exporting secrets in the environment that launches the MCP client:
-
-```bash
-export EOS_MCP_PASSWORD='super-secret'
-```
-
-For Codex, `env_vars = ["EOS_MCP_PASSWORD"]` forwards that exported variable to
-the server. Other MCP clients may support per-server `env` blocks. Avoid
-committing secret values to client config files when possible.
-
 ## Common troubleshooting
 
 ### `Password env var ... does not match any allowed prefix`
@@ -611,16 +612,14 @@ Example:
 
 ```
 eos-mcp-server probe --inventory clab/clab-testlab/ansible-inventory.yml --target clab-testlab-node1-1
-Policy denied: target clab-testlab-node1-1 includes host(s) not permitted for read: clab-testlab-node1-1
+Policy denied: target clab-testlab-node1-1 includes host(s) not permitted for read operations: clab-testlab-node1-1
 ```
 
-You need to specify that the devices are marked as `ansible_network_os=eos` in your inventory.
+This means the target resolved to at least one host that is either not marked as EOS eligible (`ansible_network_os: eos` or `mcp_platform: arista_eos`) or has `mcp_read_allowed: false` set.
 
 ## EOS version compatibility
 
-The read-path tools have been validated against cEOS 4.34.3M. The minimum supported EOS version for read operations is 4.20, which is when eAPI JSON-RPC became stable and `show` commands reliably produce structured JSON output.
-
-Older EOS versions may work for basic `show` commands but are not tested. The `auto` output format falls back to text when JSON output is unavailable, so most read operations will still function on older releases.
+The read-path tools have been validated against EOS 4.34.3M. The minimum supported EOS version for read operations is 4.20, which is when eAPI JSON-RPC became stable and `show` commands reliably produce structured JSON output.
 
 ## Design notes
 

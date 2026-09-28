@@ -12,7 +12,7 @@ This guide gets you from a `.tgz` package to a working MCP server inside Claude 
 ## 1. Install the package globally
 
 ```bash
-npm install -g eos-mcp-server-<version>.tgz
+npm install -g ./eos-mcp-server-<version>.tgz
 ```
 
 Verify it's on your PATH:
@@ -88,6 +88,8 @@ claude mcp add eos -- eos-mcp-server serve --inventory /absolute/path/to/invento
 
 Use absolute paths for the inventory file since Claude Code may launch the server from any working directory.
 
+For additional options such as timeouts, request limits, or a default connection, use a [server config file](../README.md#server-config-file) instead and point `--config` at it.
+
 To make it available across all your projects, add `-s user`:
 
 ```bash
@@ -144,8 +146,8 @@ Once connected, Claude Code has access to these tools:
 
 **`Password env var ... does not match any allowed prefix`** — The env var name must start with `EOS_MCP_` by default. Use a name like `EOS_MCP_PASSWORD`, not the password itself.
 
-**Certificate validation failure** — Add `mcp_validate_certs: false` (or `ansible_httpapi_validate_certs: false`) to your inventory vars, or point to a CA bundle with `caFile` in a server config file.
+**Certificate validation failure** — For a lab device, add `mcp_validate_certs: false` (or `ansible_httpapi_validate_certs: false`) to your inventory vars. To trust a real CA instead, set `caFile` in a [server config file](../README.md#server-config-file). See [TLS behavior](../README.md#tls-behavior) for details.
 
 **`Unknown inventory target ...`** — Targets must be inventory host or group names (e.g., `leaf1`), not IP addresses.
 
-See the full [README](README.md) for detailed configuration options.
+See the full [README](../README.md) for detailed configuration options.
