@@ -1,5 +1,5 @@
 {
-  "name": "eos-mcp-server",
+  "name": "@aristanetworks/eos-mcp-server",
   "version": "0.6.1-beta",
   "description": "MCP server for Arista EOS eAPI",
   "license": "Apache-2.0",
@@ -28,6 +28,9 @@
     "example-inventories",
     "CHANGELOG.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",

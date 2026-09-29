@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Publishes the package to npm as `@aristanetworks/eos-mcp-server` (#14). The installed command is still `eos-mcp-server`. The release workflow publishes through npm trusted publishing, and prerelease tags go to the `next` dist-tag. The release tarball is now named `aristanetworks-eos-mcp-server-<version>.tgz`.
+- Upgrading from a `.tgz` install: run `npm uninstall -g eos-mcp-server` before `npm install -g @aristanetworks/eos-mcp-server`. Both packages provide the same `eos-mcp-server` command.
+
 ## 0.6.1-beta
 
 - eAPI requests now send `version: "latest"` instead of a hardcoded `version: 1`, so JSON output uses each command's current schema (#10). This changes JSON output from `eos_run_show`, `eos_get_facts`, and `eos_probe_devices`; text output is unaffected.

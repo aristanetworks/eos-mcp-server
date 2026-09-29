@@ -30,7 +30,7 @@ clean:
 
 pack: clean
 	npm pack
-	@echo "Packaged eos-mcp-server-$(VERSION).tgz"
+	@echo "Packaged aristanetworks-eos-mcp-server-$(VERSION).tgz"
 
 install:
-	npm install -g ./eos-mcp-server-$(VERSION).tgz
+	npm install -g ./aristanetworks-eos-mcp-server-$(VERSION).tgz

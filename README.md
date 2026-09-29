@@ -60,14 +60,15 @@ Implemented local CLI commands:
 
 ## Install and get started
 
-1. Download the `eos-mcp-server-<version>.tgz` asset from the [latest GitHub release](https://github.com/aristanetworks/eos-mcp-server/releases/latest).
-2. Install the downloaded package globally. Replace the filename with the release you downloaded:
+1. Install the package globally from npm:
 
    ```bash
-   npm install -g ./eos-mcp-server-<version>.tgz
+   npm install -g @aristanetworks/eos-mcp-server
    ```
 
-3. Confirm that the command is available:
+   Prereleases are published under the `next` tag (`npm install -g @aristanetworks/eos-mcp-server@next`). Each [GitHub release](https://github.com/aristanetworks/eos-mcp-server/releases) also attaches the package as a `.tgz`, which you can install with `npm install -g ./aristanetworks-eos-mcp-server-<version>.tgz`.
+
+2. Confirm that the command is available:
 
    ```bash
    eos-mcp-server --help
@@ -76,7 +77,16 @@ Implemented local CLI commands:
 The global install places `eos-mcp-server` on your `PATH`. To remove it later:
 
 ```bash
+npm uninstall -g @aristanetworks/eos-mcp-server
+```
+
+### Upgrading from a `.tgz` install
+
+Versions up to 0.6.1-beta were distributed as `.tgz` files under the unscoped package name `eos-mcp-server`. Both packages provide the same `eos-mcp-server` command, so remove the old one before installing from npm. Otherwise the install can fail with a conflict, or the old version keeps running:
+
+```bash
 npm uninstall -g eos-mcp-server
+npm install -g @aristanetworks/eos-mcp-server
 ```
 
 Next, create an inventory, provide the device password, and validate connectivity:

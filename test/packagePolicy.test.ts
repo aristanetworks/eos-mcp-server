@@ -2,7 +2,12 @@ import fs from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 interface PackageJson {
+  name?: string;
   version?: string;
+  bin?: Record<string, string>;
+  publishConfig?: {
+    access?: string;
+  };
   scripts?: Record<string, string>;
   files?: string[];
   repository?: {
@@ -78,6 +83,14 @@ describe("package policy", () => {
     expect(packageJson.repository?.url).toContain("github.com/aristanetworks/eos-mcp-server");
     expect(packageJson.bugs?.url).toContain("github.com/aristanetworks/eos-mcp-server/issues");
     expect(packageJson.homepage).toContain("github.com/aristanetworks/eos-mcp-server");
+  });
+
+  it("publishes publicly under the aristanetworks npm scope", async () => {
+    const packageJson = await readPackageJson();
+
+    expect(packageJson.name).toBe("@aristanetworks/eos-mcp-server");
+    expect(packageJson.bin).toEqual({ "eos-mcp-server": "dist/index.js" });
+    expect(packageJson.publishConfig?.access).toBe("public");
   });
 
   it("keeps package-lock root versions aligned with package.json", async () => {
