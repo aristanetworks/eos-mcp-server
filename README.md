@@ -24,6 +24,7 @@ This server provides a set of **read-only** tools. It never exposes configuratio
 - [Install and get started](#install-and-get-started)
 - [Server config file](#server-config-file)
 - [Connect to an MCP client](#connect-to-an-mcp-client)
+- [Skills](#skills)
 - [CLI usage](#cli-usage)
 - [MCP tool reference](#mcp-tool-reference)
 - [Inventory formats](#inventory-formats)
@@ -271,6 +272,30 @@ export EOS_MCP_PASSWORD='super-secret'
 For Codex, `env_vars = ["EOS_MCP_PASSWORD"]` forwards that exported variable to
 the server. Other MCP clients may support per-server `env` blocks. Avoid
 committing secret values to client config files when possible.
+
+## Skills
+
+The [`skills/`](skills/) folder holds community-created skills for everyday network operations workflows. Each skill is a `SKILL.md` file that teaches an AI assistant, such as Claude Code or Codex, how to carry out one workflow with this server's read-only tools: which `show` commands to run, how to read the output, what to investigate next, and how to report results.
+
+The current skills cover:
+
+- **Health checks:** BGP, EVPN and EVPN multicast, interfaces, Port-Channels/LACP, VLANs, routing tables and VRFs, IGMP snooping, and PIM.
+- **Validation:** ISIS Segment Routing, RFC 9721 EVPN IP mobility, and MCS/CVX configuration.
+- **Troubleshooting:** multicast flows that are missing, dropping, or corrupted; PTP grandmaster and connectivity problems; Segment Routing faults; and MCS mounts and agents.
+
+See [`skills/README.md`](skills/README.md) for the full list and for how to load the skills into Claude Code or Codex. Skills aren't included in the npm package, so clone this repository to use them.
+
+### Contribute a skill
+
+If you have a workflow you run by hand, such as a check you do after a change window, a runbook for a recurring problem, or an audit for a feature your network depends on, consider contributing it as a skill so other network engineers can use it too.
+
+1. Add `skills/<skill-name>/SKILL.md` with `name`, `description`, `trigger`, and `allowed-tools` frontmatter. The existing skills are good templates.
+2. Keep it **read-only**, and keep it **generic**: no site-specific hostnames, group names, or inventory layouts.
+3. Document the EOS commands the skill runs, the JSON fields it relies on, and what to check when something looks wrong.
+4. Add a row for the skill to the table in [`skills/README.md`](skills/README.md).
+5. Open a pull request that changes only files under `skills/`.
+
+Pull requests that touch only `skills/` can be accepted without a contributor license agreement. They are licensed under Apache-2.0. See [CONTRIBUTING.md](CONTRIBUTING.md) for details, and [Writing a new skill](skills/README.md#writing-a-new-skill) for the full guidelines. Improvements to existing skills are welcome too, such as coverage for another EOS feature, a better diagnostic drill-down, or a fix for output that changed between EOS releases.
 
 ## Inventory formats
 
