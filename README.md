@@ -62,6 +62,17 @@ Implemented local CLI commands:
 
 The package is published on npm as [`@aristanetworks/eos-mcp-server`](https://www.npmjs.com/package/@aristanetworks/eos-mcp-server). The package provides the `eos-mcp-server` command.
 
+### npx or global install?
+
+Both run the same package. They differ in when the version changes and whether the npm registry must be reachable when the server starts.
+
+| Use | When |
+| --- | --- |
+| `npx -y @aristanetworks/eos-mcp-server` | You're trying the server out, or mainly run it from an MCP client. Nothing to install, and it picks up the latest release when it launches. |
+| `npx -y @aristanetworks/eos-mcp-server@<version>` | You want a reproducible setup, such as an MCP config shared with a team. Everyone runs the same version until you change it. |
+| `npm install -g @aristanetworks/eos-mcp-server` | You run the CLI often, want to control when upgrades happen, or the npm registry isn't always reachable. The command starts without a registry lookup and stays on one version until you run `npm update -g`. |
+| `.tgz` from a [GitHub release](https://github.com/aristanetworks/eos-mcp-server/releases) | The machine can't reach the npm registry at all. |
+
 ### Run with npx (recommended)
 
 No install step is needed. `npx` downloads the package on first use and caches it:
@@ -70,11 +81,11 @@ No install step is needed. `npx` downloads the package on first use and caches i
 npx -y @aristanetworks/eos-mcp-server --help
 ```
 
-The [MCP client examples](#connect-to-an-mcp-client) below use `npx`, so the client always launches the published package. `-y` skips npm's install confirmation prompt, which an MCP client can't answer. To pin a specific release, append a version, for example `@aristanetworks/eos-mcp-server@0.6.1-beta`.
+The [MCP client examples](#connect-to-an-mcp-client) below use `npx`. `-y` skips npm's install confirmation prompt, which an MCP client can't answer. Without a version, npx checks the registry for the latest release each time it launches the server. To pin a specific release, append a version, for example `@aristanetworks/eos-mcp-server@0.6.1-beta`.
 
 ### Or install globally
 
-A global install puts `eos-mcp-server` on your `PATH`, which is convenient if you run the CLI often:
+A global install puts `eos-mcp-server` on your `PATH`, starts without a registry lookup, and stays on the installed version until you update it:
 
 ```bash
 npm install -g @aristanetworks/eos-mcp-server
