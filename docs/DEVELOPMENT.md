@@ -47,7 +47,7 @@ npm install -g /absolute/path/to/eos-mcp-server
 Remove a linked installation later with:
 
 ```bash
-npm unlink -g eos-mcp-server
+npm unlink -g @aristanetworks/eos-mcp-server
 ```
 
 ## Package a release artifact
@@ -56,7 +56,11 @@ npm unlink -g eos-mcp-server
 make pack
 ```
 
-This performs a clean build and produces `eos-mcp-server-<version>.tgz`, which can be installed with `npm install -g ./eos-mcp-server-<version>.tgz`. `npm pack` also rebuilds through the `prepack` hook.
+This performs a clean build and produces `aristanetworks-eos-mcp-server-<version>.tgz`, which can be installed with `npm install -g ./aristanetworks-eos-mcp-server-<version>.tgz`. `npm pack` also rebuilds through the `prepack` hook.
+
+## Publish to npm
+
+The package is published as `@aristanetworks/eos-mcp-server`. Pushing a `v*` tag runs `.github/workflows/release.yml`, which tests, packs, publishes to npm through [trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC, no token secret), and creates the GitHub release. Tags containing `-alpha`, `-beta`, or `-rc` publish under the `next` dist-tag; other tags publish as `latest`. Published versions carry npm provenance attestations.
 
 ## Verify changes
 

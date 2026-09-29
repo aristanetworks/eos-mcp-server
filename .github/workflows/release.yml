@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  # Required for npm trusted publishing (OIDC) and provenance
+  id-token: write
 
 jobs:
   release:
@@ -21,6 +23,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: npm ci
@@ -39,12 +42,21 @@ jobs:
 
       - name: Smoke-test artifact
         run: |
-          tar xzf eos-mcp-server-*.tgz
+          tar xzf aristanetworks-eos-mcp-server-*.tgz
           node package/dist/index.js --version
+
+      - name: Publish to npm
+        run: |
+          tarball=$(ls aristanetworks-eos-mcp-server-*.tgz)
+          if [[ "$GITHUB_REF_NAME" =~ -(alpha|beta|rc) ]]; then
+            npm publish "$tarball" --tag next
+          else
+            npm publish "$tarball"
+          fi
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: eos-mcp-server-*.tgz
+          files: aristanetworks-eos-mcp-server-*.tgz
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}

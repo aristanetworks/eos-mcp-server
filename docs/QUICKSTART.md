@@ -1,25 +1,22 @@
 # Quickstart: eos-mcp-server with Claude Code
 
-This guide gets you from a `.tgz` package to a working MCP server inside Claude Code.
+This guide gets you from the npm package to a working MCP server inside Claude Code.
 
 ## Prerequisites
 
 - Node.js 24+
 - Claude Code installed (`npm install -g @anthropic-ai/claude-code`)
 - One or more Arista EOS devices reachable via eAPI (HTTPS)
-- An `eos-mcp-server-<version>.tgz` package downloaded from the [latest GitHub release](https://github.com/aristanetworks/eos-mcp-server/releases/latest)
 
-## 1. Install the package globally
+## 1. Check that the package runs
 
-```bash
-npm install -g ./eos-mcp-server-<version>.tgz
-```
-
-Verify it's on your PATH:
+The server is published on npm as `@aristanetworks/eos-mcp-server`, and `npx` runs it without a separate install step:
 
 ```bash
-eos-mcp-server --help
+npx -y @aristanetworks/eos-mcp-server --help
 ```
+
+If you prefer a global install, run `npm install -g @aristanetworks/eos-mcp-server` and use `eos-mcp-server` in place of `npx -y @aristanetworks/eos-mcp-server` in the commands below.
 
 ## 2. Create an inventory file
 
@@ -63,13 +60,13 @@ export EOS_MCP_PASSWORD='your-device-password'
 Validate the inventory:
 
 ```bash
-eos-mcp-server validate-inventory --inventory inventory.yml
+npx -y @aristanetworks/eos-mcp-server validate-inventory --inventory inventory.yml
 ```
 
 Probe a device to confirm connectivity:
 
 ```bash
-eos-mcp-server probe --inventory inventory.yml --target leaf1
+npx -y @aristanetworks/eos-mcp-server probe --inventory inventory.yml --target leaf1
 ```
 
 You should see:
@@ -83,7 +80,7 @@ Devices: 1/1 succeeded
 ## 5. Add the MCP server to Claude Code
 
 ```bash
-claude mcp add eos -- eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
+claude mcp add eos -- npx -y @aristanetworks/eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
 ```
 
 Use absolute paths for the inventory file since Claude Code may launch the server from any working directory.
@@ -93,7 +90,7 @@ For additional options such as timeouts, request limits, or a default connection
 To make it available across all your projects, add `-s user`:
 
 ```bash
-claude mcp add -s user eos -- eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
+claude mcp add -s user eos -- npx -y @aristanetworks/eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
 ```
 
 ### Passing the password to Claude Code
@@ -103,7 +100,7 @@ The simplest approach is to export `EOS_MCP_PASSWORD` in your shell profile (`~/
 Alternatively, add it inline when registering the server:
 
 ```bash
-claude mcp add -e EOS_MCP_PASSWORD=your-device-password eos -- eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
+claude mcp add -e EOS_MCP_PASSWORD=your-device-password eos -- npx -y @aristanetworks/eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
 ```
 
 ## 6. Verify in Claude Code
@@ -140,7 +137,9 @@ Once connected, Claude Code has access to these tools:
 
 ## Troubleshooting
 
-**`npm install -g` fails with permission errors** — Run with `sudo` or configure npm to use a user-writable prefix (`npm config set prefix ~/.npm-global`).
+**`npm install -g` fails with permission errors** — Use `npx` as shown above, or configure npm to use a user-writable prefix (`npm config set prefix ~/.npm-global`).
+
+**An old version runs after switching to npm** — Versions up to 0.6.1-beta were installed from a `.tgz` under the unscoped name `eos-mcp-server`. Remove that install with `npm uninstall -g eos-mcp-server`.
 
 **`Password env var ... is not set`** — Export `EOS_MCP_PASSWORD` before launching Claude Code, or pass it via `-e` when adding the server.
 

@@ -55,15 +55,20 @@ function runCommand(command: string, args: string[], cwd: string, timeoutMs = 60
   });
 }
 
+// npm <= 11 prints an array of entries; npm 12 prints an object keyed by package name.
 function parseNpmPackOutput(stdout: string): NpmPackEntry[] {
-  const start = stdout.indexOf("[");
-  const end = stdout.lastIndexOf("]");
+  const arrayStart = stdout.indexOf("[");
+  const objectStart = stdout.indexOf("{");
+  const isObjectOutput = objectStart !== -1 && (arrayStart === -1 || objectStart < arrayStart);
+  const start = isObjectOutput ? objectStart : arrayStart;
+  const end = stdout.lastIndexOf(isObjectOutput ? "}" : "]");
 
   if (start === -1 || end === -1 || end < start) {
     throw new Error(`npm pack did not return JSON output:\n${stdout}`);
   }
 
-  return JSON.parse(stdout.slice(start, end + 1)) as NpmPackEntry[];
+  const parsedOutput = JSON.parse(stdout.slice(start, end + 1)) as NpmPackEntry[] | Record<string, NpmPackEntry>;
+  return Array.isArray(parsedOutput) ? parsedOutput : Object.values(parsedOutput);
 }
 
 async function readPackageJson(): Promise<PackageJson> {
@@ -118,7 +123,7 @@ describe("packaged CLI smoke test", () => {
         const binPath = path.join(projectDir, "node_modules", ".bin", installedBinName);
 
         const version = await runCommand(binPath, ["--version"], projectDir);
-        expect(version.stdout.trim()).toBe(`${packageJson.name} v${packageJson.version}`);
+        expect(version.stdout.trim()).toBe(`eos-mcp-server v${packageJson.version}`);
 
         const help = await runCommand(binPath, ["--help"], projectDir);
         expect(help.stdout).toContain("Usage: eos-mcp-server [command] [options]");

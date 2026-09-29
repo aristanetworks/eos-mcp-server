@@ -24,6 +24,7 @@ This server provides a set of **read-only** tools. It never exposes configuratio
 - [Install and get started](#install-and-get-started)
 - [Server config file](#server-config-file)
 - [Connect to an MCP client](#connect-to-an-mcp-client)
+- [Skills](#skills)
 - [CLI usage](#cli-usage)
 - [MCP tool reference](#mcp-tool-reference)
 - [Inventory formats](#inventory-formats)
@@ -60,33 +61,62 @@ Implemented local CLI commands:
 
 ## Install and get started
 
-1. Download the `eos-mcp-server-<version>.tgz` asset from the [latest GitHub release](https://github.com/aristanetworks/eos-mcp-server/releases/latest).
-2. Install the downloaded package globally. Replace the filename with the release you downloaded:
+The package is published on npm as [`@aristanetworks/eos-mcp-server`](https://www.npmjs.com/package/@aristanetworks/eos-mcp-server). The package provides the `eos-mcp-server` command.
 
-   ```bash
-   npm install -g ./eos-mcp-server-<version>.tgz
-   ```
+### npx or global install?
 
-3. Confirm that the command is available:
+Both run the same package. They differ in when the version changes and whether the npm registry must be reachable when the server starts.
 
-   ```bash
-   eos-mcp-server --help
-   ```
+| Use | When |
+| --- | --- |
+| `npx -y @aristanetworks/eos-mcp-server` | You're trying the server out, or mainly run it from an MCP client. Nothing to install, and it picks up the latest release when it launches. |
+| `npx -y @aristanetworks/eos-mcp-server@<version>` | You want a reproducible setup, such as an MCP config shared with a team. Everyone runs the same version until you change it. |
+| `npm install -g @aristanetworks/eos-mcp-server` | You run the CLI often, want to control when upgrades happen, or the npm registry isn't always reachable. The command starts without a registry lookup and stays on one version until you run `npm update -g`. |
+| `.tgz` from a [GitHub release](https://github.com/aristanetworks/eos-mcp-server/releases) | The machine can't reach the npm registry at all. |
 
-The global install places `eos-mcp-server` on your `PATH`. To remove it later:
+### Run with npx (recommended)
+
+No install step is needed. `npx` downloads the package on first use and caches it:
+
+```bash
+npx -y @aristanetworks/eos-mcp-server --help
+```
+
+The [MCP client examples](#connect-to-an-mcp-client) below use `npx`. `-y` skips npm's install confirmation prompt, which an MCP client can't answer. Without a version, npx checks the registry for the latest release each time it launches the server. To pin a specific release, append a version, for example `@aristanetworks/eos-mcp-server@0.6.1-beta`.
+
+### Or install globally
+
+A global install puts `eos-mcp-server` on your `PATH`, starts without a registry lookup, and stays on the installed version until you update it:
+
+```bash
+npm install -g @aristanetworks/eos-mcp-server
+eos-mcp-server --help
+```
+
+Update it later with `npm update -g @aristanetworks/eos-mcp-server`, or remove it with `npm uninstall -g @aristanetworks/eos-mcp-server`.
+
+Prereleases are published under the `next` tag (`@aristanetworks/eos-mcp-server@next`). Each [GitHub release](https://github.com/aristanetworks/eos-mcp-server/releases) also attaches the package as a `.tgz`, for offline installs: `npm install -g ./aristanetworks-eos-mcp-server-<version>.tgz`.
+
+### Upgrading from a `.tgz` install
+
+Versions up to 0.6.1-beta were distributed as `.tgz` files under the unscoped package name `eos-mcp-server`. Both packages provide the same `eos-mcp-server` command, so remove the old package before switching to npm. Otherwise the global install can fail with a conflict, or the old version keeps running:
 
 ```bash
 npm uninstall -g eos-mcp-server
 ```
 
-Next, create an inventory, provide the device password, and validate connectivity:
+### Validate your inventory
+
+Create an inventory, provide the device password, and validate connectivity:
 
 ```bash
 export EOS_MCP_PASSWORD='replace-with-device-password'
 
-eos-mcp-server validate-inventory --inventory inventory.yml
-eos-mcp-server probe --inventory inventory.yml --target leaf1
+npx -y @aristanetworks/eos-mcp-server validate-inventory --inventory inventory.yml
+npx -y @aristanetworks/eos-mcp-server probe --inventory inventory.yml --target leaf1
 ```
+
+With a global install, run `eos-mcp-server` in place of `npx -y @aristanetworks/eos-mcp-server`. The [CLI usage](#cli-usage) examples later in this README use the shorter `eos-mcp-server` form.
 
 See [Quickstart](docs/QUICKSTART.md) for a complete inventory example and MCP client setup. For building or contributing from source, see the [developer workflow](docs/DEVELOPMENT.md).
 
@@ -146,18 +176,18 @@ Supported config fields:
 
 ## Connect to an MCP client
 
-These examples assume you've already installed `eos-mcp-server` per [Install and get started](#install-and-get-started) above, and have an inventory file (and optionally a [server config file](#server-config-file)) ready.
+These examples assume you have an inventory file (and optionally a [server config file](#server-config-file)) ready. They launch the server with `npx`, so nothing needs to be installed first. If you [installed globally](#or-install-globally), use `eos-mcp-server` as the command and drop `-y @aristanetworks/eos-mcp-server` from the arguments.
 
 ### Generic stdio example
 
-If `eos-mcp-server` is installed on your `PATH`, point it at just an inventory file:
+Point the server at just an inventory file:
 
 ```json
 {
   "mcpServers": {
     "eos": {
-      "command": "eos-mcp-server",
-      "args": ["serve", "--inventory", "/absolute/path/to/inventory.yml"]
+      "command": "npx",
+      "args": ["-y", "@aristanetworks/eos-mcp-server", "serve", "--inventory", "/absolute/path/to/inventory.yml"]
     }
   }
 }
@@ -169,33 +199,33 @@ Or use a [server config file](#server-config-file) if you want to set additional
 {
   "mcpServers": {
     "eos": {
-      "command": "eos-mcp-server",
-      "args": ["serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
+      "command": "npx",
+      "args": ["-y", "@aristanetworks/eos-mcp-server", "serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
     }
   }
 }
 ```
 
-If you built the project locally instead of installing the package, replace `"command": "eos-mcp-server"` with `"command": "node"` and put `/absolute/path/to/eos-mcp-server/dist/index.js` first in `args`.
+If you built the project locally instead, use `"command": "node"` and put `/absolute/path/to/eos-mcp-server/dist/index.js` first in `args`, in place of `-y` and the package name.
 
 ### Claude Code
 
 With just an inventory file:
 
 ```bash
-claude mcp add eos -- eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
+claude mcp add eos -- npx -y @aristanetworks/eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
 ```
 
 Or with a [server config file](#server-config-file) for additional options:
 
 ```bash
-claude mcp add eos -- eos-mcp-server serve --config /absolute/path/to/eos-mcp-server.yml
+claude mcp add eos -- npx -y @aristanetworks/eos-mcp-server serve --config /absolute/path/to/eos-mcp-server.yml
 ```
 
 Add `-s user` before `eos` in either command to make the server available across all your projects instead of just the current one:
 
 ```bash
-claude mcp add -s user eos -- eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
+claude mcp add -s user eos -- npx -y @aristanetworks/eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
 ```
 
 ### Codex
@@ -207,8 +237,8 @@ With just an inventory file:
 
 ```toml
 [mcp_servers.eos]
-command = "eos-mcp-server"
-args = ["serve", "--inventory", "/absolute/path/to/inventory.yml"]
+command = "npx"
+args = ["-y", "@aristanetworks/eos-mcp-server", "serve", "--inventory", "/absolute/path/to/inventory.yml"]
 env_vars = ["EOS_MCP_PASSWORD"]
 ```
 
@@ -216,8 +246,8 @@ Or with a [server config file](#server-config-file) for additional options:
 
 ```toml
 [mcp_servers.eos]
-command = "eos-mcp-server"
-args = ["serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
+command = "npx"
+args = ["-y", "@aristanetworks/eos-mcp-server", "serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
 env_vars = ["EOS_MCP_PASSWORD"]
 ```
 
@@ -225,7 +255,7 @@ env_vars = ["EOS_MCP_PASSWORD"]
 here for clarity. You can also add the server with:
 
 ```bash
-codex mcp add eos -- eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
+codex mcp add eos -- npx -y @aristanetworks/eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
 ```
 
 Then add `env_vars = ["EOS_MCP_PASSWORD"]` to the generated
@@ -242,6 +272,30 @@ export EOS_MCP_PASSWORD='super-secret'
 For Codex, `env_vars = ["EOS_MCP_PASSWORD"]` forwards that exported variable to
 the server. Other MCP clients may support per-server `env` blocks. Avoid
 committing secret values to client config files when possible.
+
+## Skills
+
+The [`skills/`](skills/) folder holds community-created skills for everyday network operations workflows. Each skill is a `SKILL.md` file that teaches an AI assistant, such as Claude Code or Codex, how to carry out one workflow with this server's read-only tools: which `show` commands to run, how to read the output, what to investigate next, and how to report results.
+
+The current skills cover:
+
+- **Health checks:** BGP, EVPN and EVPN multicast, interfaces, Port-Channels/LACP, VLANs, routing tables and VRFs, IGMP snooping, and PIM.
+- **Validation:** ISIS Segment Routing, RFC 9721 EVPN IP mobility, and MCS/CVX configuration.
+- **Troubleshooting:** multicast flows that are missing, dropping, or corrupted; PTP grandmaster and connectivity problems; Segment Routing faults; and MCS mounts and agents.
+
+See [`skills/README.md`](skills/README.md) for the full list and for how to load the skills into Claude Code or Codex. Skills aren't included in the npm package, so clone this repository to use them.
+
+### Contribute a skill
+
+If you have a workflow you run by hand, such as a check you do after a change window, a runbook for a recurring problem, or an audit for a feature your network depends on, consider contributing it as a skill so other network engineers can use it too.
+
+1. Add `skills/<skill-name>/SKILL.md` with `name`, `description`, `trigger`, and `allowed-tools` frontmatter. The existing skills are good templates.
+2. Keep it **read-only**, and keep it **generic**: no site-specific hostnames, group names, or inventory layouts.
+3. Document the EOS commands the skill runs, the JSON fields it relies on, and what to check when something looks wrong.
+4. Add a row for the skill to the table in [`skills/README.md`](skills/README.md).
+5. Open a pull request that changes only files under `skills/`.
+
+Pull requests that touch only `skills/` can be accepted without a contributor license agreement. They are licensed under Apache-2.0. See [CONTRIBUTING.md](CONTRIBUTING.md) for details, and [Writing a new skill](skills/README.md#writing-a-new-skill) for the full guidelines. Improvements to existing skills are welcome too, such as coverage for another EOS feature, a better diagnostic drill-down, or a fix for output that changed between EOS releases.
 
 ## Inventory formats
 
@@ -406,7 +460,7 @@ caFile: /path/to/ca.pem
 
 ## CLI usage
 
-If no subcommand is provided, the CLI defaults to `serve`.
+If no subcommand is provided, the CLI defaults to `serve`. These examples use the globally installed `eos-mcp-server` command; with npx, run `npx -y @aristanetworks/eos-mcp-server` in its place.
 
 ### `serve`
 

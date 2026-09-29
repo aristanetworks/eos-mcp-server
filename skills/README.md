@@ -53,18 +53,43 @@ Each skill defines:
 7. Document the EOS commands used and their expected JSON output structure
 8. Include diagnostic procedures for common failure modes
 
-## Using skills with Claude Code
+## Installing skills
 
-If the `eos-mcp-server` repo is checked out locally, symlink the skills directory into your project:
+Skills aren't included in the npm package. Clone this repository, then link each skill folder into the skills directory your assistant reads. Both assistants follow symlinks, so a `git pull` in the clone updates every linked skill.
+
+Link each skill folder individually. Claude Code only discovers skills one level deep (`<skills-dir>/<skill-name>/SKILL.md`), so linking the whole `skills/` folder as a single subdirectory won't load anything.
 
 ```bash
-ln -s /path/to/eos-mcp-server/skills /path/to/your/project/.claude/skills/eos
+git clone https://github.com/aristanetworks/eos-mcp-server.git
+EOS_SKILLS=$PWD/eos-mcp-server/skills
+
+# Pick the destination for your assistant and scope (see the sections below)
+DEST=~/.claude/skills
+
+mkdir -p "$DEST"
+for skill in "$EOS_SKILLS"/*/; do
+  ln -sfn "$skill" "$DEST/$(basename "$skill")"
+done
 ```
 
-Skills will be automatically discovered and loaded by Claude Code when working in the project.
+To install only some skills, link just those folders, for example `ln -sfn "$EOS_SKILLS/check-bgp-health" "$DEST/check-bgp-health"`. Remove a skill by deleting its symlink.
+
+Each assistant also needs the `eos` MCP server configured, so the skills can call its tools. See [Connect to an MCP client](../README.md#connect-to-an-mcp-client).
+
+## Using skills with Claude Code
+
+| Scope | `DEST` |
+| --- | --- |
+| All your projects | `~/.claude/skills` |
+| One project | `/path/to/your/project/.claude/skills` |
+
+Claude Code discovers new skills automatically. Start a new session if a skill doesn't appear.
 
 ## Using skills with Codex
 
-Codex discovers project skills at `.codex/skills/<skill-name>/SKILL.md`.
+| Scope | `DEST` |
+| --- | --- |
+| All your projects | `~/.agents/skills` |
+| One project | `/path/to/your/project/.agents/skills` |
 
-For personal, all-project availability, use `~/.codex/skills` as `destination_skills` instead. Restart Codex after adding the skills. Configure the `eos` MCP server as described in the repository [Codex setup instructions](../README.md#codex) so the skills can call its EOS tools.
+Older Codex releases read `~/.codex/skills` and `.codex/skills` instead, and current releases still support them. Restart Codex after adding skills.
