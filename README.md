@@ -1,4 +1,7 @@
-# eos-mcp-server BETA
+# eos-mcp-server
+
+[![Project status: Beta](https://img.shields.io/badge/status-beta-orange.svg)](https://github.com/aristanetworks/eos-mcp-server/releases)
+[![npm version](https://img.shields.io/npm/v/%40aristanetworks%2Feos-mcp-server.svg)](https://www.npmjs.com/package/@aristanetworks/eos-mcp-server)
 
 Read-only MCP server for Arista EOS eAPI (JSON-RPC over HTTPS).
 
@@ -67,12 +70,12 @@ The package is published on npm as [`@aristanetworks/eos-mcp-server`](https://ww
 
 Both run the same package. They differ in when the version changes and whether the npm registry must be reachable when the server starts.
 
-| Use | When |
-| --- | --- |
-| `npx -y @aristanetworks/eos-mcp-server` | You're trying the server out, or mainly run it from an MCP client. Nothing to install, and it picks up the latest release when it launches. |
-| `npx -y @aristanetworks/eos-mcp-server@<version>` | You want a reproducible setup, such as an MCP config shared with a team. Everyone runs the same version until you change it. |
-| `npm install -g @aristanetworks/eos-mcp-server` | You run the CLI often, want to control when upgrades happen, or the npm registry isn't always reachable. The command starts without a registry lookup and stays on one version until you run `npm update -g`. |
-| `.tgz` from a [GitHub release](https://github.com/aristanetworks/eos-mcp-server/releases) | The machine can't reach the npm registry at all. |
+| Use                                                                                       | When                                                                                                                                                                                                          |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npx -y @aristanetworks/eos-mcp-server`                                                   | You're trying the server out, or mainly run it from an MCP client. Nothing to install, and it picks up the latest release when it launches.                                                                   |
+| `npx -y @aristanetworks/eos-mcp-server@<version>`                                         | You want a reproducible setup, such as an MCP config shared with a team. Everyone runs the same version until you change it.                                                                                  |
+| `npm install -g @aristanetworks/eos-mcp-server`                                           | You run the CLI often, want to control when upgrades happen, or the npm registry isn't always reachable. The command starts without a registry lookup and stays on one version until you run `npm update -g`. |
+| `.tgz` from a [GitHub release](https://github.com/aristanetworks/eos-mcp-server/releases) | The machine can't reach the npm registry at all.                                                                                                                                                              |
 
 ### Run with npx (recommended)
 
@@ -155,6 +158,7 @@ Supported config fields:
 
 - `inventory`
 - `actor`
+- `logFile`
 - `caFile`
 - `readTimeoutMs`
 - `overallOperationTimeoutMs`
@@ -170,7 +174,9 @@ Supported config fields:
 - `defaultConnection.mcpValidateCerts`
 - `defaultConnection.mcpPasswordEnv`
 
-`readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized read-tool result. `eapiVersion` selects the eAPI JSON output schema sent as the `runCmds` `version` parameter: `latest` (the default) returns the current schema for each command, and `1` pins the original schema for consumers that depend on it. It only affects JSON output, so `eos_get_running_config` and `eos_show_logging` are unchanged.
+`readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized result of device read operations. `eapiVersion` selects the eAPI JSON output schema sent as the `runCmds` `version` parameter: `latest` (the default) returns the current schema for each command, and `1` pins the original schema for consumers that depend on it. It only affects JSON output, so `eos_get_running_config` and `eos_show_logging` are unchanged.
+
+`actor` and `logFile` are currently exposed only as sanitized runtime metadata; the server does not yet write an audit log.
 
 `defaultConnection.mcpPasswordEnv` is a fallback password source. A host or inherited inventory value for `mcp_password_env` or `ansible_password` overrides it. Setting both `mcp_password_env` and `ansible_password` for the same host remains invalid.
 
@@ -187,7 +193,13 @@ Point the server at just an inventory file:
   "mcpServers": {
     "eos": {
       "command": "npx",
-      "args": ["-y", "@aristanetworks/eos-mcp-server", "serve", "--inventory", "/absolute/path/to/inventory.yml"]
+      "args": [
+        "-y",
+        "@aristanetworks/eos-mcp-server",
+        "serve",
+        "--inventory",
+        "/absolute/path/to/inventory.yml"
+      ]
     }
   }
 }
@@ -200,7 +212,13 @@ Or use a [server config file](#server-config-file) if you want to set additional
   "mcpServers": {
     "eos": {
       "command": "npx",
-      "args": ["-y", "@aristanetworks/eos-mcp-server", "serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
+      "args": [
+        "-y",
+        "@aristanetworks/eos-mcp-server",
+        "serve",
+        "--config",
+        "/absolute/path/to/eos-mcp-server.yml"
+      ]
     }
   }
 }
@@ -252,18 +270,25 @@ env_vars = ["EOS_MCP_PASSWORD"]
 ```
 
 `serve` is optional because it is the default command, but is shown explicitly
-here for clarity. You can also add the server with:
+here for clarity. After exporting the password, you can also add the server and
+pass its current value through with the Codex CLI:
 
 ```bash
-codex mcp add eos -- npx -y @aristanetworks/eos-mcp-server serve --inventory /absolute/path/to/inventory.yml
+export EOS_MCP_PASSWORD='replace-with-device-password'
+
+codex mcp add eos \
+  --env EOS_MCP_PASSWORD="$EOS_MCP_PASSWORD" \
+  -- npx -y @aristanetworks/eos-mcp-server serve \
+  --inventory /absolute/path/to/inventory.yml
 ```
 
-Then add `env_vars = ["EOS_MCP_PASSWORD"]` to the generated
-`[mcp_servers.eos]` table.
+The `--env` form stores the expanded value in the generated Codex configuration.
+To have Codex read the variable from its environment each time it starts the
+server, use `env_vars = ["EOS_MCP_PASSWORD"]` as in the TOML examples above.
 
 ### Passing secrets to the MCP server
 
-Prefer exporting secrets in the environment that launches the MCP client:
+To export secrets in the environment that launches the MCP client use:
 
 ```bash
 export EOS_MCP_PASSWORD='super-secret'
@@ -687,7 +712,6 @@ The read-path tools have been validated against EOS 4.34.3M. The minimum support
 
 Additional design and planning docs in the `docs/` directory:
 
-- `docs/design-overview.md` — design overview for evaluators
 - `docs/DESIGN.md` — detailed design specification
 - `docs/IMPLEMENTATION_PLAN.md` — implemented scope and maintenance priorities
 - `docs/CHECKPOINT.md` — current implementation status
