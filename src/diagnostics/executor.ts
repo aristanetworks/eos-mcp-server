@@ -1,19 +1,32 @@
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { AppError, toErrorCode } from "../core/errors.js";
+import { resolveInventoryTarget } from "../inventory/resolveTarget.js";
 import type { InventoryHostModel, InventoryModel } from "../inventory/types.js";
 import {
+  buildDeviceResultSummary,
   buildReadDeviceFailure,
   buildReadDeviceSuccess,
   buildReadOperationResultEnvelope,
-  executeReadOperation,
+  enforceReadTargetLimit,
+  mapWithConcurrency,
+  runWithOperationTimeout,
   type ReadDeviceResultBase,
   type ReadOperationResultEnvelope
 } from "../operations/readExecution.js";
 import { DiagnosticConcurrency } from "./concurrency.js";
 import { DiagnosticExecutionError } from "./executionError.js";
 import type { DiagnosticJournal } from "./journalTypes.js";
-import { parsePingOutput, preparePing } from "./ping.js";
-import type { DiagnosticCapacitySnapshot, DiagnosticDeviceRunner, DiagnosticFinding, DiagnosticObservation, DiagnosticRequest, PreparedDiagnostic } from "./types.js";
+import { pingDiagnostic } from "./ping.js";
+import type {
+  DiagnosticCapacitySnapshot,
+  DiagnosticDefinition,
+  DiagnosticDeviceRunner,
+  DiagnosticFinding,
+  DiagnosticObservation,
+  DiagnosticRequest,
+  PreparedDiagnostic,
+  ResolvedDiagnosticRequest
+} from "./types.js";
 
 export interface DiagnosticDeviceResult extends ReadDeviceResultBase {
   finding?: DiagnosticFinding;
@@ -21,7 +34,11 @@ export interface DiagnosticDeviceResult extends ReadDeviceResultBase {
 }
 
 export type DiagnosticResult = ReadOperationResultEnvelope<DiagnosticDeviceResult> & {
-  request: DiagnosticRequest & { count: number };
+  request: ResolvedDiagnosticRequest;
+};
+
+const diagnosticDefinitions: Record<DiagnosticRequest["kind"], DiagnosticDefinition> = {
+  ping: pingDiagnostic
 };
 
 /** Owns policy, budgets, fan-out, global admission, cancellation, and result normalization. */
@@ -54,52 +71,68 @@ export class DiagnosticExecutor {
     signal?: AbortSignal;
   }): Promise<DiagnosticResult> {
     const signal = options.signal === undefined ? this.shutdown.signal : AbortSignal.any([options.signal, this.shutdown.signal]);
-    const request = preparePing(options.request, this.config.diagnostics);
-    const operationName = `eos_${request.kind}`;
-    const operation = await executeReadOperation<DiagnosticDeviceResult>(this.model, {
+    const definition = diagnosticDefinitions[options.request.kind];
+    const prepared = definition.prepare(options.request, this.config.diagnostics);
+    const operationName = `eos_${options.request.kind}`;
+    const operationConfig: ResolvedServerConfig = {
       ...this.config,
       deviceConcurrency: this.config.diagnostics.deviceConcurrency,
       overallOperationTimeoutMs: this.config.diagnostics.overallOperationTimeoutMs
-    }, {
-      target: options.target,
-      operationName,
-      signal,
-      validateTarget: (target) => {
-        const denied = target.resolvedHosts.filter((host) => !host.diagnosticsAllowed);
-        if (denied.length > 0) {
-          throw new AppError("diagnostic_policy_denied", `Diagnostic permission denied for: ${denied.map((host) => host.inventoryHostname).join(", ")}`);
-        }
-        if (target.resolvedHosts.length * request.count > this.config.diagnostics.maxProbesPerRequest) {
-          throw new AppError("diagnostic_probe_limit_exceeded", `Request exceeds maxProbesPerRequest ${this.config.diagnostics.maxProbesPerRequest}`);
-        }
-        this.concurrency.assertUsableCapacity();
-      },
-      run: async (host, signal) => {
-        const observation = await this.executeOnDevice(host, request, signal);
+    };
+
+    const resolvedTarget = resolveInventoryTarget(this.model, { target: options.target });
+    enforceReadTargetLimit(operationConfig, resolvedTarget.resolvedHosts.length);
+    const denied = resolvedTarget.resolvedHosts.filter((host) => !host.diagnosticsAllowed);
+    if (denied.length > 0) {
+      throw new AppError("diagnostic_policy_denied", `Diagnostic permission denied for: ${denied.map((host) => host.inventoryHostname).join(", ")}`);
+    }
+    const probesPerHost = prepared.executions.reduce((total, execution) => total + definition.probeCount(execution), 0);
+    if (resolvedTarget.resolvedHosts.length * probesPerHost > this.config.diagnostics.maxProbesPerRequest) {
+      throw new AppError("diagnostic_probe_limit_exceeded", `Request exceeds maxProbesPerRequest ${this.config.diagnostics.maxProbesPerRequest}`);
+    }
+    this.concurrency.assertUsableCapacity();
+
+    // Each host/execution pair takes its own reservation; results stay in host-then-execution order.
+    const hostExecutions = resolvedTarget.resolvedHosts.flatMap((host) => prepared.executions.map((execution) => ({ host, execution })));
+    const results = await runWithOperationTimeout(operationConfig, operationName, (operationSignal) =>
+      mapWithConcurrency(hostExecutions, operationConfig.deviceConcurrency, async ({ host, execution }) => {
         try {
-          const finding = parsePingOutput(observation.output, request.count);
-          return buildReadDeviceSuccess(host, {
-            finding,
-            ...(options.includeRaw === true ? { raw_output: observation.output } : {})
-          });
+          return await this.runExecution(definition, host, execution, operationSignal, options.includeRaw === true);
         } catch (error) {
-          if (error instanceof AppError && options.includeRaw === true) {
-            throw new AppError(error.code, error.message, { raw_output: observation.output });
-          }
-          throw error;
+          return {
+            ...buildReadDeviceFailure(host, "diagnostic_execution_failed", error),
+            ...(options.includeRaw === true && error instanceof AppError && typeof error.details?.raw_output === "string"
+              ? { raw_output: error.details.raw_output }
+              : {})
+          };
         }
-      },
-      onError: (host, error) => ({
-        ...buildReadDeviceFailure(host, "diagnostic_execution_failed", error),
-        ...(options.includeRaw === true && error instanceof AppError && typeof error.details?.raw_output === "string"
-          ? { raw_output: error.details.raw_output }
-          : {})
-      })
-    });
-    return buildReadOperationResultEnvelope(options.target, operation, {
-      extra: { request: { ...options.request, count: request.count } },
+      }, operationSignal), signal);
+
+    return buildReadOperationResultEnvelope(options.target, { resolvedTarget, results, summary: buildDeviceResultSummary(results) }, {
+      extra: { request: prepared.request },
       responseSizeLimit: { config: this.config, operationName }
     });
+  }
+
+  private async runExecution(
+    definition: DiagnosticDefinition,
+    host: InventoryHostModel,
+    execution: PreparedDiagnostic,
+    signal: AbortSignal,
+    includeRaw: boolean
+  ): Promise<DiagnosticDeviceResult> {
+    const observation = await this.executeOnDevice(host, execution, signal);
+    try {
+      return buildReadDeviceSuccess(host, {
+        finding: definition.interpret(observation.output, execution),
+        ...(includeRaw ? { raw_output: observation.output } : {})
+      });
+    } catch (error) {
+      if (error instanceof AppError && includeRaw) {
+        throw new AppError(error.code, error.message, { raw_output: observation.output });
+      }
+      throw error;
+    }
   }
 
   private async executeOnDevice(

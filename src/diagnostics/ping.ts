@@ -2,7 +2,16 @@ import { isIP } from "node:net";
 import type { DiagnosticsConfig } from "../config/diagnostics.js";
 import { pingExecutionBoundMs } from "../config/diagnostics.js";
 import { AppError } from "../core/errors.js";
-import type { PingFinding, PingRequest, PreparedPing } from "./types.js";
+import type { DiagnosticDefinition, PingFinding, PingRequest, PreparedPing } from "./types.js";
+
+export const pingDiagnostic: DiagnosticDefinition = {
+  prepare(request, config) {
+    const execution = preparePing(request, config);
+    return { request: { ...request, count: execution.count }, executions: [execution] };
+  },
+  probeCount: (execution) => execution.count,
+  interpret: (output, execution) => parsePingOutput(output, execution.count)
+};
 
 export function preparePing(request: PingRequest, config: DiagnosticsConfig): PreparedPing {
   const addressFamily = validateAddress(request.destination);

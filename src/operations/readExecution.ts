@@ -264,7 +264,7 @@ export function enforceResponseSizeLimit(
   }
 }
 
-function buildDeviceResultSummary(results: ReadDeviceResultBase[]): DeviceResultSummary {
+export function buildDeviceResultSummary(results: ReadDeviceResultBase[]): DeviceResultSummary {
   return {
     total_count: results.length,
     success_count: results.filter((result) => result.status === "success").length,
