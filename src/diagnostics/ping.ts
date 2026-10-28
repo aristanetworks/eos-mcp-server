@@ -2,18 +2,27 @@ import { isIP } from "node:net";
 import type { DiagnosticsConfig } from "../config/diagnostics.js";
 import { pingExecutionBoundMs } from "../config/diagnostics.js";
 import { AppError } from "../core/errors.js";
-import type { DiagnosticDefinition, PingFinding, PingRequest, PreparedPing } from "./types.js";
+import type { DiagnosticDefinition, PingExecutionRequest, PingFinding, PreparedPing } from "./types.js";
 
 export const pingDiagnostic: DiagnosticDefinition = {
   prepare(request, config) {
-    const execution = preparePing(request, config);
-    return { request: { ...request, count: execution.count }, executions: [execution] };
+    const { destinations, ...shared } = request;
+    if (destinations.length === 0 || destinations.length > config.maxDestinationsPerRequest) {
+      throw new AppError("diagnostic_destination_limit_exceeded", `Provide between 1 and ${config.maxDestinationsPerRequest} destinations`);
+    }
+    if (new Set(destinations).size !== destinations.length) {
+      throw new AppError("diagnostic_destination_duplicate", "Each destination may appear only once per request");
+    }
+    // Every destination is validated before any is dispatched.
+    const executions = destinations.map((destination) => preparePing({ ...shared, destination }, config));
+    const count = executions[0]?.count ?? config.defaultPingCount;
+    return { request: { ...request, count }, executions };
   },
   probeCount: (execution) => execution.count,
   interpret: (output, execution) => parsePingOutput(output, execution.count)
 };
 
-export function preparePing(request: PingRequest, config: DiagnosticsConfig): PreparedPing {
+export function preparePing(request: PingExecutionRequest, config: DiagnosticsConfig): PreparedPing {
   const addressFamily = validateAddress(request.destination);
   const count = request.count ?? config.defaultPingCount;
   if (!Number.isSafeInteger(count) || count < 1 || count > config.maxPingCount) {

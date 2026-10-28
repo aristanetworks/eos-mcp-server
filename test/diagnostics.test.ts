@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "../src/core/errors.js";
-import type { DiagnosticExecutionContext } from "../src/diagnostics/types.js";
+import type { DiagnosticExecutionContext, PreparedDiagnostic } from "../src/diagnostics/types.js";
+import type { InventoryHostModel } from "../src/inventory/types.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
 import { DiagnosticExecutionError } from "../src/diagnostics/executionError.js";
 import type { DiagnosticObservation } from "../src/diagnostics/types.js";
@@ -11,7 +12,7 @@ import { buildConfig, buildInventoryModel, writeTempInventory } from "./helpers.
 
 const output = "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\nrtt min/avg/max/mdev = 0.020/0.025/0.030/0.001 ms\n";
 const observation: DiagnosticObservation = { kind: "ping", output };
-const call = { target: "leaf1", request: { kind: "ping" as const, destination: "127.0.0.1" } };
+const call = { target: "leaf1", request: { kind: "ping" as const, destinations: ["127.0.0.1"] } };
 
 function runner() {
   return { execute: vi.fn(async () => observation) };
@@ -86,7 +87,7 @@ describe("diagnostic policy and fan-out", () => {
   it("rejects invalid input and noninventory targets before dispatch", async () => {
     const device = runner();
     const executor = new DiagnosticExecutor(await groupModel(), buildConfig(), device);
-    await expect(executor.execute({ ...call, request: { ...call.request, destination: "127.0.0.1;reload" } }))
+    await expect(executor.execute({ ...call, request: { ...call.request, destinations: ["127.0.0.1;reload"] } }))
       .rejects.toMatchObject({ code: "diagnostic_address_invalid" });
     await expect(executor.execute({ ...call, target: "192.0.2.50" })).rejects.toMatchObject({ code: "target_not_found" });
     expect(device.execute).not.toHaveBeenCalled();
@@ -126,7 +127,7 @@ describe("diagnostic policy and fan-out", () => {
 
   it("publishes structured MCP output and a strict non-empty input schema", async () => {
     const executor = new DiagnosticExecutor(await groupModel(), buildConfig(), runner());
-    const args = pingInputSchema.parse({ target: "leaf1", destination: "::1" });
+    const args = pingInputSchema.parse({ target: "leaf1", destinations: ["::1"] });
     const result = await buildPingToolResult(args, executor);
     expect(result.structuredContent).toHaveProperty("results.0.finding.reachability", "reachable");
     expect(pingInputSchema.safeParse({ ...args, command: "reload" }).success).toBe(false);
@@ -262,5 +263,119 @@ describe("server-wide diagnostic admission and deadlines", () => {
     const executor = new DiagnosticExecutor(await groupModel(), buildConfig(), device);
     await expect(executor.execute({ ...call, signal: controller.signal })).rejects.toMatchObject({ code: "operation_aborted" });
     expect(device.execute).not.toHaveBeenCalled();
+  });
+});
+
+describe("multi-destination ping", () => {
+  const sweep = (destinations: string[]) => ({ target: "switches", request: { kind: "ping" as const, destinations } });
+  const dispatched = (device: { execute: ReturnType<typeof vi.fn> }) =>
+    device.execute.mock.calls.map(([host, execution]: [InventoryHostModel, PreparedDiagnostic]) => `${host.inventoryHostname}>${execution.destination}`);
+
+  it("returns one result per host and destination in host-then-destination order", async () => {
+    const device = runner();
+    const result = await new DiagnosticExecutor(await groupModel(), buildConfig(), device).execute(sweep(["127.0.0.1", "::1"]));
+    expect(result.resolved_devices).toEqual(["leaf1", "leaf2"]);
+    expect(result.summary).toEqual({ total_count: 4, success_count: 4, failed_count: 0 });
+    expect(result.results.map((entry) => `${entry.inventory_hostname}>${entry.destination}`))
+      .toEqual(["leaf1>127.0.0.1", "leaf1>::1", "leaf2>127.0.0.1", "leaf2>::1"]);
+    expect(result.request).toEqual({ kind: "ping", destinations: ["127.0.0.1", "::1"], count: 3 });
+    expect(dispatched(device).sort()).toEqual(["leaf1>127.0.0.1", "leaf1>::1", "leaf2>127.0.0.1", "leaf2>::1"]);
+  });
+
+  it("dispatches destinations concurrently up to the shared device concurrency", async () => {
+    vi.useFakeTimers();
+    const pendingObservations: Array<ReturnType<typeof deferred<DiagnosticObservation>>> = [];
+    const device = { execute: vi.fn(() => {
+      const pendingObservation = deferred<DiagnosticObservation>();
+      pendingObservations.push(pendingObservation);
+      return pendingObservation.promise;
+    }) };
+    const config = buildConfig();
+    config.diagnostics.deviceConcurrency = 2;
+    const executor = new DiagnosticExecutor(await groupModel(), config, device);
+    const running = executor.execute({ ...call, request: { kind: "ping", destinations: ["127.0.0.1", "127.0.0.2", "127.0.0.3"] } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(device.execute).toHaveBeenCalledTimes(2);
+    expect(executor.getCapacity()).toMatchObject({ active_count: 2, available_count: 0 });
+    pendingObservations[0]?.resolve(observation);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(device.execute).toHaveBeenCalledTimes(3);
+    pendingObservations[1]?.resolve(observation);
+    pendingObservations[2]?.resolve(observation);
+    expect((await running).summary).toEqual({ total_count: 3, success_count: 3, failed_count: 0 });
+  });
+
+  it("isolates an execution failure to its own destination", async () => {
+    const device = { execute: vi.fn(async (_host: InventoryHostModel, execution: PreparedDiagnostic) => {
+      if (execution.destination === "127.0.0.2") {
+        throw new DiagnosticExecutionError("diagnostic_test_failure", "Classified adapter failure", "completed");
+      }
+      return observation;
+    }) };
+    const result = await new DiagnosticExecutor(await groupModel(), buildConfig(), device)
+      .execute({ ...call, request: { kind: "ping", destinations: ["127.0.0.1", "127.0.0.2", "127.0.0.3"] } });
+    expect(result.summary).toEqual({ total_count: 3, success_count: 2, failed_count: 1 });
+    expect(result.results[1]).toMatchObject({ destination: "127.0.0.2", status: "failed", error_code: "diagnostic_test_failure" });
+    expect(result.results[1]).not.toHaveProperty("finding");
+  });
+
+  it.each([
+    { destinations: ["127.0.0.1", "127.0.0.1;reload"], code: "diagnostic_address_invalid" },
+    { destinations: ["127.0.0.1", "127.0.0.1"], code: "diagnostic_destination_duplicate" },
+    { destinations: [], code: "diagnostic_destination_limit_exceeded" },
+    { destinations: ["127.0.0.1", "127.0.0.2", "127.0.0.3"], code: "diagnostic_destination_limit_exceeded" }
+  ])("rejects the whole request before dispatch: $code", async ({ destinations, code }) => {
+    const device = runner();
+    const config = buildConfig();
+    config.diagnostics.maxDestinationsPerRequest = 2;
+    await expect(new DiagnosticExecutor(await groupModel(), config, device).execute(sweep(destinations)))
+      .rejects.toMatchObject({ code });
+    expect(device.execute).not.toHaveBeenCalled();
+  });
+
+  it("requires the source address family to match every destination", async () => {
+    const device = runner();
+    const executor = new DiagnosticExecutor(await groupModel(), buildConfig(), device);
+    await expect(executor.execute({ ...call, request: { kind: "ping", destinations: ["127.0.0.1", "::1"], source: "127.0.0.1" } }))
+      .rejects.toMatchObject({ code: "diagnostic_source_invalid" });
+    expect(device.execute).not.toHaveBeenCalled();
+  });
+
+  it("counts every destination against the aggregate probe budget", async () => {
+    const device = runner();
+    const config = buildConfig();
+    config.diagnostics.maxProbesPerRequest = 5;
+    await expect(new DiagnosticExecutor(await groupModel(), config, device)
+      .execute({ ...call, request: { kind: "ping", destinations: ["127.0.0.1", "::1"] } }))
+      .rejects.toMatchObject({ code: "diagnostic_probe_limit_exceeded" });
+    expect(device.execute).not.toHaveBeenCalled();
+  });
+
+  it("leaves only in-flight executions uncertain when a sweep is cancelled", async () => {
+    vi.useFakeTimers();
+    const device = { execute: vi.fn((_host, _execution, { signal }: DiagnosticExecutionContext) => new Promise<DiagnosticObservation>((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    })) };
+    const config = buildConfig();
+    config.diagnostics.deviceConcurrency = 2;
+    const executor = new DiagnosticExecutor(await groupModel(), config, device);
+    const controller = new AbortController();
+    const running = executor.execute({ ...call, request: { kind: "ping", destinations: ["127.0.0.1", "127.0.0.2", "127.0.0.3"] }, signal: controller.signal });
+    const rejected = expect(running).rejects.toMatchObject({ code: "operation_aborted" });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    await rejected;
+    expect(device.execute).toHaveBeenCalledTimes(2);
+    expect(executor.getCapacity()).toMatchObject({ uncertain_count: 2, queued_count: 0 });
+  });
+
+  it("rejects the removed single destination field with guidance", () => {
+    const parsed = pingInputSchema.safeParse({ target: "leaf1", destination: "127.0.0.1" });
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: ["destinations"] }),
+      expect.objectContaining({ code: "unrecognized_keys", message: expect.stringContaining("destinations: [\"<ip>\"]") })
+    ]));
+    expect(pingInputSchema.safeParse({ target: "leaf1", destinations: [] }).success).toBe(false);
   });
 });

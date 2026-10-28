@@ -9,7 +9,7 @@ import { EapiDiagnosticRunner } from "../src/diagnostics/eapiRunner.js";
 import { EapiClient } from "../src/eapi/client.js";
 import { buildConfig, buildInventoryModel } from "./helpers.js";
 
-const call = { target: "leaf1", request: { kind: "ping" as const, destination: "127.0.0.1" } };
+const call = { target: "leaf1", request: { kind: "ping" as const, destinations: ["127.0.0.1"] } };
 const observation = { kind: "ping" as const, output: "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n" };
 
 async function ledger() {

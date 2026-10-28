@@ -20,7 +20,7 @@ describe.runIf(process.env.INTEGRATION === "1")("integration: EOS ping over MCP 
     });
     try {
       await client.connect(transport);
-      const result = await client.callTool({ name: "eos_ping", arguments: { target: "ping1", destination: "::1", source: "::1", vrf: "default" } });
+      const result = await client.callTool({ name: "eos_ping", arguments: { target: "ping1", destinations: ["::1"], source: "::1", vrf: "default" } });
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toMatchObject({
         request: { kind: "ping", count: 1 },
@@ -53,7 +53,7 @@ describe.runIf(process.env.INTEGRATION === "1")("integration: EOS ping over MCP 
     });
     try {
       await client.connect(transport);
-      const args = { target: "ping1", destination: "127.0.0.1", count: 3 };
+      const args = { target: "ping1", destinations: ["127.0.0.1"], count: 3 };
       const timedOut = await client.callTool({ name: "eos_ping", arguments: args });
       expect(timedOut.isError).toBe(true);
       const info = await client.callTool({ name: "eos_get_server_info", arguments: {} });
@@ -80,7 +80,7 @@ describe.runIf(process.env.INTEGRATION === "1")("integration: EOS ping over MCP 
       const info = await restarted.callTool({ name: "eos_get_server_info", arguments: {} });
       expect(info.structuredContent).toHaveProperty("diagnostics.capacity.uncertain_count", 1);
       expect(info.structuredContent).toHaveProperty("diagnostics.capacity.reservations.0.rpc_request_id", retainedRequestId);
-      const blocked = await restarted.callTool({ name: "eos_ping", arguments: { target: "ping1", destination: "127.0.0.1" } });
+      const blocked = await restarted.callTool({ name: "eos_ping", arguments: { target: "ping1", destinations: ["127.0.0.1"] } });
       expect(blocked).toMatchObject({ isError: true, structuredContent: { error_code: "diagnostic_capacity_uncertain" } });
     } finally { await restarted.close(); }
   }, 20_000);

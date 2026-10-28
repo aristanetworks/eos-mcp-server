@@ -5,7 +5,7 @@ import type { InventoryHostModel } from "../inventory/types.js";
 // No command-string escape hatch or speculative capture-session contract.
 export interface PingRequest {
   kind: "ping";
-  destination: string;
+  destinations: string[];
   count?: number;
   vrf?: string;
   source?: string;
@@ -13,7 +13,12 @@ export interface PingRequest {
 
 export type DiagnosticRequest = PingRequest;
 
-export interface PreparedPing extends Omit<PingRequest, "count"> {
+/** One ping execution: a single destination with the request's shared options. */
+export interface PingExecutionRequest extends Omit<PingRequest, "destinations"> {
+  destination: string;
+}
+
+export interface PreparedPing extends Omit<PingExecutionRequest, "count"> {
   count: number;
   addressFamily: 4 | 6;
   replyTimeoutSeconds: number;

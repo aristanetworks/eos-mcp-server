@@ -78,7 +78,7 @@ describe("stdio MCP smoke test", () => {
 
         const deniedPing = await client.callTool({
           name: "eos_ping",
-          arguments: { target: "leaf1", destination: "127.0.0.1" }
+          arguments: { target: "leaf1", destinations: ["127.0.0.1"] }
         });
         expect(deniedPing.isError).toBe(true);
         expect(JSON.stringify(deniedPing.content)).toContain("Diagnostic permission denied");

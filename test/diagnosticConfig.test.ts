@@ -16,7 +16,7 @@ describe("diagnostic settings", () => {
   it("supplies finite defaults without a settings file", async () => {
     const config = await loadServerConfig({ command: "serve" });
     expect(config.diagnostics).toEqual({
-      defaultPingCount: 3, maxPingCount: 10, maxProbesPerRequest: 100, deviceConcurrency: 5,
+      defaultPingCount: 3, maxPingCount: 10, maxProbesPerRequest: 100, maxDestinationsPerRequest: 16, deviceConcurrency: 5,
       pingReplyTimeoutMs: 1000, commandTimeoutMs: 30_000, httpTimeoutMs: 35_000, overallOperationTimeoutMs: 60_000
     });
   });
@@ -30,10 +30,10 @@ describe("diagnostic settings", () => {
 
   it("loads every limit and timeout from YAML", async () => {
     const config = await load([
-      "diagnostics:", "  defaultPingCount: 4", "  maxPingCount: 20", "  maxProbesPerRequest: 200", "  deviceConcurrency: 2",
+      "diagnostics:", "  defaultPingCount: 4", "  maxPingCount: 20", "  maxProbesPerRequest: 200", "  maxDestinationsPerRequest: 8", "  deviceConcurrency: 2",
       "  pingReplyTimeoutMs: 2000", "  commandTimeoutMs: 65000", "  httpTimeoutMs: 70000", "  overallOperationTimeoutMs: 90000"
     ]);
-    expect(config.diagnostics).toEqual({ defaultPingCount: 4, maxPingCount: 20, maxProbesPerRequest: 200, deviceConcurrency: 2,
+    expect(config.diagnostics).toEqual({ defaultPingCount: 4, maxPingCount: 20, maxProbesPerRequest: 200, maxDestinationsPerRequest: 8, deviceConcurrency: 2,
       pingReplyTimeoutMs: 2000, commandTimeoutMs: 65000, httpTimeoutMs: 70000, overallOperationTimeoutMs: 90000 });
   });
 
@@ -45,7 +45,7 @@ describe("diagnostic settings", () => {
   it.each([
     "defaultPingCount: 11", "maxProbesPerRequest: 5", "commandTimeoutMs: 5000", "httpTimeoutMs: 10000",
     "deviceConcurrency: 0", "maxPingCount: -1", "pingReplyTimeoutMs: 1500", "overallOperationTimeoutMs: 0",
-    "httpTimeoutMs: 2147483648", "deviceConcurrency: true", "unknownLimit: 5", "maxPingCount: .inf"
+    "httpTimeoutMs: 2147483648", "deviceConcurrency: true", "unknownLimit: 5", "maxPingCount: .inf", "maxDestinationsPerRequest: 0"
   ])("rejects unsafe or contradictory settings: %s", async (line) => {
     await expect(load(["diagnostics:", `  ${line}`])).rejects.toMatchObject({ code: "config_schema_invalid" });
   });

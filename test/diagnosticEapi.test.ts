@@ -10,7 +10,7 @@ import { buildConfig, buildHost, buildInventoryModel, echoRpcTransport } from ".
 const context = () => ({ signal: new AbortController().signal, requestId: "unit-rpc-id" });
 const output = "1 packets transmitted, 1 received, 0% packet loss, time 0ms\n";
 const host = buildHost({ effectiveVars: { ansible_user: "admin", ansible_password: "test-password" } });
-const call = { target: "leaf1", request: { kind: "ping" as const, destination: "::1" } };
+const call = { target: "leaf1", request: { kind: "ping" as const, destinations: ["::1"] } };
 
 function createSingleSlotExecutor(runner: EosTextCommandRunner): DiagnosticExecutor {
   const config = buildConfig();

@@ -9,6 +9,7 @@ export const diagnosticsConfigSchema = z.object({
   defaultPingCount: positiveInteger.default(3),
   maxPingCount: positiveInteger.default(10),
   maxProbesPerRequest: positiveInteger.default(100),
+  maxDestinationsPerRequest: positiveInteger.default(16),
   deviceConcurrency: positiveInteger.default(5),
   pingReplyTimeoutMs: positiveInteger.multipleOf(1000).default(1000),
   commandTimeoutMs: positiveInteger.default(30_000),

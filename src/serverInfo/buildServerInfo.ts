@@ -38,6 +38,7 @@ export function buildServerInfo(context: ServerRuntimeContext, diagnosticCapacit
         default_ping_count: context.config.diagnostics.defaultPingCount,
         max_ping_count: context.config.diagnostics.maxPingCount,
         max_probes_per_request: context.config.diagnostics.maxProbesPerRequest,
+        max_destinations_per_request: context.config.diagnostics.maxDestinationsPerRequest,
         device_concurrency: context.config.diagnostics.deviceConcurrency,
         ping_reply_timeout_ms: context.config.diagnostics.pingReplyTimeoutMs,
         command_timeout_ms: context.config.diagnostics.commandTimeoutMs,

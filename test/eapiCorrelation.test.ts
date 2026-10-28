@@ -9,7 +9,7 @@ import { EapiDiagnosticRunner } from "../src/diagnostics/eapiRunner.js";
 import { buildConfig, buildInventoryModel, buildConnection } from "./helpers.js";
 
 const result = [{ output: "" }, { output: "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n" }];
-const call = { target: "leaf1", request: { kind: "ping" as const, destination: "127.0.0.1" } };
+const call = { target: "leaf1", request: { kind: "ping" as const, destinations: ["127.0.0.1"] } };
 
 describe("diagnostic completion response correlation", () => {
   it("preserves the original attempt and its reservation across restart after an unrelated acknowledgement", async () => {

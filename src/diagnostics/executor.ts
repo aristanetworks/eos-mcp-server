@@ -29,6 +29,7 @@ import type {
 } from "./types.js";
 
 export interface DiagnosticDeviceResult extends ReadDeviceResultBase {
+  destination: string;
   finding?: DiagnosticFinding;
   raw_output?: string;
 }
@@ -101,6 +102,7 @@ export class DiagnosticExecutor {
         } catch (error) {
           return {
             ...buildReadDeviceFailure(host, "diagnostic_execution_failed", error),
+            destination: execution.destination,
             ...(options.includeRaw === true && error instanceof AppError && typeof error.details?.raw_output === "string"
               ? { raw_output: error.details.raw_output }
               : {})
@@ -124,6 +126,7 @@ export class DiagnosticExecutor {
     const observation = await this.executeOnDevice(host, execution, signal);
     try {
       return buildReadDeviceSuccess(host, {
+        destination: execution.destination,
         finding: definition.interpret(observation.output, execution),
         ...(includeRaw ? { raw_output: observation.output } : {})
       });
