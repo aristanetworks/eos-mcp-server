@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { AppError } from "../core/errors.js";
-import { reservationSchema } from "./reservationSchema.js";
+import { parseReservation, reservationSchema } from "./reservationSchema.js";
 import type { DiagnosticReservationInfo } from "./types.js";
 
 const identifier = z.string().regex(/^[A-Za-z0-9_.:-]{1,128}$/);
@@ -73,8 +73,12 @@ export function parseFencingAttestation(value: unknown): FencingAttestation {
   return parsed.data;
 }
 
+function sha256Json(value: object): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
 export function evidenceDigest(evidence: FencingAttestation): string {
-  return createHash("sha256").update(JSON.stringify(evidence)).digest("hex");
+  return sha256Json(evidence);
 }
 
 export function validateReleaseRequest(request: DiagnosticReleaseRequest): FencingAttestation {
@@ -119,23 +123,19 @@ export function matchAttestedReservations(evidence: FencingAttestation, current:
 
 export function createReleaseAudit(value: unknown): DiagnosticReleaseAudit {
   const body = releaseAuditBodySchema.parse(value);
-  return parseReleaseAudit({ ...body, audit_sha256: createHash("sha256").update(JSON.stringify(body)).digest("hex") });
+  return parseReleaseAudit({ ...body, audit_sha256: sha256Json(body) });
 }
 
 export function parseReleaseAudit(value: unknown): DiagnosticReleaseAudit {
   const audit = releaseAuditSchema.parse(value);
   const { audit_sha256: digest, ...body } = audit;
-  if (createHash("sha256").update(JSON.stringify(body)).digest("hex") !== digest) {
+  if (sha256Json(body) !== digest) {
     throw new AppError("diagnostic_state_invalid", "Operator release audit checksum is invalid");
   }
   if (audit.inventory_identity !== audit.evidence.inventory_identity || audit.evidence_sha256 !== evidenceDigest(audit.evidence)) {
     throw new AppError("diagnostic_state_invalid", "Operator release audit evidence or inventory binding is invalid");
   }
-  matchAttestedReservations(audit.evidence, audit.released_reservations.map((record) => ({
-    reservation_id: record.reservation_id, inventory_hostname: record.inventory_hostname, diagnostic: record.diagnostic,
-    state: record.state, reserved_at: record.reserved_at,
-    ...(record.rpc_request_id === undefined ? {} : { rpc_request_id: record.rpc_request_id })
-  })), Date.parse(audit.recorded_at));
+  matchAttestedReservations(audit.evidence, audit.released_reservations.map(parseReservation), Date.parse(audit.recorded_at));
   if (audit.released_reservations.length !== audit.evidence.reservations.length) {
     throw new AppError("diagnostic_state_invalid", "Operator release audit has inconsistent reservation scope");
   }

@@ -8,6 +8,11 @@ interface Waiter {
   reject: (error: AppError) => void;
 }
 
+interface DiagnosticReservationIntent {
+  inventoryHostname: string;
+  diagnostic: DiagnosticRequest["kind"];
+}
+
 export interface DiagnosticReservation {
   readonly requestId: string;
   complete(): void;
@@ -31,9 +36,7 @@ export class DiagnosticConcurrency {
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    for (const waiter of this.waiting.splice(0)) {
-      waiter.reject(new AppError("diagnostic_state_closed", "Diagnostic execution is shutting down"));
-    }
+    this.rejectWaiters(new AppError("diagnostic_state_closed", "Diagnostic execution is shutting down"));
     this.journal?.close();
   }
 
@@ -60,16 +63,16 @@ export class DiagnosticConcurrency {
     }
   }
 
-  acquire(signal: AbortSignal, intent: {
-    inventoryHostname: string;
-    diagnostic: DiagnosticRequest["kind"];
-  }): Promise<DiagnosticReservation> {
+  acquire(signal: AbortSignal, intent: DiagnosticReservationIntent): Promise<DiagnosticReservation> {
     return new Promise((resolve, reject) => {
+      if (signal.aborted) {
+        reject(new AppError("operation_aborted", "Diagnostic was cancelled while waiting for capacity"));
+        return;
+      }
+      this.assertUsableCapacity();
       const cancelled = (): void => {
         const index = this.waiting.indexOf(waiter);
-        if (index >= 0) {
-          this.waiting.splice(index, 1);
-        }
+        if (index >= 0) this.waiting.splice(index, 1);
         waiter.reject(new AppError("operation_aborted", "Diagnostic was cancelled while waiting for capacity"));
       };
       const waiter: Waiter = {
@@ -79,72 +82,72 @@ export class DiagnosticConcurrency {
         },
         grant: () => {
           signal.removeEventListener("abort", cancelled);
-          const requestId = randomUUID();
-          const state: DiagnosticReservationInfo = {
-            reservation_id: requestId,
-            rpc_request_id: requestId,
-            inventory_hostname: intent.inventoryHostname,
-            diagnostic: intent.diagnostic,
-            state: "active",
-            reserved_at: new Date().toISOString()
-          };
           try {
-            this.journal?.save(state);
-          } catch {
-            waiter.reject(this.failStorage());
-            return;
+            resolve(this.reserve(intent));
+          } catch (error) {
+            reject(error);
           }
-          this.reservations.add(state);
-          resolve({
-            requestId,
-            complete: () => {
-              if (!this.reservations.has(state)) return;
-              try {
-                this.journal?.remove(state.reservation_id);
-              } catch {
-                state.state = "uncertain";
-                state.uncertain_since = new Date().toISOString();
-                state.reason_code = "diagnostic_state_write_failed";
-                throw this.failStorage();
-              }
-              this.reservations.delete(state);
-              this.waiting.shift()?.grant();
-            },
-            markUncertain: (reasonCode) => {
-              if (!this.reservations.has(state) || state.state === "uncertain") {
-                return;
-              }
-              state.state = "uncertain";
-              state.uncertain_since = new Date().toISOString();
-              state.reason_code = reasonCode;
-              try {
-                this.journal?.save(state);
-              } catch {
-                // Abort listeners must not throw. The committed active record
-                // still prevents fresh capacity on restart; stop all new work.
-                this.failStorage();
-              }
-              if (this.isUncertainExhausted()) {
-                for (const blocked of this.waiting.splice(0)) {
-                  blocked.reject(this.capacityError());
-                }
-              }
-            }
-          });
         }
       };
-      if (signal.aborted) {
-        cancelled();
+      if (this.reservations.size < this.limit) {
+        waiter.grant();
       } else {
-        this.assertUsableCapacity();
-        if (this.reservations.size < this.limit) {
-          waiter.grant();
-        } else {
-          this.waiting.push(waiter);
-          signal.addEventListener("abort", cancelled, { once: true });
-        }
+        this.waiting.push(waiter);
+        signal.addEventListener("abort", cancelled, { once: true });
       }
     });
+  }
+
+  private reserve(intent: DiagnosticReservationIntent): DiagnosticReservation {
+    const requestId = randomUUID();
+    const state: DiagnosticReservationInfo = {
+      reservation_id: requestId,
+      rpc_request_id: requestId,
+      inventory_hostname: intent.inventoryHostname,
+      diagnostic: intent.diagnostic,
+      state: "active",
+      reserved_at: new Date().toISOString()
+    };
+    try {
+      this.journal?.save(state);
+    } catch {
+      throw this.failStorage();
+    }
+    this.reservations.add(state);
+    return {
+      requestId,
+      complete: () => this.complete(state),
+      markUncertain: (reasonCode) => this.markUncertain(state, reasonCode)
+    };
+  }
+
+  private complete(state: DiagnosticReservationInfo): void {
+    if (!this.reservations.has(state)) return;
+    try {
+      this.journal?.remove(state.reservation_id);
+    } catch {
+      state.state = "uncertain";
+      state.uncertain_since = new Date().toISOString();
+      state.reason_code = "diagnostic_state_write_failed";
+      throw this.failStorage();
+    }
+    this.reservations.delete(state);
+    this.waiting.shift()?.grant();
+  }
+
+  private markUncertain(state: DiagnosticReservationInfo, reasonCode: string): void {
+    if (!this.reservations.has(state) || state.state === "uncertain") return;
+    state.state = "uncertain";
+    state.uncertain_since = new Date().toISOString();
+    state.reason_code = reasonCode;
+    try {
+      this.journal?.save(state);
+    } catch {
+      // Abort listeners must not throw. The committed active record
+      // still prevents fresh capacity on restart; stop all new work.
+      this.failStorage();
+    }
+    if (this.isUncertainExhausted()) this.rejectWaiters(this.capacityError());
   }
 
   private isUncertainExhausted(): boolean {
@@ -154,8 +157,12 @@ export class DiagnosticConcurrency {
   private failStorage(): AppError {
     const error = new AppError("diagnostic_state_write_failed", "Diagnostic state could not be committed; all new diagnostics are blocked until operator investigation");
     this.storageError = error;
-    for (const waiter of this.waiting.splice(0)) waiter.reject(error);
+    this.rejectWaiters(error);
     return error;
+  }
+
+  private rejectWaiters(error: AppError): void {
+    for (const waiter of this.waiting.splice(0)) waiter.reject(error);
   }
 
   private capacityError(): AppError {

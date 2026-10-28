@@ -179,6 +179,8 @@ Execution `status: "success"` means ping executed and its output was understood.
 
 `DiagnosticExecutor.execute` accepts typed diagnostic intent and owns authorization, aggregate budgets, fan-out, fail-closed global admission, cancellation, result envelopes, and response limits. `getCapacity()` exposes a detached snapshot; server-info obtains it at call time rather than caching startup state. `DiagnosticDeviceRunner.execute` accepts inventory identity and prepared intent; the eAPI adapter owns connection resolution and a single command execution. Ping-specific validation, compilation, and interpretation remain in `src/diagnostics/ping.ts`.
 
+Admission queueing is separate from reservation creation and state transitions; shutdown, storage failure, and uncertain-capacity exhaustion share queue rejection. A queued admission failure does not invalidate an earlier command whose completion was already committed. The eAPI adapter separates connection validation from dispatch/error handling instead of maintaining a dispatch flag. `DiagnosticExecutionError` carries a typed `not_dispatched`, `completed`, or `unknown` classification; ordinary errors and malformed acknowledgements remain uncertain. Capacity is reusable only after the corresponding durable removal succeeds.
+
 The request, observation, and finding types are discriminated by `kind`; only `ping` is implemented. Add other real operations at this seam without exposing arbitrary command strings. Packet capture needs a separate decision about transport, privilege, visibility, asynchronous lifetime, artifacts, and sensitive data; no capture-session abstractions are fabricated now.
 
 ## Verification
@@ -193,6 +195,8 @@ Validated against the repository's cEOS 4.34.3M lab over HTTPS eAPI:
 - MCP stdio execution loads configured defaults and returns real measurements.
 
 Older EOS versions and physical platforms have not been qualified for this new tool; the existing read-path minimum does not establish ping compatibility.
+
+The refactor was also checked against synthetic ledgers and release audits written by the pre-refactor code (`0e208ec`): inspection, checksum validation, exact committed retries, legacy absent RPC IDs, and remaining reservations stayed compatible. Audit snapshots use the shared reservation codec, and evidence/audit digests share the same JSON SHA-256 implementation; the serialized formats and schema versions are unchanged.
 
 ```bash
 npm test

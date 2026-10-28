@@ -51,4 +51,6 @@ The server is a test-backed, read-only MCP service for Arista EOS eAPI. The prod
 
 ## Validation
 
-Run `npm test`, `npm run typecheck`, and `npm run build` after changes. Optional integration tests require the configured cEOS environment. Ping's module and MCP stdio integration suites are qualified on cEOS 4.34.3M; see [DIAGNOSTICS.md](DIAGNOSTICS.md).
+Run `npm test`, `npm run typecheck`, `npm run lint`, and `npm run build` after changes. Optional integration tests require the configured cEOS environment. Ping's module and MCP stdio integration suites are qualified on cEOS 4.34.3M; see [DIAGNOSTICS.md](DIAGNOSTICS.md).
+
+Latest refactor verification: **362 tests across 40 files passed** with `INTEGRATION=1`, plus typecheck, static policy, build, and whitespace checks. Independent read-only review found no findings. Synthetic ledgers written by pre-refactor commit `0e208ec` retained compatible audit checksums, inspection, committed retries, legacy RPC identities, and remaining capacity. No real EOS reservations were operator-released in these checks.

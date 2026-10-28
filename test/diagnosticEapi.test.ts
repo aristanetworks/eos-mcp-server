@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { EapiClient } from "../src/eapi/client.js";
+import type { EosTextCommandRunner } from "../src/eapi/types.js";
 import { EapiDiagnosticRunner } from "../src/diagnostics/eapiRunner.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
 import { DiagnosticExecutionError } from "../src/diagnostics/executionError.js";
@@ -9,6 +10,14 @@ import { buildConfig, buildHost, buildInventoryModel, echoRpcTransport } from ".
 const context = () => ({ signal: new AbortController().signal, requestId: "unit-rpc-id" });
 const output = "1 packets transmitted, 1 received, 0% packet loss, time 0ms\n";
 const host = buildHost({ effectiveVars: { ansible_user: "admin", ansible_password: "test-password" } });
+const call = { target: "leaf1", request: { kind: "ping" as const, destination: "::1" } };
+
+function createSingleSlotExecutor(runner: EosTextCommandRunner): DiagnosticExecutor {
+  const config = buildConfig();
+  config.diagnostics.deviceConcurrency = 1;
+  return new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true, effectiveVars: host.effectiveVars }), config,
+    new EapiDiagnosticRunner(config, runner));
+}
 
 describe("diagnostic eAPI adapter", () => {
   it("sends one text request, in enable mode, using the configured version and diagnostic HTTP timeout", async () => {
@@ -53,7 +62,6 @@ describe("diagnostic eAPI adapter", () => {
     const config = buildConfig();
     const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true, effectiveVars: host.effectiveVars }), config,
       new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson }))));
-    const call = { target: "leaf1", request: { kind: "ping" as const, destination: "::1" } };
     const normal = await executor.execute(call);
     expect(JSON.stringify(normal)).not.toContain("private EOS error detail");
     const diagnostic = await executor.execute({ ...call, includeRaw: true });
@@ -63,11 +71,7 @@ describe("diagnostic eAPI adapter", () => {
 
   it.each([42, null, {}, { output: 42 }])("retains capacity after a correlated malformed text result (%j)", async (entry) => {
     const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ result: [{ output: "" }, entry] }), text: async () => "" }));
-    const config = buildConfig();
-    config.diagnostics.deviceConcurrency = 1;
-    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true, effectiveVars: host.effectiveVars }), config,
-      new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson }))));
-    const call = { target: "leaf1", request: { kind: "ping" as const, destination: "::1" } };
+    const executor = createSingleSlotExecutor(new EapiClient(echoRpcTransport({ postJson })));
     expect((await executor.execute(call)).results[0]?.error_code).toBe("eapi_text_output_invalid");
     expect(executor.getCapacity()).toMatchObject({ available_count: 0, uncertain_count: 1 });
     await expect(executor.execute(call)).rejects.toMatchObject({ code: "diagnostic_capacity_uncertain" });
@@ -79,11 +83,7 @@ describe("diagnostic eAPI adapter", () => {
     { label: "non-text", results: [{ command: "ping", output_format: "text" as const, output: 42 }] }
   ])("retains capacity when the text runner returns a $label result", async ({ results }) => {
     const runTextCommands = vi.fn(async () => results);
-    const config = buildConfig();
-    config.diagnostics.deviceConcurrency = 1;
-    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true, effectiveVars: host.effectiveVars }), config,
-      new EapiDiagnosticRunner(config, { runTextCommands }));
-    const call = { target: "leaf1", request: { kind: "ping" as const, destination: "::1" } };
+    const executor = createSingleSlotExecutor({ runTextCommands });
     expect((await executor.execute(call)).results[0]?.error_code).toBe("diagnostic_output_unrecognized");
     expect(executor.getCapacity()).toMatchObject({ available_count: 0, uncertain_count: 1 });
     await expect(executor.execute(call)).rejects.toMatchObject({ code: "diagnostic_capacity_uncertain" });
@@ -92,11 +92,7 @@ describe("diagnostic eAPI adapter", () => {
 
   it("retains capacity when an invalid eAPI payload cannot confirm command completion", async () => {
     const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ unexpected: "response" }), text: async () => "" }));
-    const config = buildConfig();
-    config.diagnostics.deviceConcurrency = 1;
-    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true, effectiveVars: host.effectiveVars }), config,
-      new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson }))));
-    const call = { target: "leaf1", request: { kind: "ping" as const, destination: "::1" } };
+    const executor = createSingleSlotExecutor(new EapiClient(echoRpcTransport({ postJson })));
     expect((await executor.execute(call)).results[0]?.error_code).toBe("eapi_payload_invalid");
     expect(executor.getCapacity()).toMatchObject({ available_count: 0, uncertain_count: 1 });
     await expect(executor.execute(call)).rejects.toMatchObject({ code: "diagnostic_capacity_uncertain" });
@@ -108,11 +104,7 @@ describe("diagnostic eAPI adapter", () => {
     { code: 1001, message: "CLI command failed: unexpected error 408", data: [{ errors: ["Command exceeded its allowed time limit"] }] }
   ])("does not equate an EOS RPC interruption error with confirmed process exit ($code)", async (rpcError) => {
     const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ error: rpcError }), text: async () => "" }));
-    const config = buildConfig();
-    config.diagnostics.deviceConcurrency = 1;
-    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true, effectiveVars: host.effectiveVars }), config,
-      new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson }))));
-    const call = { target: "leaf1", request: { kind: "ping" as const, destination: "::1" } };
+    const executor = createSingleSlotExecutor(new EapiClient(echoRpcTransport({ postJson })));
     await executor.execute(call);
     expect(executor.getCapacity()).toMatchObject({ uncertain_count: 1, available_count: 0 });
     await expect(executor.execute(call)).rejects.toMatchObject({ code: "diagnostic_capacity_uncertain" });

@@ -52,6 +52,38 @@ describe("durable diagnostic execution", () => {
     executor.close();
   });
 
+  it("keeps completed work successful when journal failure rejects queued admissions", async () => {
+    let saves = 0;
+    const journal = {
+      load: () => [],
+      save: () => { if (++saves > 1) throw new AppError("diagnostic_state_write_failed", "Injected admission failure"); },
+      remove: () => undefined,
+      close: () => undefined
+    };
+    let finish!: (value: typeof observation) => void;
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => { started = resolve; });
+    const response = new Promise<typeof observation>((resolve) => { finish = resolve; });
+    const runner = { execute: vi.fn(() => { started(); return response; }) };
+    const config = buildConfig();
+    config.diagnostics.deviceConcurrency = 1;
+    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, runner, journal);
+    try {
+      const active = executor.execute(call);
+      await ready;
+      const waiting = [executor.execute(call), executor.execute(call)];
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(executor.getCapacity().queued_count).toBe(2);
+      finish(observation);
+      expect((await active).summary.success_count).toBe(1);
+      for (const result of await Promise.all(waiting)) {
+        expect(result.results[0]?.error_code).toBe("diagnostic_state_write_failed");
+      }
+      expect(runner.execute).toHaveBeenCalledTimes(1);
+      expect(executor.getCapacity()).toMatchObject({ active_count: 0, queued_count: 0, available_count: 0, storage_error_code: "diagnostic_state_write_failed" });
+    } finally { executor.close(); }
+  });
+
   it("restores lost-response reservations and blocks replacement across restart", async () => {
     const { file, journal } = await ledger();
     const config = buildConfig();
