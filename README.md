@@ -89,7 +89,7 @@ No install step is needed. `npx` downloads the package on first use and caches i
 npx -y @aristanetworks/eos-mcp-server --help
 ```
 
-The [MCP client examples](#connect-to-an-mcp-client) below use `npx`. `-y` skips npm's install confirmation prompt, which an MCP client can't answer. Without a version, npx checks the registry for the latest release each time it launches the server. To pin a specific release, append a version, for example `@aristanetworks/eos-mcp-server@0.6.1-beta`.
+The [MCP client examples](#connect-to-an-mcp-client) below use `npx`. `-y` skips npm's install confirmation prompt, which an MCP client can't answer. Without a version, npx checks the registry for the latest release each time it launches the server. To pin a specific release, append a version, for example `@aristanetworks/eos-mcp-server@0.7.0-beta`.
 
 ### Or install globally
 

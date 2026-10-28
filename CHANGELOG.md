@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.0-beta
+
 - Refactors diagnostic queueing and reservation transitions into separate paths, makes pre-/post-dispatch error handling explicit, and shares audit hashing and snapshot normalization. Ledger formats, schema versions, and safety policy are unchanged; adds coverage for queued journal failure without invalidating already-completed work.
 - Retains uncertain diagnostic capacity for correlated malformed text results instead of mistaking validation failure for completion. Offline inspection now reads integrity, schema, reservations, and audit in one SQLite transaction, preventing mixed before/after release snapshots.
 - Adds offline `release-diagnostics` with exact ID scope, a private bounded fencing-attestation file, explicit confirmation, exclusive ledger ownership, and atomic audit-plus-release. Records actual OS identity separately from the claimed verifier and checks content digests; it does not verify fencing truth or expose an MCP reset. Schema 1 migrates transactionally to schema 2, preserving unresolved work; `inspect-diagnostics` exposes read-only audit history. Exact committed retries are no-ops; changed attestation reuse is rejected.
