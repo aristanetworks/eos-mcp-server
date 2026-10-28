@@ -1,10 +1,12 @@
 import { z } from "zod";
+import { diagnosticsConfigSchema } from "./diagnostics.js";
 
 const eapiVersionSchema = z.union([z.literal(1), z.literal("latest")]);
 
 export const serverConfigFileSchema = z
   .object({
     version: z.literal(1).optional(),
+    diagnostics: diagnosticsConfigSchema.optional(),
     inventory: z.string().min(1).optional(),
     actor: z.string().min(1).optional(),
     logFile: z.string().min(1).optional(),
@@ -32,6 +34,7 @@ export const serverConfigFileSchema = z
 export const resolvedServerConfigSchema = z
   .object({
     configPath: z.string().min(1).optional(),
+    diagnostics: diagnosticsConfigSchema.default({}),
     inventoryPath: z.string().min(1).optional(),
     actor: z.string().min(1).optional(),
     logFile: z.string().min(1).optional(),

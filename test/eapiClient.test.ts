@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveEapiConnection } from "../src/connection/resolveConnection.js";
 import { EapiClient } from "../src/eapi/client.js";
 import { FetchEapiTransport } from "../src/eapi/transport.js";
-import { buildConfig, buildConnection, buildHost, setTestPasswordEnv } from "./helpers.js";
+import { buildConfig, buildConnection, buildHost, setTestPasswordEnv, echoRpcTransport } from "./helpers.js";
 
 describe("resolveEapiConnection", () => {
   it("uses server default username and password env when host does not override them", () => {
@@ -180,7 +180,7 @@ describe("EapiClient", () => {
       text: async () => JSON.stringify({ result: [{ version: "4.32.1F" }] })
     }));
 
-    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const client = new EapiClient(echoRpcTransport(new FetchEapiTransport(fetchMock)));
     const connection = buildConnection();
 
     await client.runShowCommands(connection, ["show version"], "json");
@@ -208,7 +208,7 @@ describe("EapiClient", () => {
       text: async () => JSON.stringify({ result: [{ version: "4.32.1F" }] })
     }));
 
-    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const client = new EapiClient(echoRpcTransport(new FetchEapiTransport(fetchMock)));
 
     await client.runShowCommands(buildConnection({ eapiVersion: "latest" }), ["show version"], "json");
 
@@ -224,7 +224,7 @@ describe("EapiClient", () => {
       text: async () => JSON.stringify({ error: { code: 1002, message: "CLI command failed" } })
     }));
 
-    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const client = new EapiClient(echoRpcTransport(new FetchEapiTransport(fetchMock)));
     const connection = buildConnection();
 
     await expect(client.runShowCommands(connection, ["show version"], "json")).rejects.toThrow(/JSON-RPC error 1002/);
@@ -238,7 +238,7 @@ describe("EapiClient", () => {
       text: async () => JSON.stringify({ result: [{}, { output: "! running-config\n" }] })
     }));
 
-    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const client = new EapiClient(echoRpcTransport(new FetchEapiTransport(fetchMock)));
     const connection = buildConnection();
 
     await client.runShowCommands(connection, ["show running-config"], "text", { enable: true });
@@ -255,7 +255,7 @@ describe("EapiClient", () => {
       text: async () => JSON.stringify({ result: [{}, { output: "! running-config\n" }] })
     }));
 
-    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const client = new EapiClient(echoRpcTransport(new FetchEapiTransport(fetchMock)));
     const connection = buildConnection();
 
     const result = await client.runShowCommands(connection, ["show running-config"], "text", { enable: true });
@@ -277,7 +277,7 @@ describe("EapiClient", () => {
       text: async () => JSON.stringify({ result: [rawEntry] })
     }));
 
-    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const client = new EapiClient(echoRpcTransport(new FetchEapiTransport(fetchMock)));
     const connection = buildConnection();
 
     const result = await client.runShowCommands(connection, ["show version"], "json", { includeRawEntries: true });
@@ -307,7 +307,7 @@ describe("EapiClient", () => {
         text: async () => JSON.stringify({ result: [{ output: "text output" }] })
       });
 
-    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const client = new EapiClient(echoRpcTransport(new FetchEapiTransport(fetchMock)));
     const connection = buildConnection();
 
     const result = await client.runShowCommands(connection, ["show version"], "auto");
@@ -322,6 +322,19 @@ describe("EapiClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("recognizes EOS code 1003 unconverted-command errors for read-only auto fallback", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ error: {
+        code: 1003, message: "CLI command failed: unconverted command",
+        data: [{ errors: ["Command cannot be used over the API at this time. To see ASCII output, set format='text' in your request"] }]
+      } }), text: async () => "" })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ result: [{ output: "bounded log output" }] }), text: async () => "" });
+    const client = new EapiClient(echoRpcTransport(new FetchEapiTransport(fetchMock)));
+    const result = await client.runShowCommands(buildConnection(), ["show logging threshold warnings 10"], "auto");
+    expect(result[0]).toMatchObject({ output_format: "text", output: "bounded log output" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects unexpected text output payloads", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -330,7 +343,7 @@ describe("EapiClient", () => {
       text: async () => JSON.stringify({ result: [{ entries: [] }] })
     }));
 
-    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const client = new EapiClient(echoRpcTransport(new FetchEapiTransport(fetchMock)));
     const connection = buildConnection();
 
     await expect(client.runShowCommands(connection, ["show logging"], "text")).rejects.toMatchObject({
@@ -346,7 +359,7 @@ describe("EapiClient", () => {
       text: async () => JSON.stringify({ result: [{ version: "4.32.1F" }] })
     }));
 
-    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const client = new EapiClient(echoRpcTransport(new FetchEapiTransport(fetchMock)));
     const connection = buildConnection();
 
     await client.runShowCommands(connection, ["show version"], "json");
@@ -363,7 +376,7 @@ describe("EapiClient", () => {
         })
     );
 
-    const client = new EapiClient(new FetchEapiTransport(fetchMock));
+    const client = new EapiClient(echoRpcTransport(new FetchEapiTransport(fetchMock)));
     const connection = buildConnection({ timeoutMs: 1 });
 
     await expect(client.runShowCommands(connection, ["show version"], "json")).rejects.toMatchObject({
@@ -385,13 +398,14 @@ describe("EapiClient", () => {
         end: () => void;
         destroy: ReturnType<typeof vi.fn>;
       };
-      request.write = vi.fn();
+      let requestId: unknown;
+      request.write = vi.fn((body: string) => { requestId = JSON.parse(body).id; });
       request.destroy = vi.fn();
       request.end = () => {
         const response = new EventEmitter() as EventEmitter & { statusCode: number };
         response.statusCode = 200;
         callback?.(response);
-        response.emit("data", Buffer.from(JSON.stringify({ result: [{ version: "4.32.1F" }] })));
+        response.emit("data", Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: requestId, result: [{ version: "4.32.1F" }] })));
         response.emit("end");
       };
       return request as unknown as ReturnType<typeof https.request>;

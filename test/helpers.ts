@@ -2,8 +2,29 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { ResolvedServerConfig } from "../src/config/schema.js";
+import { diagnosticsConfigSchema } from "../src/config/diagnostics.js";
 import type { EapiConnectionConfig } from "../src/eapi/types.js";
+import type { EapiTransport } from "../src/eapi/transport.js";
 import type { InventoryHostModel, InventoryModel } from "../src/inventory/types.js";
+
+/** Fixture EOS server: echo protocol identity around abbreviated result/error payloads.
+ * Explicit fields override defaults; missing-envelope tests must use a raw transport.
+ */
+export function echoRpcTransport(transport: EapiTransport): EapiTransport {
+  return {
+    async postJson(connection, requestJson, signal) {
+      const response = await transport.postJson(connection, requestJson, signal);
+      return {
+        ...response,
+        async json() {
+          const payload = await response.json();
+          if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return payload;
+          return { jsonrpc: "2.0", id: JSON.parse(requestJson).id as unknown, ...payload };
+        }
+      };
+    }
+  };
+}
 
 export function buildConfig(overrides: Partial<ResolvedServerConfig> = {}): ResolvedServerConfig {
   return {
@@ -12,6 +33,7 @@ export function buildConfig(overrides: Partial<ResolvedServerConfig> = {}): Reso
     actor: undefined,
     logFile: undefined,
     caFile: undefined,
+    diagnostics: diagnosticsConfigSchema.parse({}),
     readTimeoutMs: 10_000,
     overallOperationTimeoutMs: undefined,
     deviceConcurrency: 5,
@@ -58,6 +80,7 @@ export function buildHost(overrides: Partial<InventoryHostModel> = {}): Inventor
     effectiveVars: {},
     eligible: true,
     readAllowed: true,
+    diagnosticsAllowed: false,
     ineligibilityReasons: [],
     groupMemberships: [],
     ...overrides

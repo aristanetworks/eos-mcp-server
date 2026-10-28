@@ -169,6 +169,7 @@ describe("packaged CLI smoke test", () => {
             "eos_get_running_config",
             "eos_get_server_info",
             "eos_list_inventory",
+            "eos_ping",
             "eos_probe_devices",
             "eos_run_show",
             "eos_show_logging"

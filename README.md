@@ -3,12 +3,12 @@
 [![Project status: Beta](https://img.shields.io/badge/status-beta-orange.svg)](https://github.com/aristanetworks/eos-mcp-server/releases)
 [![npm version](https://img.shields.io/npm/v/%40aristanetworks%2Feos-mcp-server.svg)](https://www.npmjs.com/package/@aristanetworks/eos-mcp-server)
 
-Read-only MCP server for Arista EOS eAPI (JSON-RPC over HTTPS).
+Read-only (non-configuring) MCP server for Arista EOS eAPI (JSON-RPC over HTTPS).
 
 > **Beta status:** this project is under active development.
 > **Support:** best-effort only. This open source project is not currently supported by Arista TAC.
 
-This server provides a set of **read-only** tools. It never exposes configuration-changing operations. The server can:
+This server never exposes configuration-changing operations. It provides read-only inspection and explicitly authorized, bounded **active diagnostics**. Non-configuring does not mean passive or harmless: diagnostics generate traffic. The server can:
 
 - introspect its own runtime and inventory
 - list inventory hosts/groups
@@ -17,8 +17,9 @@ This server provides a set of **read-only** tools. It never exposes configuratio
 - retrieve bounded logging output for troubleshooting
 - collect a fixed set of device facts
 - retrieve running configuration
+- run bounded ping diagnostics on EOS devices, including group fan-out
 
-> **Security note:** LLMs have occasionally tried to bypass the MCP server and make configuration changes through other means (for example, SSH). As a best practice, use AAA and scope the authentication credentials used by this server to read-only access.
+> **Security note:** LLMs have occasionally tried to bypass the MCP server and make configuration changes through other means (for example, SSH). As a best practice, use AAA and scope the authentication credentials used by this server to the intended inspection and diagnostic commands only.
 
 ## Contents
 
@@ -43,6 +44,7 @@ Implemented MCP tools:
 - `eos_get_server_info`
 - `eos_list_inventory`
 - `eos_probe_devices`
+- `eos_ping`
 - `eos_run_show`
 - `eos_show_logging`
 - `eos_get_facts`
@@ -54,12 +56,14 @@ Implemented local CLI commands:
 - `validate-inventory`
 - `print-server-info`
 - `probe`
+- `inspect-diagnostics` (offline, read-only ledger inspection)
+- `release-diagnostics` (offline, explicitly attested and audited operator release)
 
 ## Requirements
 
 - Node.js 24+
 - Arista EOS devices reachable via eAPI over HTTPS
-- EOS 4.20 or later
+- EOS 4.20 or later for existing read operations; `eos_ping` is qualified on cEOS 4.34.3M
 - Inventory in one of the supported YAML formats
 
 ## Install and get started
@@ -85,7 +89,7 @@ No install step is needed. `npx` downloads the package on first use and caches i
 npx -y @aristanetworks/eos-mcp-server --help
 ```
 
-The [MCP client examples](#connect-to-an-mcp-client) below use `npx`. `-y` skips npm's install confirmation prompt, which an MCP client can't answer. Without a version, npx checks the registry for the latest release each time it launches the server. To pin a specific release, append a version, for example `@aristanetworks/eos-mcp-server@0.6.1-beta`.
+The [MCP client examples](#connect-to-an-mcp-client) below use `npx`. `-y` skips npm's install confirmation prompt, which an MCP client can't answer. Without a version, npx checks the registry for the latest release each time it launches the server. To pin a specific release, append a version, for example `@aristanetworks/eos-mcp-server@0.7.0-beta`.
 
 ### Or install globally
 
@@ -146,6 +150,17 @@ maxShowCommandsPerRequest: 5
 maxLoggingMessagesPerRequest: 1000
 maxResponseSizeBytes: 1048576
 eapiVersion: latest
+diagnostics:
+  # Optional: otherwise use the private, inventory-keyed XDG state directory.
+  # stateFile: ./private/diagnostics.sqlite
+  defaultPingCount: 3
+  maxPingCount: 10
+  maxProbesPerRequest: 100
+  deviceConcurrency: 5
+  pingReplyTimeoutMs: 1000
+  commandTimeoutMs: 30000
+  httpTimeoutMs: 35000
+  overallOperationTimeoutMs: 60000
 secretEnvPrefixes:
   - EOS_MCP_
 defaultConnection:
@@ -168,15 +183,18 @@ Supported config fields:
 - `maxLoggingMessagesPerRequest`
 - `maxResponseSizeBytes`
 - `eapiVersion`
+- `diagnostics` — optional limits/timeouts mapping; see [Network diagnostics](docs/DIAGNOSTICS.md#settings-and-defaults)
 - `secretEnvPrefixes`
 - `defaultConnection.ansibleUser`
 - `defaultConnection.ansibleHttpapiPort`
 - `defaultConnection.mcpValidateCerts`
 - `defaultConnection.mcpPasswordEnv`
 
-`readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized result of device read operations. `eapiVersion` selects the eAPI JSON output schema sent as the `runCmds` `version` parameter: `latest` (the default) returns the current schema for each command, and `1` pins the original schema for consumers that depend on it. It only affects JSON output, so `eos_get_running_config` and `eos_show_logging` are unchanged.
+For read tools, `readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole read-tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized result of device read operations. `eapiVersion` selects the eAPI JSON output schema sent as the `runCmds` `version` parameter: `latest` (the default) returns the current schema for each command, and `1` pins the original schema for consumers that depend on it. It only affects JSON output, so `eos_get_running_config` and `eos_show_logging` are unchanged.
 
-`actor` and `logFile` are currently exposed only as sanitized runtime metadata; the server does not yet write an audit log.
+`eos_ping` uses its own configurable `diagnostics` timeouts and server-wide concurrency, while sharing `maxReadTargets` and `maxResponseSizeBytes`. Omitted diagnostic settings retain the defaults shown above; invalid or contradictory settings fail validation. Ping requires explicit inventory permission and has no automatic retries. Unknown remote completion retains capacity indefinitely; inspect the running server's `eos_get_server_info.diagnostics.capacity`. Reservations and their wire request IDs are committed before dispatch; response IDs/protocol envelopes are validated before output is accepted. Uncertain attempts survive restarts in a private SQLite ledger, with one active server per ledger. Exhausted uncertain capacity returns `diagnostic_capacity_uncertain`; restarting with the same ledger does not clear it. Use `inspect-diagnostics` for offline inspection and audit history. `release-diagnostics` permits only an offline operator-attested release backed by independent fencing evidence and explicit reservation IDs; it is never an MCP tool or automatic reset. A verified remote kill mechanism is not implemented; do not delete or relocate state to bypass uncertainty. See [Network diagnostics](docs/DIAGNOSTICS.md), including the distinction between a reply timeout, command budget, and remote process termination.
+
+`actor` and `logFile` remain sanitized runtime metadata and do not enable a general tool-call audit log. Offline operator releases have a separate mandatory ledger audit, including the actual OS account and the claimed accountable verifier.
 
 `defaultConnection.mcpPasswordEnv` is a fallback password source. A host or inherited inventory value for `mcp_password_env` or `ansible_password` overrides it. Setting both `mcp_password_env` and `ansible_password` for the same host remains invalid.
 
@@ -404,6 +422,8 @@ still using their individual credentials.
   - `mcp_platform: arista_eos`
 - `mcp_read_allowed` defaults to `true` for eligible EOS hosts. Set it to `false` — inherited like any other variable — to explicitly deny read access to a host or group.
 - Read operations fail closed if the resolved target contains ineligible or read-denied hosts.
+- `mcp_diagnostics_allowed` defaults to `false`. Set this inherited boolean to `true` to permit `eos_ping`; read denial still vetoes diagnostics. A mixed-permission group fails before any dispatch.
+- A diagnostic destination is distinct from the inventory target and may be an address outside inventory.
 
 ## Connection and authentication
 
@@ -519,6 +539,29 @@ eos-mcp-server print-server-info --inventory inventory.yml
 eos-mcp-server print-server-info --config eos-mcp-server.yml --json
 ```
 
+### `inspect-diagnostics`
+
+Inspect existing persisted reservations without credentials, device access, ownership takeover, or reset. `diagnostics.stateFile` can select a ledger; otherwise the same canonical inventory identity determines the default path.
+
+```bash
+eos-mcp-server inspect-diagnostics --config eos-mcp-server.yml --json
+eos-mcp-server inspect-diagnostics --inventory inventory.yml --json
+```
+
+Recorded state does not prove remote completion. Preserve the state files on private, persistent local storage; see [Network diagnostics](docs/DIAGNOSTICS.md#offline-inspection-and-operator-recovery).
+
+### `release-diagnostics`
+
+Offline local-state administration only: stop the ledger owner, independently establish that running **and accepted queued** work is fenced against later execution/replay, and prepare a private JSON attestation. This is operator authority, not machine-confirmed EOS completion.
+
+```bash
+eos-mcp-server release-diagnostics --config eos-mcp-server.yml \
+  --reservation-id '<exact-id>' --evidence-file ./evidence.json \
+  --confirm-fenced --json
+```
+
+There is no wildcard or release-all operation. Audit and selected deletions commit atomically; unselected reservations remain held. See the [required workflow and intentionally invalid template](docs/DIAGNOSTICS.md#operator-release-workflow) before use. No device command, credential resolution, or evidence-reference fetch is performed. Protect the CLI and ledger owner's OS privileges; the attestation is not a cryptographic proof of human presence or fencing truth.
+
 ### `probe`
 
 Probe a host or group target using the same logic as the MCP tool.
@@ -540,7 +583,7 @@ Devices: 1/1 succeeded
 
 ### `eos_get_server_info`
 
-Returns a sanitized summary of server runtime, capabilities, limits, TLS/config posture, and inventory summary.
+Returns a sanitized summary of server runtime, capabilities, limits, TLS/config posture, inventory summary, and live active/uncertain diagnostic reservations. Reservation metadata excludes destinations, credentials, and original EOS output.
 
 Input:
 
@@ -572,6 +615,23 @@ Input:
   "include_raw": false
 }
 ```
+
+### `eos_ping`
+
+Runs bounded ping on an inventory host or group, requiring inherited `mcp_diagnostics_allowed: true`. It generates traffic without changing configuration. The destination must be a unicast IPv4/IPv6 literal; optional VRF and source IP never silently fall back. Count defaults to 3 and is capped at 10 unless changed in settings.
+
+```json
+{
+  "target": "leaf1",
+  "destination": "192.0.2.10",
+  "count": 3,
+  "vrf": "BLUE",
+  "source": "192.0.2.11",
+  "include_raw": false
+}
+```
+
+`count`, `vrf`, `source`, and `include_raw` are optional. Results separate execution status from `reachable`/`partial`/`unreachable` findings and include loss/RTT measurements. Zero replies do not establish a cause. See [Network diagnostics](docs/DIAGNOSTICS.md) for all limits, address restrictions, lifecycle caveats, and result semantics. Traceroute and packet capture are not yet implemented.
 
 ### `eos_run_show`
 
@@ -702,17 +762,20 @@ This means the target resolved to at least one host that is either not marked as
 
 The read-path tools have been validated against EOS 4.34.3M. The minimum supported EOS version for read operations is 4.20, which is when eAPI JSON-RPC became stable and `show` commands reliably produce structured JSON output.
 
+`eos_ping` has separately been validated on cEOS 4.34.3M. Older EOS versions and physical platforms have not been qualified for this new tool.
+
 ## Design notes
 
-- inventory is the trust boundary
+- inventory is the execution-target trust boundary; diagnostic destinations may be outside inventory
 - reads are fail-closed on ineligible or denied targets
-- the server exposes only documented read-only operations
+- the server exposes only documented non-configuring operations; active diagnostics require explicit opt-in
 
 ## Project docs
 
 Additional design and planning docs in the `docs/` directory:
 
 - `docs/DESIGN.md` — detailed design specification
+- `docs/DIAGNOSTICS.md` — ping usage, settings, safety, lifecycle, and extension seam
 - `docs/IMPLEMENTATION_PLAN.md` — implemented scope and maintenance priorities
 - `docs/CHECKPOINT.md` — current implementation status
 - `docs/CODE_WALKTHROUGH.md` — source layout and module guide

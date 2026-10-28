@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-The server is a permanent read-only MCP service. Scope is limited to inventory inspection, device probing, validated EOS `show` commands, bounded logging, facts, and running-configuration retrieval.
+The server is a permanent read-only MCP service. Scope includes inventory inspection, device probing, validated EOS `show` commands, bounded logging, facts, running-configuration retrieval, and explicitly authorized non-configuring diagnostics. Ping is implemented; traceroute and packet capture are future tools requiring separate capability/lifecycle work.
 
 ## Implemented work
 
@@ -11,8 +11,9 @@ The server is a permanent read-only MCP service. Scope is limited to inventory i
 - Strict inventory validation, inherited variables, EOS eligibility, and fail-closed read policy.
 - Inventory-authoritative host/group target resolution.
 - HTTPS eAPI client with TLS validation, custom CA support, credential validation, request cancellation, and response-size limits.
-- Seven MCP tools: server info, inventory, probe, show, logging, facts, and running configuration.
-- Local `validate-inventory`, `print-server-info`, and `probe` commands.
+- Eight MCP tools: server info, inventory, probe, ping, show, logging, facts, and running configuration.
+- Typed diagnostic execution with inherited opt-in, configurable budgets/timeouts, global admission, no retries, indefinite uncertain-execution reservations, and live sanitized capacity visibility. Write-ahead durable reservations, crash-safe ownership and offline inspection are implemented. Offline operator-attested release, atomic audit and schema migration are implemented. Machine-verified remote completion/deadline qualification remains follow-up work.
+- Local `validate-inventory`, `print-server-info`, `probe`, read-only `inspect-diagnostics`, and offline attested `release-diagnostics` commands.
 - Bounded concurrency, target counts, command counts, logging messages, device responses, and aggregate tool responses.
 - Unit, MCP stdio smoke, package-policy, and optional cEOS integration coverage.
 
@@ -26,7 +27,7 @@ The server is a permanent read-only MCP service. Scope is limited to inventory i
 
 ## Completion criteria
 
-- Every registered MCP tool is read-only and inventory-scoped.
+- Every registered MCP tool is non-configuring and inventory-scoped at the execution target; active diagnostics are explicitly authorized.
 - All device-facing paths use the shared target, connection, timeout, and result-envelope safeguards.
 - Documentation lists only supported tools and configuration fields.
 - `npm test`, `npm run typecheck`, and `npm run build` pass.

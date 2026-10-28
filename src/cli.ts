@@ -1,9 +1,9 @@
 import { AppError } from "./core/errors.js";
 import { APP_NAME, APP_VERSION } from "./core/version.js";
 
-export type CommandName = "serve" | "validate-inventory" | "print-server-info" | "probe";
+export type CommandName = "serve" | "validate-inventory" | "print-server-info" | "probe" | "inspect-diagnostics" | "release-diagnostics";
 
-const COMMAND_NAMES = new Set<string>(["serve", "validate-inventory", "print-server-info", "probe"]);
+const COMMAND_NAMES = new Set<string>(["serve", "validate-inventory", "print-server-info", "probe", "inspect-diagnostics", "release-diagnostics"]);
 const OPTION_NAMES = new Set<string>([
   "--help",
   "-h",
@@ -14,7 +14,10 @@ const OPTION_NAMES = new Set<string>([
   "--actor",
   "--json",
   "--inventory-only",
-  "--target"
+  "--target",
+  "--reservation-id",
+  "--evidence-file",
+  "--confirm-fenced"
 ]);
 
 const COMMAND_OPTIONS: Record<CommandName, ReadonlySet<string>> = {
@@ -29,7 +32,9 @@ const COMMAND_OPTIONS: Record<CommandName, ReadonlySet<string>> = {
   ]),
   "validate-inventory": new Set(["--help", "-h", "--version", "-V", "--config", "--inventory", "--inventory-only", "--json"]),
   "print-server-info": new Set(["--help", "-h", "--version", "-V", "--config", "--inventory", "--json"]),
-  "probe": new Set(["--help", "-h", "--version", "-V", "--config", "--inventory", "--target", "--json"])
+  "probe": new Set(["--help", "-h", "--version", "-V", "--config", "--inventory", "--target", "--json"]),
+  "inspect-diagnostics": new Set(["--help", "-h", "--version", "-V", "--config", "--inventory", "--json"]),
+  "release-diagnostics": new Set(["--help", "-h", "--version", "-V", "--config", "--inventory", "--json", "--reservation-id", "--evidence-file", "--confirm-fenced"])
 };
 
 export interface CliOptions {
@@ -43,6 +48,9 @@ export interface CliOptions {
   json?: boolean;
   inventoryOnly?: boolean;
   target?: string;
+  reservationIds?: string[];
+  evidenceFile?: string;
+  confirmFenced?: boolean;
 }
 
 export function parseCliArgs(argv: string[]): CliOptions {
@@ -116,6 +124,27 @@ export function parseCliArgs(argv: string[]): CliOptions {
         options.inventoryOnly = true;
         index += 1;
         break;
+      case "--reservation-id": {
+        const value = argv[index + 1];
+        if (!value || value.startsWith("-")) throw new AppError("cli_missing_value", "Missing value for --reservation-id");
+        if (options.reservationIds?.includes(value)) throw new AppError("cli_duplicate_option", "Duplicate reservation ID");
+        (options.reservationIds ??= []).push(value);
+        index += 2;
+        break;
+      }
+      case "--evidence-file": {
+        const value = argv[index + 1];
+        if (!value || value.startsWith("-")) throw new AppError("cli_missing_value", "Missing value for --evidence-file");
+        if (options.evidenceFile !== undefined) throw new AppError("cli_duplicate_option", "Duplicate --evidence-file");
+        options.evidenceFile = value;
+        index += 2;
+        break;
+      }
+      case "--confirm-fenced":
+        if (options.confirmFenced !== undefined) throw new AppError("cli_duplicate_option", "Duplicate --confirm-fenced");
+        options.confirmFenced = true;
+        index += 1;
+        break;
       case "--target": {
         const value = argv[index + 1];
         if (!value) {
@@ -151,6 +180,8 @@ Commands:
   validate-inventory    Validate an inventory file
   print-server-info     Print server runtime/config summary
   probe                 Probe device readiness for a target
+  inspect-diagnostics   Inspect persisted reservations and release audit (read-only)
+  release-diagnostics   Offline, audited operator-attested reservation release
 
 Global options:
   --config <path>       Path to server config YAML file
@@ -204,11 +235,39 @@ Options:
   --json                Output as JSON
   -h, --help            Show this help message`;
 
+const HELP_INSPECT_DIAGNOSTICS = `Usage: ${APP_NAME} inspect-diagnostics [options]
+
+Read the diagnostic ledger without device access, ownership takeover, or reset.
+Recorded state is not proof of remote completion.
+
+Options:
+  --config <path>       Settings file, including optional diagnostics.stateFile
+  --inventory <path>    Inventory identity used for the default ledger path
+  --json                Output persisted reservations as JSON
+  -h, --help            Show this help message`;
+
+const HELP_RELEASE_DIAGNOSTICS = `Usage: ${APP_NAME} release-diagnostics [options]
+
+Release only explicit reservations after independently verified fencing.
+Requires exclusive offline ledger ownership. No device commands or MCP reset.
+The evidence is operator authority, not machine-confirmed EOS completion.
+
+Options:
+  --config <path>          Settings file selecting the existing ledger
+  --inventory <path>       Expected canonical inventory identity
+  --reservation-id <id>    Exact reservation to release (repeat for a batch)
+  --evidence-file <path>   Private UTF-8 JSON fencing attestation (max 65536 bytes)
+  --confirm-fenced        Confirm running, queued and replayable work is fenced
+  --json                 Output committed release metadata or error as JSON
+  -h, --help             Show this help message`;
+
 const COMMAND_HELP: Record<CommandName, string> = {
   "serve": HELP_SERVE,
   "validate-inventory": HELP_VALIDATE_INVENTORY,
   "print-server-info": HELP_PRINT_SERVER_INFO,
-  "probe": HELP_PROBE
+  "probe": HELP_PROBE,
+  "inspect-diagnostics": HELP_INSPECT_DIAGNOSTICS,
+  "release-diagnostics": HELP_RELEASE_DIAGNOSTICS
 };
 
 export function printHelp(cli: CliOptions): void {

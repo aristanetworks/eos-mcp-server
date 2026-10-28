@@ -2,6 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 import { parseCliArgs, printHelp } from "../src/cli.js";
 
 describe("parseCliArgs", () => {
+  it("parses explicit offline release scope and confirmation without adding a reset to serve", () => {
+    expect(parseCliArgs(["release-diagnostics", "--config", "config.yml", "--reservation-id", "id-1", "--reservation-id", "id-2", "--evidence-file", "evidence.json", "--confirm-fenced", "--json"]))
+      .toMatchObject({ command: "release-diagnostics", reservationIds: ["id-1", "id-2"], evidenceFile: "evidence.json", confirmFenced: true, json: true });
+    expect(() => parseCliArgs(["serve", "--confirm-fenced"])).toThrow(/not valid/);
+    expect(() => parseCliArgs(["inspect-diagnostics", "--reservation-id", "id-1"])).toThrow(/not valid/);
+    expect(() => parseCliArgs(["release-diagnostics", "--reservation-id", "id-1", "--reservation-id", "id-1"])).toThrow(/Duplicate/);
+    expect(() => parseCliArgs(["release-diagnostics", "--reservation-id", "--confirm-fenced"])).toThrow(/Missing value/);
+    expect(() => parseCliArgs(["release-diagnostics", "--all"])).toThrow(/Unknown/);
+  });
+
+  it("parses read-only diagnostic inspection without allowing device-target options", () => {
+    expect(parseCliArgs(["inspect-diagnostics", "--config", "config.yml", "--json"])).toMatchObject({ command: "inspect-diagnostics", configPath: "config.yml", json: true });
+    expect(() => parseCliArgs(["inspect-diagnostics", "--target", "leaf1"])).toThrow(/not valid/);
+  });
+
   it("parses local probe command arguments", () => {
     expect(parseCliArgs(["probe", "--inventory", "inventory.yml", "--target", "leafs", "--json"])).toMatchObject({
       command: "probe",

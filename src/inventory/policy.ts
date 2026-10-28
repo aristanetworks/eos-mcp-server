@@ -9,6 +9,7 @@ export interface HostEligibilityEvaluation {
 
 export interface HostAccessEvaluation {
   readAllowed: boolean;
+  diagnosticsAllowed: boolean;
 }
 
 export function evaluateHostEligibility(
@@ -44,8 +45,10 @@ export function evaluateHostAccess(
   eligible: boolean,
   effectiveVars: Record<string, unknown>
 ): HostAccessEvaluation {
+  const readAllowed = eligible && (readBoolean(effectiveVars.mcp_read_allowed) ?? true);
   return {
-    readAllowed: eligible ? readBoolean(effectiveVars.mcp_read_allowed) ?? true : false
+    readAllowed,
+    diagnosticsAllowed: readAllowed && effectiveVars.mcp_diagnostics_allowed === true
   };
 }
 

@@ -48,6 +48,7 @@ export async function executeReadOperation<TDeviceResult extends ReadDeviceResul
   options: {
     target: string;
     operationName: string;
+    signal?: AbortSignal;
     validateTarget?: (resolvedTarget: ResolvedInventoryTarget) => void;
     run: (host: InventoryHostModel, signal: AbortSignal) => Promise<TDeviceResult>;
     onError: (host: InventoryHostModel, error: unknown) => TDeviceResult;
@@ -67,7 +68,8 @@ export async function executeReadOperation<TDeviceResult extends ReadDeviceResul
         } catch (error) {
           return options.onError(host, error);
         }
-      }, signal)
+      }, signal),
+    options.signal
   );
 
   return {
@@ -193,33 +195,41 @@ export async function mapWithConcurrency<T, R>(
 export async function runWithOperationTimeout<T>(
   config: ResolvedServerConfig,
   operationName: string,
-  run: (signal: AbortSignal) => Promise<T>
+  run: (signal: AbortSignal) => Promise<T>,
+  callerSignal?: AbortSignal
 ): Promise<T> {
   const controller = new AbortController();
-  const operation = run(controller.signal);
-
-  if (config.overallOperationTimeoutMs === undefined) {
-    return operation;
+  const onCancel = (): void => controller.abort(new AppError("operation_aborted", `${operationName} was cancelled`));
+  callerSignal?.addEventListener("abort", onCancel, { once: true });
+  if (callerSignal?.aborted) {
+    onCancel();
   }
 
   let timeout: NodeJS.Timeout | undefined;
+  let onAbort: (() => void) | undefined;
   try {
-    return await Promise.race([
-      operation,
-      new Promise<T>((_resolve, reject) => {
-        timeout = setTimeout(() => {
-          const error = new AppError(
-            "operation_timeout",
-            `${operationName} exceeded overallOperationTimeoutMs ${config.overallOperationTimeoutMs}`
-          );
-          reject(error);
-          controller.abort(error);
-        }, config.overallOperationTimeoutMs);
-      })
-    ]);
+    if (config.overallOperationTimeoutMs !== undefined) {
+      timeout = setTimeout(() => controller.abort(new AppError(
+        "operation_timeout",
+        `${operationName} exceeded overallOperationTimeoutMs ${config.overallOperationTimeoutMs}`
+      )), config.overallOperationTimeoutMs);
+    }
+    const aborted = new Promise<never>((_resolve, reject) => {
+      onAbort = () => reject(controller.signal.reason);
+      controller.signal.addEventListener("abort", onAbort, { once: true });
+      if (controller.signal.aborted) {
+        onAbort();
+      }
+    });
+    const operation = controller.signal.aborted ? aborted : run(controller.signal);
+    return await Promise.race([operation, aborted]);
   } finally {
     if (timeout !== undefined) {
       clearTimeout(timeout);
+    }
+    callerSignal?.removeEventListener("abort", onCancel);
+    if (onAbort !== undefined) {
+      controller.signal.removeEventListener("abort", onAbort);
     }
   }
 }

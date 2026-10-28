@@ -1,8 +1,9 @@
 import path from "node:path";
 import { APP_NAME, APP_VERSION } from "../core/version.js";
+import type { DiagnosticCapacitySnapshot } from "../diagnostics/types.js";
 import type { ServerInfo, ServerRuntimeContext } from "./types.js";
 
-export function buildServerInfo(context: ServerRuntimeContext): ServerInfo {
+export function buildServerInfo(context: ServerRuntimeContext, diagnosticCapacity?: DiagnosticCapacitySnapshot): ServerInfo {
   const summary = context.inventorySummary;
 
   return {
@@ -32,7 +33,20 @@ export function buildServerInfo(context: ServerRuntimeContext): ServerInfo {
       max_read_targets: context.config.maxReadTargets,
       max_show_commands_per_request: context.config.maxShowCommandsPerRequest,
       max_logging_messages_per_request: context.config.maxLoggingMessagesPerRequest,
-      max_response_size_bytes: context.config.maxResponseSizeBytes
+      max_response_size_bytes: context.config.maxResponseSizeBytes,
+      diagnostics: {
+        default_ping_count: context.config.diagnostics.defaultPingCount,
+        max_ping_count: context.config.diagnostics.maxPingCount,
+        max_probes_per_request: context.config.diagnostics.maxProbesPerRequest,
+        device_concurrency: context.config.diagnostics.deviceConcurrency,
+        ping_reply_timeout_ms: context.config.diagnostics.pingReplyTimeoutMs,
+        command_timeout_ms: context.config.diagnostics.commandTimeoutMs,
+        http_timeout_ms: context.config.diagnostics.httpTimeoutMs,
+        overall_operation_timeout_ms: context.config.diagnostics.overallOperationTimeoutMs
+      }
+    },
+    diagnostics: {
+      capacity: diagnosticCapacity ?? null
     },
     logging: {
       actor: context.config.actor ?? null,
