@@ -30,6 +30,7 @@ export interface InventoryHostModel {
   effectiveVars: Record<string, unknown>;
   eligible: boolean;
   readAllowed: boolean;
+  diagnosticsAllowed: boolean;
   ineligibilityReasons: string[];
   groupMemberships: string[];
 }

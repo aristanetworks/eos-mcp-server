@@ -2,6 +2,7 @@ import type { InventoryVars, NormalizedInventory, ValidationContext } from "./in
 
 const BOOLEAN_VAR_KEYS = new Set([
   "mcp_read_allowed",
+  "mcp_diagnostics_allowed",
   "mcp_validate_certs",
   "ansible_httpapi_validate_certs"
 ]);

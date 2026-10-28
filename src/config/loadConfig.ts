@@ -30,6 +30,7 @@ export async function loadServerConfig(options: CliOptions): Promise<ResolvedSer
 
   const merged = {
     configPath: resolvedConfigPath,
+    diagnostics: fileConfig.diagnostics,
     inventoryPath: resolveMaybePath(fileConfig.inventory, resolvedConfigPath),
     actor: fileConfig.actor,
     logFile: resolveMaybePath(fileConfig.logFile, resolvedConfigPath),
@@ -53,7 +54,11 @@ export async function loadServerConfig(options: CliOptions): Promise<ResolvedSer
     merged.actor = options.actor;
   }
 
-  return parseConfigSchema(() => resolvedServerConfigSchema.parse(merged), "config_resolved_invalid");
+  const config = parseConfigSchema(() => resolvedServerConfigSchema.parse(merged), "config_resolved_invalid");
+  if (config.diagnostics.stateFile !== undefined) {
+    config.diagnostics.stateFile = resolveMaybePath(config.diagnostics.stateFile, resolvedConfigPath) ?? config.diagnostics.stateFile;
+  }
+  return config;
 }
 
 async function readConfigFile(configPath: string): Promise<string> {

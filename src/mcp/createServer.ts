@@ -5,7 +5,12 @@ import type { z } from "zod";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { EapiDeviceReader, type EosDeviceReader } from "../connection/eosDeviceReader.js";
 import { APP_NAME, APP_VERSION } from "../core/version.js";
+import { toErrorMessage } from "../core/errors.js";
+import { defaultDiagnosticStateFile, diagnosticInventoryIdentity } from "../diagnostics/statePath.js";
 import { EapiClient } from "../eapi/client.js";
+import { EapiDiagnosticRunner } from "../diagnostics/eapiRunner.js";
+import { DiagnosticExecutor } from "../diagnostics/executor.js";
+import { buildPingToolResult, pingInputSchema } from "./tools/ping.js";
 import type { InventoryModel } from "../inventory/types.js";
 import type { ServerRuntimeContext } from "../serverInfo/types.js";
 import { buildGetFactsToolResult, getFactsInputSchema } from "./tools/getFacts.js";
@@ -21,6 +26,7 @@ interface McpRuntimeDependencies {
   inventoryModel: InventoryModel;
   config: ResolvedServerConfig;
   deviceReader: EosDeviceReader;
+  diagnostics: DiagnosticExecutor;
 }
 
 function buildToolDefinitions(deps: McpRuntimeDependencies) {
@@ -29,7 +35,7 @@ function buildToolDefinitions(deps: McpRuntimeDependencies) {
       name: "eos_get_server_info",
       description: "Return a sanitized summary of current server capabilities, limits, runtime mode, and inventory summary.",
       inputSchema: getServerInfoInputSchema,
-      handler: async () => buildGetServerInfoToolResult(deps.runtimeContext)
+      handler: async () => buildGetServerInfoToolResult(deps.runtimeContext, deps.diagnostics.getCapacity())
     },
     {
       name: "eos_list_inventory",
@@ -42,6 +48,12 @@ function buildToolDefinitions(deps: McpRuntimeDependencies) {
       description: "Probe EOS device readiness for a host or group target by validating connectivity, authentication, and harmless command execution.",
       inputSchema: probeDevicesInputSchema,
       handler: async (args: z.infer<typeof probeDevicesInputSchema>) => buildProbeDevicesToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
+    },
+    {
+      name: "eos_ping",
+      description: "Run bounded, non-configuring ping diagnostics on an inventory host or group. Requires explicit diagnostic permission. Destination is a unicast IP literal. Execution success is separate from reachability; no replies do not identify a cause.",
+      inputSchema: pingInputSchema,
+      handler: async (args: z.infer<typeof pingInputSchema>, extra: { signal: AbortSignal }) => buildPingToolResult(args, deps.diagnostics, extra.signal)
     },
     {
       name: "eos_run_show",
@@ -78,7 +90,20 @@ export async function startMcpServer(config: ResolvedServerConfig, inventoryMode
     inventorySummary: inventoryModel.summary
   };
 
-  const deviceReader = new EapiDeviceReader(config, new EapiClient());
+  const client = new EapiClient();
+  const deviceReader = new EapiDeviceReader(config, client);
+  const journal = inventoryModel.hosts.some((host) => host.diagnosticsAllowed)
+    ? (await import("../diagnostics/journal.js")).openDiagnosticJournal(
+      config.diagnostics.stateFile ?? defaultDiagnosticStateFile(inventoryModel.path), diagnosticInventoryIdentity(inventoryModel.path)
+    )
+    : undefined;
+  let diagnostics: DiagnosticExecutor;
+  try {
+    diagnostics = new DiagnosticExecutor(inventoryModel, config, new EapiDiagnosticRunner(config, client), journal);
+  } catch (error) {
+    journal?.close();
+    throw error;
+  }
 
   const server = new McpServer({
     name: APP_NAME,
@@ -88,20 +113,45 @@ export async function startMcpServer(config: ResolvedServerConfig, inventoryMode
   const registerTool = server.registerTool.bind(server) as (
     name: string,
     config: { description: string; inputSchema: unknown },
-    handler: (args: unknown) => Promise<unknown>
+    handler: (args: unknown, extra: { signal: AbortSignal }) => Promise<unknown>
   ) => void;
 
-  for (const tool of buildToolDefinitions({ runtimeContext, inventoryModel, config, deviceReader })) {
+  for (const tool of buildToolDefinitions({ runtimeContext, inventoryModel, config, deviceReader, diagnostics })) {
     registerTool(
       tool.name,
       {
         description: tool.description,
         inputSchema: tool.inputSchema
       },
-      tool.handler as (args: unknown) => Promise<unknown>
+      tool.handler as (args: unknown, extra: { signal: AbortSignal }) => Promise<unknown>
     );
   }
 
+  const stop = (): void => {
+    void server.close().catch((error: unknown) => {
+      console.error(toErrorMessage(error));
+      cleanup();
+      process.exitCode = 1;
+    });
+  };
+  const cleanup = (): void => {
+    process.off("SIGINT", stop);
+    process.off("SIGTERM", stop);
+    process.stdin.off("end", stop);
+    try { diagnostics.close(); } catch (error) {
+      console.error(toErrorMessage(error));
+      process.exitCode = 1;
+    }
+  };
+  server.server.onclose = cleanup;
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+  process.stdin.once("end", stop);
   const transport = new StdioServerTransport();
-  await server.connect(transport);
+  try {
+    await server.connect(transport);
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
 }

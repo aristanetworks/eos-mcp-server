@@ -10,7 +10,8 @@ import {
   type EapiOutputFormat,
   type EapiOutputMode,
   type EosCommandResult,
-  type RunShowCommandOptions
+  type RunShowCommandOptions,
+  type RunTextCommandOptions
 } from "./types.js";
 import { NodeHttpsEapiTransport, type EapiTransport } from "./transport.js";
 
@@ -46,11 +47,22 @@ export class EapiClient {
     }
   }
 
+  /** Execute once in text mode. Active diagnostics must never use JSON fallback retries. */
+  async runTextCommands(
+    connection: EapiConnectionConfig,
+    commands: string[],
+    options?: RunTextCommandOptions
+  ): Promise<EosCommandResult[]> {
+    const payload = await this.runCommands(connection, commands, "text", options, options?.requestId);
+    return buildCommandResults(payload, commands, "text", false);
+  }
+
   private async runCommands(
     connection: EapiConnectionConfig,
     commands: string[],
     format: EapiOutputFormat,
-    options?: EapiCommandOptions
+    options?: EapiCommandOptions,
+    requestId: string = randomUUID()
   ): Promise<unknown> {
     if (commands.length === 0) {
       throw new AppError("eapi_commands_missing", "runCommands requires at least one command");
@@ -67,7 +79,7 @@ export class EapiClient {
         cmds: wireCommands,
         format
       },
-      id: randomUUID()
+      id: requestId
     };
 
     const requestSignal = buildRequestSignal(connection.timeoutMs, options?.signal);
@@ -88,6 +100,12 @@ export class EapiClient {
     }
 
     const payload = await parseJsonResponse(response, connection);
+    if (!isObject(payload) || payload.jsonrpc !== "2.0" || payload.id !== requestBody.id) {
+      throw new AppError("eapi_response_uncorrelated", "EOS response must use JSON-RPC 2.0 and match the exact request ID; remote completion is unknown");
+    }
+    if (Object.hasOwn(payload, "result") === Object.hasOwn(payload, "error")) {
+      throw new AppError("eapi_payload_invalid", "EOS response must contain exactly one result or error member; remote completion is unknown");
+    }
     throwIfJsonRpcError(payload);
 
     const normalizedPayload = useEnable ? stripEnableResult(payload) : payload;
@@ -158,7 +176,7 @@ function classifyTransportError(error: unknown, signal: AbortSignal, connection:
     if (isTimeoutAbortReason(reason)) {
       return new AppError(
         "eapi_request_timeout",
-        `EOS eAPI request for host ${connection.inventoryHostname} exceeded readTimeoutMs ${connection.timeoutMs}`,
+        `EOS eAPI request for host ${connection.inventoryHostname} exceeded timeout ${connection.timeoutMs} ms`,
         {
           inventoryHostname: connection.inventoryHostname,
           timeoutMs: connection.timeoutMs
@@ -197,18 +215,18 @@ function throwIfJsonRpcError(payload: unknown): void {
   const code = typeof payload.error.code === "number" || typeof payload.error.code === "string" ? payload.error.code : "unknown";
   const data = payload.error.data;
   const details = data === undefined ? "" : `; data=${JSON.stringify(data)}`;
-  throw new AppError(classifyJsonRpcErrorCode(message, data), `EOS eAPI JSON-RPC error ${String(code)}: ${message}${details}`, {
+  throw new AppError(classifyJsonRpcErrorCode(message, data, code), `EOS eAPI JSON-RPC error ${String(code)}: ${message}${details}`, {
     jsonRpcCode: code,
     ...(data !== undefined ? { data } : {})
   });
 }
 
-function classifyJsonRpcErrorCode(message: string, data: unknown): string {
+function classifyJsonRpcErrorCode(message: string, data: unknown, code: number | string): string {
   const haystacks = [message, ...(Array.isArray(data) ? data.filter((entry): entry is string => typeof entry === "string") : [])]
     .join(" ")
     .toLowerCase();
 
-  if (haystacks.includes("json")) {
+  if (haystacks.includes("json") || (code === 1003 && message.toLowerCase().includes("unconverted command"))) {
     return "json_output_unavailable";
   }
 

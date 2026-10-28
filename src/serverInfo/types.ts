@@ -1,4 +1,5 @@
 import type { ResolvedServerConfig } from "../config/schema.js";
+import type { DiagnosticCapacitySnapshot } from "../diagnostics/types.js";
 import type { EapiVersion } from "../eapi/types.js";
 import type { InventorySummary } from "../inventory/types.js";
 
@@ -37,6 +38,19 @@ export interface ServerInfo {
     max_show_commands_per_request: number;
     max_logging_messages_per_request: number;
     max_response_size_bytes: number;
+    diagnostics: {
+      default_ping_count: number;
+      max_ping_count: number;
+      max_probes_per_request: number;
+      device_concurrency: number;
+      ping_reply_timeout_ms: number;
+      command_timeout_ms: number;
+      http_timeout_ms: number;
+      overall_operation_timeout_ms: number;
+    };
+  };
+  diagnostics: {
+    capacity: DiagnosticCapacitySnapshot | null;
   };
   logging: {
     actor: string | null;

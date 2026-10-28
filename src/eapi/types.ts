@@ -23,6 +23,10 @@ export interface EapiCommandOptions {
   signal?: AbortSignal;
 }
 
+export interface RunTextCommandOptions extends EapiCommandOptions {
+  requestId?: string;
+}
+
 export interface RunShowCommandOptions extends EapiCommandOptions {
   includeRawEntries?: boolean;
 }
@@ -32,6 +36,14 @@ export interface EosCommandResult {
   output_format: EapiOutputFormat;
   output: unknown;
   raw_entry?: unknown;
+}
+
+export interface EosTextCommandRunner {
+  runTextCommands(
+    connection: EapiConnectionConfig,
+    commands: string[],
+    options?: RunTextCommandOptions
+  ): Promise<EosCommandResult[]>;
 }
 
 export interface EosCommandRunner {

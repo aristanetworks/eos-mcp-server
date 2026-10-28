@@ -11,6 +11,7 @@ The server is a test-backed, read-only MCP service for Arista EOS eAPI. The prod
 - `eos_get_server_info`
 - `eos_list_inventory`
 - `eos_probe_devices`
+- `eos_ping` (bounded active diagnostics, explicit inventory opt-in)
 - `eos_run_show`
 - `eos_show_logging`
 - `eos_get_facts`
@@ -22,6 +23,8 @@ The server is a test-backed, read-only MCP service for Arista EOS eAPI. The prod
 - `validate-inventory`
 - `print-server-info`
 - `probe`
+- `inspect-diagnostics` (read-only persisted state and audit, no device access)
+- `release-diagnostics` (offline operator attestation, explicit scope and atomic audit)
 
 ## Safety and operational controls
 
@@ -32,6 +35,11 @@ The server is a test-backed, read-only MCP service for Arista EOS eAPI. The prod
 - HTTPS with certificate validation by default and optional custom CA support.
 - Validated show commands and bounded logging/running-configuration queries.
 - Read-operation concurrency, target, response-size, and timeout controls.
+- Configurable diagnostic budgets, durable ledger-scoped admission, independent timeouts, and indefinite fail-closed reservations after uncertain remote completion.
+- Write-ahead SQLite reservations, exact wire-ID persistence/correlation, exclusive crash-released ownership, restoration of unfinished work as uncertain, and fail-closed storage errors.
+- JSON-RPC version/ID and result/error exclusivity validation precedes output interpretation or read-only fallback; unrelated acknowledgements cannot free diagnostic capacity.
+- Live sanitized capacity/reservation visibility in server info; `diagnostic_capacity_uncertain` prevents new or queued work when all capacity is uncertain. Persistence and offline inspection are implemented. Offline operator-attested release is implemented, not an EOS completion proof. A qualified native remote kill/deadline mechanism remains unimplemented; installed EOS requestTimeout is not an end-to-end termination guarantee.
+- No retries or shell/SSH fallback for ping. Non-configuring diagnostics are not passive reads; traceroute and capture are not implemented.
 - Sanitized result envelopes with stable machine-readable errors.
 
 ## Re-entry reading
@@ -43,4 +51,4 @@ The server is a test-backed, read-only MCP service for Arista EOS eAPI. The prod
 
 ## Validation
 
-Run `npm test`, `npm run typecheck`, and `npm run build` after changes. Optional integration tests require the configured cEOS environment.
+Run `npm test`, `npm run typecheck`, and `npm run build` after changes. Optional integration tests require the configured cEOS environment. Ping's module and MCP stdio integration suites are qualified on cEOS 4.34.3M; see [DIAGNOSTICS.md](DIAGNOSTICS.md).

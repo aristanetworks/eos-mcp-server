@@ -12,15 +12,17 @@ import { showLogging } from "../src/logging/showLogging.js";
 import type { ResolvedServerConfig } from "../src/config/schema.js";
 import { buildConfig, writeTempInventory } from "./helpers.js";
 
+// Match clab/testlab.clab.yaml (prefix: ""); allow older prefixed labs explicitly.
+const LAB_PREFIX = process.env.EOS_MCP_TEST_PREFIX ?? "";
 const HOST_NAMES = [
-  "clab-testlab-node1-1",
-  "clab-testlab-node1-2",
-  "clab-testlab-node2-1",
-  "clab-testlab-node2-2",
-  "clab-testlab-node2-3",
-  "clab-testlab-node2-4",
-  "clab-testlab-node2-5",
-  "clab-testlab-node2-6"
+  `${LAB_PREFIX}node1-1`,
+  `${LAB_PREFIX}node1-2`,
+  `${LAB_PREFIX}node2-1`,
+  `${LAB_PREFIX}node2-2`,
+  `${LAB_PREFIX}node2-3`,
+  `${LAB_PREFIX}node2-4`,
+  `${LAB_PREFIX}node2-5`,
+  `${LAB_PREFIX}node2-6`
 ] as const;
 const SINGLE_HOST = HOST_NAMES[0];
 const GROUP_NAME = "arista_ceos";

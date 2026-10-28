@@ -36,6 +36,7 @@ export function buildInventoryModel(
       effectiveVars,
       eligible: eligibility.eligible,
       readAllowed: access.readAllowed,
+      diagnosticsAllowed: access.diagnosticsAllowed,
       ineligibilityReasons: eligibility.ineligibilityReasons,
       groupMemberships: [...lineageGroups].sort()
     });

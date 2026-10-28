@@ -46,6 +46,7 @@ describe("stdio MCP smoke test", () => {
           "eos_get_running_config",
           "eos_get_server_info",
           "eos_list_inventory",
+          "eos_ping",
           "eos_probe_devices",
           "eos_run_show",
           "eos_show_logging"
@@ -59,6 +60,7 @@ describe("stdio MCP smoke test", () => {
         const toolsWithArgs = [
           "eos_get_facts",
           "eos_get_running_config",
+          "eos_ping",
           "eos_probe_devices",
           "eos_run_show",
           "eos_show_logging"
@@ -73,6 +75,13 @@ describe("stdio MCP smoke test", () => {
             `${name} inputSchema.properties must include at least "target"`
           ).toContain("target");
         }
+
+        const deniedPing = await client.callTool({
+          name: "eos_ping",
+          arguments: { target: "leaf1", destination: "127.0.0.1" }
+        });
+        expect(deniedPing.isError).toBe(true);
+        expect(JSON.stringify(deniedPing.content)).toContain("Diagnostic permission denied");
 
         const serverInfo = await client.callTool({
           name: "eos_get_server_info",
