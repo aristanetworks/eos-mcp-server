@@ -619,7 +619,7 @@ Input:
 
 ### `eos_ping`
 
-Runs bounded ping from an inventory host or group to one or more destinations, requiring inherited `mcp_diagnostics_allowed: true`. It generates traffic without changing configuration. Each destination must be a unique unicast IPv4/IPv6 literal; use a one-element `destinations` array for a single ping. Destinations run concurrently within the server's diagnostic concurrency, up to 16 per call by default. Optional VRF and source IP apply to every destination and never silently fall back. Count defaults to 3 per destination and is capped at 10 unless changed in settings.
+Runs bounded ping from an inventory host or group to one or more destinations, requiring inherited `mcp_diagnostics_allowed: true`. It generates traffic without changing configuration. Each destination must be a unicast IPv4/IPv6 literal, and duplicates are rejected, including different spellings of the same IPv6 address; use a one-element `destinations` array for a single ping. Destinations run concurrently within the server's diagnostic concurrency, up to 16 per call by default. Optional VRF and source IP apply to every destination and never silently fall back. Count defaults to 3 per destination and is capped at 10 unless changed in settings.
 
 ```json
 {
