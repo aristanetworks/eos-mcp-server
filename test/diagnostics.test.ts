@@ -322,6 +322,9 @@ describe("multi-destination ping", () => {
   it.each([
     { destinations: ["127.0.0.1", "127.0.0.1;reload"], code: "diagnostic_address_invalid" },
     { destinations: ["127.0.0.1", "127.0.0.1"], code: "diagnostic_destination_duplicate" },
+    { destinations: ["::1", "0:0:0:0:0:0:0:1"], code: "diagnostic_destination_duplicate" },
+    { destinations: ["2001:db8::1", "2001:DB8:0::1"], code: "diagnostic_destination_duplicate" },
+    { destinations: ["::ffff:192.0.2.1", "::ffff:c000:201"], code: "diagnostic_destination_duplicate" },
     { destinations: [], code: "diagnostic_destination_limit_exceeded" },
     { destinations: ["127.0.0.1", "127.0.0.2", "127.0.0.3"], code: "diagnostic_destination_limit_exceeded" }
   ])("rejects the whole request before dispatch: $code", async ({ destinations, code }) => {
@@ -331,6 +334,14 @@ describe("multi-destination ping", () => {
     await expect(new DiagnosticExecutor(await groupModel(), config, device).execute(sweep(destinations)))
       .rejects.toMatchObject({ code });
     expect(device.execute).not.toHaveBeenCalled();
+  });
+
+  it("keeps the caller's spelling and treats an IPv4 address and its IPv4-mapped IPv6 form as distinct", async () => {
+    const device = runner();
+    const result = await new DiagnosticExecutor(await groupModel(), buildConfig(), device)
+      .execute({ ...call, request: { kind: "ping", destinations: ["192.0.2.1", "::ffff:192.0.2.1", "2001:DB8::1"] } });
+    expect(result.results.map((entry) => entry.destination)).toEqual(["192.0.2.1", "::ffff:192.0.2.1", "2001:DB8::1"]);
+    expect(device.execute).toHaveBeenCalledTimes(3);
   });
 
   it("requires the source address family to match every destination", async () => {

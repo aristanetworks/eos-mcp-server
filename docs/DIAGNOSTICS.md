@@ -39,7 +39,7 @@ Supported addresses are unicast IPv4/IPv6 literals, including loopback. Unspecif
 ```
 
 - `target` and `destinations` are required. A single ping is a one-element `destinations` array.
-- `destinations` holds 1 to `maxDestinationsPerRequest` unique literals. Every destination is validated before anything is dispatched, so one invalid or duplicate entry rejects the whole request. The former single `destination` field is rejected with guidance rather than ignored.
+- `destinations` holds 1 to `maxDestinationsPerRequest` unique addresses. Duplicates are detected by canonical address, so different IPv6 spellings of one address (such as `::1` and `0:0:0:0:0:0:0:1`) count as duplicates, while an IPv4 address and its IPv4-mapped IPv6 form are distinct destinations. Every destination is validated before anything is dispatched, so one invalid or duplicate entry rejects the whole request. The former single `destination` field is rejected with guidance rather than ignored.
 - `count`, `vrf`, and `source` apply to every destination.
 - `count` defaults to the configured `defaultPingCount`; callers cannot exceed `maxPingCount`.
 - `vrf` is optional, a safe single identifier of up to 64 characters. Omission uses the EOS default routing context.
