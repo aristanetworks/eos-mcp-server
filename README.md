@@ -274,6 +274,7 @@ With just an inventory file:
 
 ```toml
 [mcp_servers.eos]
+supports_parallel_tool_calls = true
 command = "npx"
 args = ["-y", "@aristanetworks/eos-mcp-server", "serve", "--inventory", "/absolute/path/to/inventory.yml"]
 env_vars = ["EOS_MCP_PASSWORD"]
@@ -283,10 +284,21 @@ Or with a [server config file](#server-config-file) for additional options:
 
 ```toml
 [mcp_servers.eos]
+supports_parallel_tool_calls = true
 command = "npx"
 args = ["-y", "@aristanetworks/eos-mcp-server", "serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
 env_vars = ["EOS_MCP_PASSWORD"]
 ```
+
+Set `supports_parallel_tool_calls = true` under `[mcp_servers.eos]` to let
+Codex dispatch independent tool calls, including pings, concurrently. Without
+this opt-in, tools that omit the MCP read-only annotation may run serially even
+when requested together. Reload Codex after changing the setting. The server
+still enforces its configured diagnostic concurrency and packet limits.
+A single `eos_ping` call with several `destinations` already runs them
+concurrently on the server, so this setting matters for other independent
+calls, such as show commands on different devices or pings that need different
+VRFs, sources, or counts.
 
 `serve` is optional because it is the default command, but is shown explicitly
 here for clarity. After exporting the password, you can also add the server and
