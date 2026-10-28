@@ -11,7 +11,7 @@ The server is a test-backed, read-only MCP service for Arista EOS eAPI. The prod
 - `eos_get_server_info`
 - `eos_list_inventory`
 - `eos_probe_devices`
-- `eos_ping` (bounded active diagnostics, explicit inventory opt-in)
+- `eos_ping` (bounded active diagnostics to one or more destinations, explicit inventory opt-in)
 - `eos_run_show`
 - `eos_show_logging`
 - `eos_get_facts`

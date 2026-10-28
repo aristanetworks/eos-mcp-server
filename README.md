@@ -156,6 +156,7 @@ diagnostics:
   defaultPingCount: 3
   maxPingCount: 10
   maxProbesPerRequest: 100
+  maxDestinationsPerRequest: 16
   deviceConcurrency: 5
   pingReplyTimeoutMs: 1000
   commandTimeoutMs: 30000
@@ -618,12 +619,12 @@ Input:
 
 ### `eos_ping`
 
-Runs bounded ping on an inventory host or group, requiring inherited `mcp_diagnostics_allowed: true`. It generates traffic without changing configuration. The destination must be a unicast IPv4/IPv6 literal; optional VRF and source IP never silently fall back. Count defaults to 3 and is capped at 10 unless changed in settings.
+Runs bounded ping from an inventory host or group to one or more destinations, requiring inherited `mcp_diagnostics_allowed: true`. It generates traffic without changing configuration. Each destination must be a unique unicast IPv4/IPv6 literal; use a one-element `destinations` array for a single ping. Destinations run concurrently within the server's diagnostic concurrency, up to 16 per call by default. Optional VRF and source IP apply to every destination and never silently fall back. Count defaults to 3 per destination and is capped at 10 unless changed in settings.
 
 ```json
 {
   "target": "leaf1",
-  "destination": "192.0.2.10",
+  "destinations": ["192.0.2.10", "192.0.2.20"],
   "count": 3,
   "vrf": "BLUE",
   "source": "192.0.2.11",
@@ -631,7 +632,7 @@ Runs bounded ping on an inventory host or group, requiring inherited `mcp_diagno
 }
 ```
 
-`count`, `vrf`, `source`, and `include_raw` are optional. Results separate execution status from `reachable`/`partial`/`unreachable` findings and include loss/RTT measurements. Zero replies do not establish a cause. See [Network diagnostics](docs/DIAGNOSTICS.md) for all limits, address restrictions, lifecycle caveats, and result semantics. Traceroute and packet capture are not yet implemented.
+`count`, `vrf`, `source`, and `include_raw` are optional. Results contain one entry per host and destination, each naming its `destination`; `summary` counts those entries. Results separate execution status from `reachable`/`partial`/`unreachable` findings and include loss/RTT measurements. Zero replies do not establish a cause. See [Network diagnostics](docs/DIAGNOSTICS.md) for all limits, address restrictions, lifecycle caveats, and result semantics. Traceroute and packet capture are not yet implemented.
 
 ### `eos_run_show`
 
