@@ -2,9 +2,28 @@ import { isIP } from "node:net";
 import type { DiagnosticsConfig } from "../config/diagnostics.js";
 import { pingExecutionBoundMs } from "../config/diagnostics.js";
 import { AppError } from "../core/errors.js";
-import type { PingFinding, PingRequest, PreparedPing } from "./types.js";
+import type { DiagnosticDefinition, PingExecutionRequest, PingFinding, PreparedPing } from "./types.js";
 
-export function preparePing(request: PingRequest, config: DiagnosticsConfig): PreparedPing {
+export const pingDiagnostic: DiagnosticDefinition = {
+  prepare(request, config) {
+    const { destinations, ...shared } = request;
+    if (destinations.length === 0 || destinations.length > config.maxDestinationsPerRequest) {
+      throw new AppError("diagnostic_destination_limit_exceeded", `Provide between 1 and ${config.maxDestinationsPerRequest} destinations`);
+    }
+    // Every destination is validated before any is dispatched.
+    const executions = destinations.map((destination) => preparePing({ ...shared, destination }, config));
+    // Compare canonical forms so alternate IPv6 spellings of one address are caught.
+    if (new Set(executions.map((execution) => canonicalAddress(execution.destination, execution.addressFamily))).size !== executions.length) {
+      throw new AppError("diagnostic_destination_duplicate", "Each destination may appear only once per request");
+    }
+    const count = executions[0]?.count ?? config.defaultPingCount;
+    return { request: { ...request, count }, executions };
+  },
+  probeCount: (execution) => execution.count,
+  interpret: (output, execution) => parsePingOutput(output, execution.count)
+};
+
+export function preparePing(request: PingExecutionRequest, config: DiagnosticsConfig): PreparedPing {
   const addressFamily = validateAddress(request.destination);
   const count = request.count ?? config.defaultPingCount;
   if (!Number.isSafeInteger(count) || count < 1 || count > config.maxPingCount) {
@@ -31,9 +50,7 @@ function validateAddress(address: string): 4 | 6 {
     validateIpv4(address.split(".").map(Number));
     return 4;
   }
-  // WHATWG URL canonicalization expands dotted IPv4-mapped IPv6 into hex words.
-  const canonical = new URL(`http://[${address}]/`).hostname.slice(1, -1);
-  const halves = canonical.split("::");
+  const halves = canonicalAddress(address, 6).split("::");
   const left = halves[0]?.split(":").filter(Boolean) ?? [];
   const right = halves[1]?.split(":").filter(Boolean) ?? [];
   const words = halves.length === 1
@@ -50,6 +67,12 @@ function validateAddress(address: string): 4 | 6 {
     validateIpv4([high >> 8, high & 255, low >> 8, low & 255]);
   }
   return 6;
+}
+
+/** Expects a literal already accepted by `isIP`, which only admits canonical dotted-decimal IPv4. */
+function canonicalAddress(address: string, addressFamily: 4 | 6): string {
+  // WHATWG URL canonicalization compresses zeros, lowercases, and expands dotted IPv4-mapped IPv6 into hex words.
+  return addressFamily === 6 ? new URL(`http://[${address}]/`).hostname.slice(1, -1) : address;
 }
 
 function validateIpv4(octets: number[]): void {

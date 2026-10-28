@@ -42,6 +42,7 @@ export interface ServerInfo {
       default_ping_count: number;
       max_ping_count: number;
       max_probes_per_request: number;
+      max_destinations_per_request: number;
       device_concurrency: number;
       ping_reply_timeout_ms: number;
       command_timeout_ms: number;

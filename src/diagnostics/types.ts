@@ -1,10 +1,11 @@
+import type { DiagnosticsConfig } from "../config/diagnostics.js";
 import type { InventoryHostModel } from "../inventory/types.js";
 
 // Extend the discriminated request/observation/finding types as diagnostics ship.
 // No command-string escape hatch or speculative capture-session contract.
 export interface PingRequest {
   kind: "ping";
-  destination: string;
+  destinations: string[];
   count?: number;
   vrf?: string;
   source?: string;
@@ -12,7 +13,12 @@ export interface PingRequest {
 
 export type DiagnosticRequest = PingRequest;
 
-export interface PreparedPing extends Omit<PingRequest, "count"> {
+/** One ping execution: a single destination with the request's shared options. */
+export interface PingExecutionRequest extends Omit<PingRequest, "destinations"> {
+  destination: string;
+}
+
+export interface PreparedPing extends Omit<PingExecutionRequest, "count"> {
   count: number;
   addressFamily: 4 | 6;
   replyTimeoutSeconds: number;
@@ -31,6 +37,18 @@ export interface PingFinding {
 }
 
 export type DiagnosticFinding = PingFinding;
+
+/** The request echoed in results, with server defaults applied. */
+export type ResolvedDiagnosticRequest = DiagnosticRequest & { count: number };
+
+/** Per-kind seam: validation and probe cost before dispatch, interpretation after.
+ * The executor runs every prepared execution on every resolved host; device I/O stays in the runner.
+ */
+export interface DiagnosticDefinition {
+  prepare(request: DiagnosticRequest, config: DiagnosticsConfig): { request: ResolvedDiagnosticRequest; executions: PreparedDiagnostic[] };
+  probeCount(execution: PreparedDiagnostic): number;
+  interpret(output: string, execution: PreparedDiagnostic): DiagnosticFinding;
+}
 
 export interface DiagnosticReservationInfo {
   reservation_id: string;

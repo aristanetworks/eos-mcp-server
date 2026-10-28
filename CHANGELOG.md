@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Breaking:** `eos_ping` replaces `destination` with `destinations`, an array of 1 to `diagnostics.maxDestinationsPerRequest` (default 16) unique IP literals. Use `destinations: ["<ip>"]` for a single ping; the old field is rejected with guidance. Destinations run concurrently within the existing diagnostic concurrency, each with its own reservation. Results always contain one entry per host and destination, each carrying `destination`, and `summary` counts those entries rather than devices. All destinations are validated before dispatch, and `maxProbesPerRequest` now counts hosts × destinations × count. Server info reports `limits.diagnostics.max_destinations_per_request`. See [ADR 0005](docs/adr/0005-multi-destination-ping.md).
+- Routes diagnostics through a per-kind `DiagnosticDefinition` (prepare, probe cost, interpret), so the executor no longer contains ping-specific logic.
+
 ## 0.7.0-beta
 
 - Refactors diagnostic queueing and reservation transitions into separate paths, makes pre-/post-dispatch error handling explicit, and shares audit hashing and snapshot normalization. Ledger formats, schema versions, and safety policy are unchanged; adds coverage for queued journal failure without invalidating already-completed work.

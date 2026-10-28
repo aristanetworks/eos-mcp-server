@@ -16,6 +16,10 @@ _Avoid_: Passive read, harmless command
 The IPv4 or IPv6 address tested by a diagnostic, which need not belong to an inventory host and is distinct from the **Target** executing the diagnostic.
 _Avoid_: Target, device endpoint
 
+**Diagnostic Execution**:
+One run of a diagnostic on one inventory host; for ping, against one **Destination**. Each execution holds its own reservation and yields its own result.
+_Avoid_: Probe, job
+
 **Diagnostic Permission**:
 Explicit authorization for an inventory host to perform diagnostics, additional to read access; read denial also denies diagnostics.
 _Avoid_: Read permission, implicit diagnostic access
@@ -62,6 +66,7 @@ _Avoid_: Raw result, raw output
 
 ## Relationships
 
+- A ping request names one or more **Destinations** and a **Target**; it performs one **Diagnostic Execution** per resolved host and **Destination**, each producing its own **Reachability Finding** or execution failure.
 - A **Log Severity** filter includes messages at that severity and more urgent severities.
 - A **Logging Query** has exactly one minimum **Log Severity** and one message-count limit.
 - The **EOS Command Runner** returns command-aligned results: one result for each requested EOS command.

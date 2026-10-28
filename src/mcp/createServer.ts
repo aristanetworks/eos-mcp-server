@@ -51,7 +51,7 @@ function buildToolDefinitions(deps: McpRuntimeDependencies) {
     },
     {
       name: "eos_ping",
-      description: "Run bounded, non-configuring ping diagnostics on an inventory host or group. Requires explicit diagnostic permission. Destination is a unicast IP literal. Execution success is separate from reachability; no replies do not identify a cause.",
+      description: "Run bounded, non-configuring ping diagnostics from an inventory host or group to one or more destinations concurrently. Requires explicit diagnostic permission. Destinations are unicast IP literals. Returns one result per host and destination; execution success is separate from reachability, and no replies do not identify a cause.",
       inputSchema: pingInputSchema,
       handler: async (args: z.infer<typeof pingInputSchema>, extra: { signal: AbortSignal }) => buildPingToolResult(args, deps.diagnostics, extra.signal)
     },

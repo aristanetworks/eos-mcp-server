@@ -156,6 +156,7 @@ diagnostics:
   defaultPingCount: 3
   maxPingCount: 10
   maxProbesPerRequest: 100
+  maxDestinationsPerRequest: 16
   deviceConcurrency: 5
   pingReplyTimeoutMs: 1000
   commandTimeoutMs: 30000
@@ -273,6 +274,7 @@ With just an inventory file:
 
 ```toml
 [mcp_servers.eos]
+supports_parallel_tool_calls = true
 command = "npx"
 args = ["-y", "@aristanetworks/eos-mcp-server", "serve", "--inventory", "/absolute/path/to/inventory.yml"]
 env_vars = ["EOS_MCP_PASSWORD"]
@@ -282,10 +284,21 @@ Or with a [server config file](#server-config-file) for additional options:
 
 ```toml
 [mcp_servers.eos]
+supports_parallel_tool_calls = true
 command = "npx"
 args = ["-y", "@aristanetworks/eos-mcp-server", "serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
 env_vars = ["EOS_MCP_PASSWORD"]
 ```
+
+Set `supports_parallel_tool_calls = true` under `[mcp_servers.eos]` to let
+Codex dispatch independent tool calls, including pings, concurrently. Without
+this opt-in, tools that omit the MCP read-only annotation may run serially even
+when requested together. Reload Codex after changing the setting. The server
+still enforces its configured diagnostic concurrency and packet limits.
+A single `eos_ping` call with several `destinations` already runs them
+concurrently on the server, so this setting matters for other independent
+calls, such as show commands on different devices or pings that need different
+VRFs, sources, or counts.
 
 `serve` is optional because it is the default command, but is shown explicitly
 here for clarity. After exporting the password, you can also add the server and
@@ -618,12 +631,12 @@ Input:
 
 ### `eos_ping`
 
-Runs bounded ping on an inventory host or group, requiring inherited `mcp_diagnostics_allowed: true`. It generates traffic without changing configuration. The destination must be a unicast IPv4/IPv6 literal; optional VRF and source IP never silently fall back. Count defaults to 3 and is capped at 10 unless changed in settings.
+Runs bounded ping from an inventory host or group to one or more destinations, requiring inherited `mcp_diagnostics_allowed: true`. It generates traffic without changing configuration. Each destination must be a unicast IPv4/IPv6 literal, and duplicates are rejected, including different spellings of the same IPv6 address; use a one-element `destinations` array for a single ping. Destinations run concurrently within the server's diagnostic concurrency, up to 16 per call by default. Optional VRF and source IP apply to every destination and never silently fall back. Count defaults to 3 per destination and is capped at 10 unless changed in settings.
 
 ```json
 {
   "target": "leaf1",
-  "destination": "192.0.2.10",
+  "destinations": ["192.0.2.10", "192.0.2.20"],
   "count": 3,
   "vrf": "BLUE",
   "source": "192.0.2.11",
@@ -631,7 +644,7 @@ Runs bounded ping on an inventory host or group, requiring inherited `mcp_diagno
 }
 ```
 
-`count`, `vrf`, `source`, and `include_raw` are optional. Results separate execution status from `reachable`/`partial`/`unreachable` findings and include loss/RTT measurements. Zero replies do not establish a cause. See [Network diagnostics](docs/DIAGNOSTICS.md) for all limits, address restrictions, lifecycle caveats, and result semantics. Traceroute and packet capture are not yet implemented.
+`count`, `vrf`, `source`, and `include_raw` are optional. Results contain one entry per host and destination, each naming its `destination`; `summary` counts those entries. Results separate execution status from `reachable`/`partial`/`unreachable` findings and include loss/RTT measurements. Zero replies do not establish a cause. See [Network diagnostics](docs/DIAGNOSTICS.md) for all limits, address restrictions, lifecycle caveats, and result semantics. Traceroute and packet capture are not yet implemented.
 
 ### `eos_run_show`
 

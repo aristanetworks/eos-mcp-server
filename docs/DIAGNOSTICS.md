@@ -4,7 +4,7 @@
 
 ## Authorization and addressing
 
-A **Target** is an inventory host or group executing the diagnostic. A **Destination** is a literal IPv4/IPv6 address being tested and need not appear in inventory. DNS names and inventory-reference shorthand are not accepted as destinations.
+A **Target** is an inventory host or group executing the diagnostic. A **Destination** is a literal IPv4/IPv6 address being tested and need not appear in inventory. DNS names and inventory-reference shorthand are not accepted as destinations. One request may name several destinations; each is tested from every resolved host.
 
 Diagnostic access defaults to denied. Opt in explicitly using inherited inventory variables:
 
@@ -30,7 +30,7 @@ Supported addresses are unicast IPv4/IPv6 literals, including loopback. Unspecif
 ```json
 {
   "target": "leaf1",
-  "destination": "2001:db8::10",
+  "destinations": ["2001:db8::10", "2001:db8::20"],
   "count": 3,
   "vrf": "BLUE",
   "source": "2001:db8::11",
@@ -38,10 +38,12 @@ Supported addresses are unicast IPv4/IPv6 literals, including loopback. Unspecif
 }
 ```
 
-- `target` and `destination` are required.
+- `target` and `destinations` are required. A single ping is a one-element `destinations` array.
+- `destinations` holds 1 to `maxDestinationsPerRequest` unique addresses. Duplicates are detected by canonical address, so different IPv6 spellings of one address (such as `::1` and `0:0:0:0:0:0:0:1`) count as duplicates, while an IPv4 address and its IPv4-mapped IPv6 form are distinct destinations. Every destination is validated before anything is dispatched, so one invalid or duplicate entry rejects the whole request. The former single `destination` field is rejected with guidance rather than ignored.
+- `count`, `vrf`, and `source` apply to every destination.
 - `count` defaults to the configured `defaultPingCount`; callers cannot exceed `maxPingCount`.
 - `vrf` is optional, a safe single identifier of up to 64 characters. Omission uses the EOS default routing context.
-- `source` is an optional IP literal in the same address family as the destination. Source-interface selection is not supported.
+- `source` is an optional IP literal in the same address family as every destination; mixing IPv4 and IPv6 destinations therefore requires omitting `source`. Source-interface selection is not supported.
 - An invalid/unavailable VRF or source fails; it never falls back to another context.
 - `include_raw` defaults to false and exposes original EOS text only when true, including unrecognized output returned as a device failure.
 - Arbitrary CLI commands/options are not accepted. Pacing is explicitly fixed at one second; EOS packet `size` is fixed at 64. Flood/rapid modes, custom sizes, and DNS resolution are not exposed.
@@ -55,6 +57,7 @@ diagnostics:
   defaultPingCount: 3
   maxPingCount: 10
   maxProbesPerRequest: 100
+  maxDestinationsPerRequest: 16
   deviceConcurrency: 5
   pingReplyTimeoutMs: 1000
   commandTimeoutMs: 30000
@@ -65,8 +68,9 @@ diagnostics:
 | Setting | Meaning |
 | --- | --- |
 | `defaultPingCount` | Number of probes when the caller omits `count` |
-| `maxPingCount` | Maximum probes per device |
-| `maxProbesPerRequest` | Maximum resolved host count multiplied by requested probes |
+| `maxPingCount` | Maximum probes per device and destination |
+| `maxProbesPerRequest` | Maximum resolved host count × destination count × requested probes |
+| `maxDestinationsPerRequest` | Maximum destinations in one `eos_ping` call |
 | `deviceConcurrency` | Ledger-scoped diagnostic capacity, shared by active and uncertain executions across calls and preserved across server restarts |
 | `pingReplyTimeoutMs` | EOS per-reply timeout; a positive multiple of 1000 ms |
 | `commandTimeoutMs` | Conservative device execution budget; see lifecycle below |
@@ -87,7 +91,7 @@ The HTTP timeout must exceed the command budget by at least 1000 ms. Individual 
 
 ## Execution and lifecycle
 
-Each device receives one text-mode eAPI request containing `enable` followed by the generated ping command. The exact wire request ID is committed as `rpc_request_id` before dispatch. All eAPI responses, including read-tool responses, must use JSON-RPC 2.0, match the exact request ID, and contain exactly one `result` or `error` member. Missing/stale identity fails with `eapi_response_uncorrelated`; contradictory envelopes fail with `eapi_payload_invalid`. Neither is completion evidence, and an unrelated response is never exposed as the requested diagnostic's raw output. There are **no automatic ping retries**, including no JSON-to-text retry. Read-only auto fallback also requires a correlated error and uses a new ID for its subsequent request. Existing `eos_run_show` validation remains show-only.
+Each host/destination execution is one text-mode eAPI request containing `enable` followed by the generated ping command. The exact wire request ID is committed as `rpc_request_id` before dispatch. All eAPI responses, including read-tool responses, must use JSON-RPC 2.0, match the exact request ID, and contain exactly one `result` or `error` member. Missing/stale identity fails with `eapi_response_uncorrelated`; contradictory envelopes fail with `eapi_payload_invalid`. Neither is completion evidence, and an unrelated response is never exposed as the requested diagnostic's raw output. There are **no automatic ping retries**, including no JSON-to-text retry. Read-only auto fallback also requires a correlated error and uses a new ID for its subsequent request. Existing `eos_run_show` validation remains show-only.
 
 On cEOS 4.34.3M, ping's `timeout` maps to a per-reply wait, not a whole-process deadline. The tool combines finite `repeat`, explicit one-second `interval`, and finite reply timeout; the conservative execution formula above must fit `commandTimeoutMs`. This budget is **not** a remote wall-clock kill timer. It assumes normal EOS command scheduling, not a stalled operating system or an indefinitely queued eAPI command. No remote process termination guarantee is made.
 
@@ -95,7 +99,9 @@ One admission controller is shared by all diagnostic calls using the server's le
 
 The ledger uses Node's built-in SQLite (Node 24+, potentially marked experimental by the runtime), FULL synchronous commits, and a separate SQLite ownership database. Only one server may own a ledger; another owner fails with `diagnostic_state_in_use`. OS locking releases ownership when a process crashes, without PID-age guessing or deleting a stale lock. All unfinished records, including records persisted as active before a crash, reopen as uncertain. Corrupt, incompatible, inventory-mismatched, or half-missing state is rejected rather than initialized as fresh capacity. A full SQLite integrity check runs before restored capacity is accepted and during offline inspection; malformed indexes must not hide occupied reservations. State write failure blocks further diagnostics with `diagnostic_state_write_failed`; an abort listener does not throw if writing uncertainty fails, because the earlier committed record still preserves the reservation.
 
-The overall deadline or MCP cancellation stops scheduling new devices, removes capacity waiters, and aborts in-flight HTTP work. An overall timeout is a request-level `operation_timeout`, not a partial-results response. Already completed findings are not returned on that path. Do not blindly retry an interrupted diagnostic.
+A request fans out into one execution per resolved host and destination. Executions run concurrently, up to `deviceConcurrency`, through the same admission controller as every other call; each takes and releases its own reservation exactly as a single ping does. Executions are scheduled host by host, in destination order. Queued executions wait for capacity inside the same overall deadline, so size multi-destination requests so that roughly `ceil(executions / available capacity)` successive waves of pings fit within `overallOperationTimeoutMs`; uncertain reservations reduce available capacity. The device can also limit overlap: on cEOS 4.34.3M, eAPI executed at most three commands concurrently per device, and further delivered requests waited on the device while holding their server reservations. A single-host request therefore gains at most that device's eAPI concurrency, even when more server capacity is free.
+
+The overall deadline or MCP cancellation stops scheduling new executions, removes capacity waiters, and aborts in-flight HTTP work. Every in-flight execution of a cancelled multi-destination request becomes uncertain, so one cancellation can hold up to `deviceConcurrency` slots; queued executions are never dispatched. An overall timeout is a request-level `operation_timeout`, not a partial-results response. Already completed findings are not returned on that path. Do not blindly retry an interrupted diagnostic.
 
 ## Uncertain execution and capacity visibility
 
@@ -166,22 +172,24 @@ The installed cEOS implementation exposes a `runCmds.requestTimeout` execution-s
 
 ## Results
 
-Results use the existing target metadata, `resolved_devices`, execution summary, and per-device result envelope. `request` echoes normalized intent, including the effective count. Per-device `finding` contains:
+Results use the existing target metadata and envelope with one entry per host and destination, ordered by host and then by requested destination. `resolved_devices` lists hosts; `summary` counts host/destination executions, not devices. Each entry carries `inventory_hostname`, `resolved_endpoint`, `destination`, and `status`. `request` echoes normalized intent, including `destinations` and the effective count. Each successful entry's `finding` contains:
 
 - `kind: "ping"`
 - `reachability`: `reachable` (all replies), `partial` (some replies), or `unreachable` (no replies)
 - `packets_sent`, `packets_received`, and calculated `packet_loss_percent`
 - `rtt_ms: { min, avg, max }`, or null when unavailable
 
-Execution `status: "success"` means ping executed and its output was understood. Zero replies are a successful execution with an `unreachable` finding, not a failed tool operation and not a diagnosis of the cause. Authentication/transport errors, invalid VRF/source, and malformed/inconsistent output are execution failures with machine-readable error codes. Unknown output never becomes an invented reachability or loss result.
+Execution `status: "success"` means ping executed and its output was understood. Zero replies are a successful execution with an `unreachable` finding, not a failed tool operation and not a diagnosis of the cause. Authentication/transport errors, invalid VRF/source, and malformed/inconsistent output are execution failures with machine-readable error codes, reported on that host/destination entry without failing the others. Unknown output never becomes an invented reachability or loss result.
 
 ## Extension seam
 
-`DiagnosticExecutor.execute` accepts typed diagnostic intent and owns authorization, aggregate budgets, fan-out, fail-closed global admission, cancellation, result envelopes, and response limits. `getCapacity()` exposes a detached snapshot; server-info obtains it at call time rather than caching startup state. `DiagnosticDeviceRunner.execute` accepts inventory identity and prepared intent; the eAPI adapter owns connection resolution and a single command execution. Ping-specific validation, compilation, and interpretation remain in `src/diagnostics/ping.ts`.
+`DiagnosticExecutor.execute` accepts typed diagnostic intent and owns authorization, aggregate budgets, fan-out, fail-closed global admission, cancellation, result envelopes, and response limits. `getCapacity()` exposes a detached snapshot; server-info obtains it at call time rather than caching startup state. `DiagnosticDeviceRunner.execute` accepts inventory identity and one prepared execution; the eAPI adapter owns connection resolution and a single command execution.
+
+Each diagnostic kind supplies a `DiagnosticDefinition`: `prepare` validates the whole request before dispatch and returns the echoed request plus the executions every resolved host performs, `probeCount` prices one execution against the aggregate budget, and `interpret` turns observed output into a finding. The executor runs every prepared execution on every host and knows nothing kind-specific. Ping's definition, validation, compilation, and interpretation live in `src/diagnostics/ping.ts`; it prepares one execution per destination. Multiple destinations are therefore a property of ping's definition, not of the executor.
 
 Admission queueing is separate from reservation creation and state transitions; shutdown, storage failure, and uncertain-capacity exhaustion share queue rejection. A queued admission failure does not invalidate an earlier command whose completion was already committed. The eAPI adapter separates connection validation from dispatch/error handling instead of maintaining a dispatch flag. `DiagnosticExecutionError` carries a typed `not_dispatched`, `completed`, or `unknown` classification; ordinary errors and malformed acknowledgements remain uncertain. Capacity is reusable only after the corresponding durable removal succeeds.
 
-The request, observation, and finding types are discriminated by `kind`; only `ping` is implemented. Add other real operations at this seam without exposing arbitrary command strings. Packet capture needs a separate decision about transport, privilege, visibility, asynchronous lifetime, artifacts, and sensitive data; no capture-session abstractions are fabricated now.
+The request, observation, and finding types are discriminated by `kind`; only `ping` is implemented. Add other real operations at this seam without exposing arbitrary command strings. A destination-based operation such as traceroute can reuse multi-destination fan-out by preparing one execution per destination, although its much longer execution bound makes large requests hard to fit in the overall deadline. Packet capture needs a separate decision about transport, privilege, visibility, asynchronous lifetime, artifacts, and sensitive data; no capture-session abstractions are fabricated now.
 
 ## Verification
 
@@ -190,6 +198,7 @@ Validated against the repository's cEOS 4.34.3M lab over HTTPS eAPI:
 - IPv4/IPv6 loopback, explicit source and default VRF, and measured RTTs.
 - Explicit one-second pacing, finite repeat count, and reply-timeout behavior.
 - Group fan-out and 100% packet loss in the MGMT VRF.
+- Multi-destination fan-out: six 10-packet pings from one host to its BGP peers completed in 18.6 s (about 56 s when issued as serial calls). A ledger sampler observed five simultaneous active reservations, and direct concurrent eAPI requests confirmed the device ran at most three commands at once.
 - Invalid VRF and unavailable source fail without fallback.
 - Overall HTTP cancellation can leave a short-lived device ping; observed processes exited after their finite probe sequence.
 - MCP stdio execution loads configured defaults and returns real measurements.
@@ -206,4 +215,4 @@ npm run build
 INTEGRATION=1 npm test
 ```
 
-Integration tests use the isolated `clab/testlab.clab.yaml` lab (admin/admin and lab-only TLS override). The read-path suite now defaults to that topology's unprefixed node names; `EOS_MCP_TEST_PREFIX=clab-testlab-` supports older prefixed deployments. All 13 read-path checks have been run alongside the ping suites, including the EOS code-1003 unconverted-command JSON-to-text read fallback; active ping still never retries. Optional `EOS_PING_TEST_HOST`, `EOS_PING_TEST_HOST_2`, and `EOS_PING_TEST_SILENT_HOST` override its device/silent-destination addresses. Unit tests additionally cover partial loss, input injection, mapped-address restrictions, fail-closed policy, invalid settings, concurrent calls, uncertain reservations, cancellation, response-size enforcement, write-ahead ordering, blocked dispatch on storage failure, failed completion commits, private permissions, ownership exclusion, malformed/missing ledgers, actual child-process crash recovery, and offline non-mutating inspection. Operator-release tests use synthetic ledger records and synthetic attestations only: they cover exact scope, legacy null IDs, rejected/malformed evidence, private bounded file input, competing ownership, identity/timestamp mismatches, schema migration/rollback, partial deletion rollback, audit integrity and idempotent retry. They do not claim any real EOS execution was fenced or release live test reservations. Additional protocol regressions cover missing/stale IDs, invalid versions, contradictory result/error envelopes, no retry on an uncorrelated read error, persisted wire-ID ordering, and reservation survival across restart after an unrelated acknowledgement. The delayed-backend regression models a request timing out at 35 seconds and starting remotely after the former 65-second expiry: replacement work is now rejected, so modeled active execution stays within the configured ceiling. This is a deterministic fault model, not a claim to have reproduced live EOS queue overload. Live MCP integration also checks timeout-to-uncertain visibility and the structured capacity error before and after restarting with the same ledger.
+Integration tests use the isolated `clab/testlab.clab.yaml` lab (admin/admin and lab-only TLS override). The read-path suite now defaults to that topology's unprefixed node names; `EOS_MCP_TEST_PREFIX=clab-testlab-` supports older prefixed deployments. All 13 read-path checks have been run alongside the ping suites, including the EOS code-1003 unconverted-command JSON-to-text read fallback; active ping still never retries. Optional `EOS_PING_TEST_HOST`, `EOS_PING_TEST_HOST_2`, and `EOS_PING_TEST_SILENT_HOST` override its device/silent-destination addresses. Unit tests additionally cover partial loss, input injection, mapped-address restrictions, fail-closed policy, invalid settings, concurrent calls, multi-destination ordering, concurrent destination dispatch, per-destination failure isolation, whole-request destination validation, multi-destination cancellation, uncertain reservations, cancellation, response-size enforcement, write-ahead ordering, blocked dispatch on storage failure, failed completion commits, private permissions, ownership exclusion, malformed/missing ledgers, actual child-process crash recovery, and offline non-mutating inspection. Operator-release tests use synthetic ledger records and synthetic attestations only: they cover exact scope, legacy null IDs, rejected/malformed evidence, private bounded file input, competing ownership, identity/timestamp mismatches, schema migration/rollback, partial deletion rollback, audit integrity and idempotent retry. They do not claim any real EOS execution was fenced or release live test reservations. Additional protocol regressions cover missing/stale IDs, invalid versions, contradictory result/error envelopes, no retry on an uncorrelated read error, persisted wire-ID ordering, and reservation survival across restart after an unrelated acknowledgement. The delayed-backend regression models a request timing out at 35 seconds and starting remotely after the former 65-second expiry: replacement work is now rejected, so modeled active execution stays within the configured ceiling. This is a deterministic fault model, not a claim to have reproduced live EOS queue overload. Live MCP integration also checks timeout-to-uncertain visibility and the structured capacity error before and after restarting with the same ledger.

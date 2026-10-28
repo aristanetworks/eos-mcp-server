@@ -10,7 +10,7 @@ const observation: DiagnosticObservation = {
   kind: "ping",
   output: "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n"
 };
-const call = { target: "leaf1", request: { kind: "ping" as const, destination: "127.0.0.1" } };
+const call = { target: "leaf1", request: { kind: "ping" as const, destinations: ["127.0.0.1"] } };
 
 afterEach(() => {
   vi.clearAllTimers();
@@ -97,7 +97,7 @@ describe("fail-closed diagnostic reservations", () => {
       execute: async () => { throw new AppError("eapi_transport_error", "lost"); }
     });
     await executor.execute(call);
-    const result = await buildPingToolResult(pingInputSchema.parse({ target: "leaf1", destination: "127.0.0.1" }), executor);
+    const result = await buildPingToolResult(pingInputSchema.parse({ target: "leaf1", destinations: ["127.0.0.1"] }), executor);
     expect(result).toMatchObject({
       isError: true,
       structuredContent: { error_code: "diagnostic_capacity_uncertain", message: expect.stringContaining("eos_get_server_info.diagnostics.capacity") }

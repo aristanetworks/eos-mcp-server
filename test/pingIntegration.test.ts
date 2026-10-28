@@ -25,33 +25,33 @@ describe.runIf(process.env.INTEGRATION === "1")("integration: bounded EOS ping (
     { destination: "127.0.0.1", source: "127.0.0.1" },
     { destination: "::1", source: "::1" }
   ])("executes $destination with explicit VRF/source and parses measurements", async (addresses) => {
-    const result = await (await executor()).execute({ target: "ping1", request: { kind: "ping", ...addresses, vrf: "default", count: 2 }, includeRaw: true });
+    const result = await (await executor()).execute({ target: "ping1", request: { kind: "ping", destinations: [addresses.destination], source: addresses.source, vrf: "default", count: 2 }, includeRaw: true });
     expect(result.results[0]).toMatchObject({ status: "success", finding: { reachability: "reachable", packets_sent: 2, packets_received: 2 } });
     expect(result.results[0]?.finding?.rtt_ms).not.toBeNull();
     expect(result.results[0]?.raw_output).toContain("ping statistics");
   }, 15_000);
 
   it("fans out through the shared executor", async () => {
-    const result = await (await executor()).execute({ target: "switches", request: { kind: "ping", destination: "127.0.0.1", count: 1 } });
+    const result = await (await executor()).execute({ target: "switches", request: { kind: "ping", destinations: ["127.0.0.1"], count: 1 } });
     expect(result.summary).toEqual({ total_count: 2, success_count: 2, failed_count: 0 });
     expect(result.results.every((device) => device.finding?.reachability === "reachable")).toBe(true);
   }, 15_000);
 
   it("reports a silent destination as unreachable, not an execution failure", async () => {
-    const result = await (await executor()).execute({ target: "ping1", request: { kind: "ping", destination: process.env.EOS_PING_TEST_SILENT_HOST ?? "172.20.20.254", vrf: "MGMT", count: 2 } });
+    const result = await (await executor()).execute({ target: "ping1", request: { kind: "ping", destinations: [process.env.EOS_PING_TEST_SILENT_HOST ?? "172.20.20.254"], vrf: "MGMT", count: 2 } });
     expect(result.results[0]).toMatchObject({ status: "success", finding: { reachability: "unreachable", packets_sent: 2, packets_received: 0, packet_loss_percent: 100, rtt_ms: null } });
   }, 15_000);
 
   it("does not fall back when a requested VRF or source is invalid", async () => {
     const execute = await executor();
-    const missingVrf = await execute.execute({ target: "ping1", request: { kind: "ping", destination: "127.0.0.1", vrf: "definitely_missing", count: 1 } });
+    const missingVrf = await execute.execute({ target: "ping1", request: { kind: "ping", destinations: ["127.0.0.1"], vrf: "definitely_missing", count: 1 } });
     expect(missingVrf.results[0]).toMatchObject({ status: "failed", error_code: "eapi_json_rpc_error" });
-    const missingSource = await execute.execute({ target: "ping1", request: { kind: "ping", destination: "127.0.0.1", source: "192.0.2.50", count: 1 } });
+    const missingSource = await execute.execute({ target: "ping1", request: { kind: "ping", destinations: ["127.0.0.1"], source: "192.0.2.50", count: 1 } });
     expect(missingSource.results[0]).toMatchObject({ status: "failed", error_code: "diagnostic_command_failed" });
   }, 15_000);
 
   it("aborts HTTP work at the configured overall deadline", async () => {
-    await expect((await executor(100)).execute({ target: "switches", request: { kind: "ping", destination: "127.0.0.1", count: 3 } }))
+    await expect((await executor(100)).execute({ target: "switches", request: { kind: "ping", destinations: ["127.0.0.1"], count: 3 } }))
       .rejects.toMatchObject({ code: "operation_timeout" });
   }, 15_000);
 });
