@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.1-beta
+
 - **Breaking:** removes the durable diagnostic ledger and its exclusive lock, so several MCP servers (for example two chat sessions, or the desktop app alongside Claude Code) can use the same inventory at once. Previously a second server failed to start whenever any host allowed diagnostics, losing every tool. See [ADR 0006](docs/adr/0006-in-memory-timed-diagnostic-capacity.md), which supersedes ADRs 0002 to 0004.
 - When a ping's remote completion is unknown (timeout, cancellation, lost connection, malformed or uncorrelated response), its slot is now held for `diagnostics.commandTimeoutMs` and then freed automatically instead of indefinitely; a late confirmed response frees it sooner. New work queues behind held slots within the overall deadline. Server info reports `releases_at` for each uncertain reservation. `deviceConcurrency` now limits each server process rather than an inventory.
 - Ping requests now send EOS's native `runCmds.requestTimeout`, set to `diagnostics.commandTimeoutMs`, so the switch itself interrupts a ping that outlives its budget. On by default; set `diagnostics.nativeRequestTimeout: false` if an EOS version rejects the field. Server info reports it as `limits.diagnostics.native_request_timeout`. Verified on cEOS 4.34.3M only.
