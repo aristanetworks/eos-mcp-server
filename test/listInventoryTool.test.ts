@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
-import { buildListInventoryToolResult } from "../src/mcp/tools/listInventory.js";
+import { buildListInventoryToolResult, listInventoryInputSchema } from "../src/mcp/tools/listInventory.js";
 import { writeTempInventory } from "./helpers.js";
 
 describe("buildListInventoryToolResult", () => {
@@ -20,7 +20,7 @@ describe("buildListInventoryToolResult", () => {
     ]);
 
     const model = await loadInventoryModel(inventoryPath);
-    const result = buildListInventoryToolResult(model, {});
+    const result = buildListInventoryToolResult(model, listInventoryInputSchema.parse({}));
     const payload = result.structuredContent as {
       hosts: Array<{ inventory_hostname: string }>;
     };

@@ -48,6 +48,7 @@ export interface ServerInfo {
       command_timeout_ms: number;
       http_timeout_ms: number;
       overall_operation_timeout_ms: number;
+      native_request_timeout: boolean;
     };
   };
   diagnostics: {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import { showLogging } from "../src/logging/showLogging.js";
-import { buildConfig, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
+import { buildConfig, mockRunShowCommands, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
 
 async function buildSingleHostShowLoggingFixture() {
   setTestPasswordEnv();
@@ -28,7 +28,7 @@ describe("showLogging", () => {
   it("runs a bounded threshold logging command with defaults", async () => {
     const { model, config } = await buildSingleHostShowLoggingFixture();
     const runner = {
-      runShowCommands: vi.fn(async () => [
+      runShowCommands: mockRunShowCommands(async () => [
         { command: "show logging threshold warnings 100", output_format: "text", output: "Nov 1 leaf1 Event\n" }
       ])
     };
@@ -73,7 +73,7 @@ describe("showLogging", () => {
     ]);
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async () => [
+      runShowCommands: mockRunShowCommands(async () => [
         { command: "show logging threshold errors 50", output_format: "text", output: "error log\n" }
       ])
     };
@@ -150,7 +150,7 @@ describe("showLogging", () => {
   it("fails a device result when the logging payload is not text output", async () => {
     const { model, config } = await buildSingleHostShowLoggingFixture();
     const runner = {
-      runShowCommands: vi.fn(async () => [
+      runShowCommands: mockRunShowCommands(async () => [
         { command: "show logging threshold warnings 100", output_format: "json", output: { entries: [] } }
       ])
     };

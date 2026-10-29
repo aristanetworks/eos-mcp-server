@@ -15,7 +15,6 @@ import {
 } from "../operations/readExecution.js";
 import { DiagnosticConcurrency } from "./concurrency.js";
 import { DiagnosticExecutionError } from "./executionError.js";
-import type { DiagnosticJournal } from "./journalTypes.js";
 import { pingDiagnostic } from "./ping.js";
 import type {
   DiagnosticCapacitySnapshot,
@@ -50,10 +49,9 @@ export class DiagnosticExecutor {
   constructor(
     private readonly model: InventoryModel,
     private readonly config: ResolvedServerConfig,
-    private readonly runner: DiagnosticDeviceRunner,
-    journal?: DiagnosticJournal
+    private readonly runner: DiagnosticDeviceRunner
   ) {
-    this.concurrency = new DiagnosticConcurrency(config.diagnostics.deviceConcurrency, journal);
+    this.concurrency = new DiagnosticConcurrency(config.diagnostics.deviceConcurrency, config.diagnostics.commandTimeoutMs);
   }
 
   close(): void {
@@ -91,7 +89,6 @@ export class DiagnosticExecutor {
     if (resolvedTarget.resolvedHosts.length * probesPerHost > this.config.diagnostics.maxProbesPerRequest) {
       throw new AppError("diagnostic_probe_limit_exceeded", `Request exceeds maxProbesPerRequest ${this.config.diagnostics.maxProbesPerRequest}`);
     }
-    this.concurrency.assertUsableCapacity();
 
     // Each host/execution pair takes its own reservation; results stay in host-then-execution order.
     const hostExecutions = resolvedTarget.resolvedHosts.flatMap((host) => prepared.executions.map((execution) => ({ host, execution })));

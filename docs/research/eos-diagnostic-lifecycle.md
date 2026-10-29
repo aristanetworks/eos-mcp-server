@@ -1,5 +1,7 @@
 # EOS HTTPS eAPI diagnostic lifecycle
 
+> Historical investigation. [ADR 0006](../adr/0006-in-memory-timed-diagnostic-capacity.md) later chose to hold uncertain capacity for the command budget instead of indefinitely, accepting the unreproduced delayed-queue risk described here.
+
 ## Conclusion
 
 **No dispatch-relative deadline, durable execution-token lifecycle, or definitive cancellation guarantee was qualified for ping.** However, EOS **does expose a native `runCmds.requestTimeout`**: saying eAPI has only a client-side timeout would be incorrect. Its installed implementation is an execution-stage interruption timer, not a verified admission-to-process-exit bound. Losing HTTP completion evidence must therefore remain an uncertain reservation, not become free capacity after a cooldown.

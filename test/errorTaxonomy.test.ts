@@ -5,7 +5,7 @@ import { getFacts } from "../src/facts/getFacts.js";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import { probeDevices } from "../src/probe/probeDevices.js";
 import { runShow } from "../src/show/runShow.js";
-import { buildConfig, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
+import { buildConfig, mockRunShowCommands, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
 
 describe("error taxonomy", () => {
   describe("inventory errors", () => {
@@ -131,7 +131,7 @@ describe("error taxonomy", () => {
           }),
           { target: "leaf1", commands: ["show version"], outputFormat: "text" },
           {
-            runShowCommands: vi.fn(async () => [
+            runShowCommands: mockRunShowCommands(async () => [
               { command: "show version", output_format: "text", output: "x".repeat(1000) }
             ])
           }
@@ -189,7 +189,7 @@ describe("error taxonomy", () => {
         }),
         { target: "leaf1", include_raw: false },
         {
-          runShowCommands: vi.fn(async () => [
+          runShowCommands: mockRunShowCommands(async () => [
             { command: "show version", output_format: "text", output: "unexpected text output" }
           ])
         }

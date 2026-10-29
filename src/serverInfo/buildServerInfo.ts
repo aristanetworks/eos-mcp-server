@@ -43,7 +43,8 @@ export function buildServerInfo(context: ServerRuntimeContext, diagnosticCapacit
         ping_reply_timeout_ms: context.config.diagnostics.pingReplyTimeoutMs,
         command_timeout_ms: context.config.diagnostics.commandTimeoutMs,
         http_timeout_ms: context.config.diagnostics.httpTimeoutMs,
-        overall_operation_timeout_ms: context.config.diagnostics.overallOperationTimeoutMs
+        overall_operation_timeout_ms: context.config.diagnostics.overallOperationTimeoutMs,
+        native_request_timeout: context.config.diagnostics.nativeRequestTimeout
       }
     },
     diagnostics: {

@@ -25,6 +25,8 @@ export interface EapiCommandOptions {
 
 export interface RunTextCommandOptions extends EapiCommandOptions {
   requestId?: string;
+  /** EOS-side runCmds requestTimeout: the device interrupts the command list once it expires. */
+  requestTimeoutSeconds?: number;
 }
 
 export interface RunShowCommandOptions extends EapiCommandOptions {
@@ -86,6 +88,7 @@ export interface EapiJsonRpcRequest {
     version: EapiVersion;
     cmds: string[];
     format: EapiOutputFormat;
+    requestTimeout?: number;
   };
   id: string;
 }

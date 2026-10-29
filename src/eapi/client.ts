@@ -4,7 +4,6 @@ import { isObject } from "../utils/value.js";
 import {
   hasEapiResultArray,
   parseEapiRunCmdsResponse,
-  type EapiCommandOptions,
   type EapiConnectionConfig,
   type EapiJsonRpcRequest,
   type EapiOutputFormat,
@@ -53,7 +52,7 @@ export class EapiClient {
     commands: string[],
     options?: RunTextCommandOptions
   ): Promise<EosCommandResult[]> {
-    const payload = await this.runCommands(connection, commands, "text", options, options?.requestId);
+    const payload = await this.runCommands(connection, commands, "text", options);
     return buildCommandResults(payload, commands, "text", false);
   }
 
@@ -61,8 +60,7 @@ export class EapiClient {
     connection: EapiConnectionConfig,
     commands: string[],
     format: EapiOutputFormat,
-    options?: EapiCommandOptions,
-    requestId: string = randomUUID()
+    options?: RunTextCommandOptions
   ): Promise<unknown> {
     if (commands.length === 0) {
       throw new AppError("eapi_commands_missing", "runCommands requires at least one command");
@@ -77,9 +75,10 @@ export class EapiClient {
       params: {
         version: connection.eapiVersion,
         cmds: wireCommands,
-        format
+        format,
+        ...(options?.requestTimeoutSeconds === undefined ? {} : { requestTimeout: options.requestTimeoutSeconds })
       },
-      id: requestId
+      id: options?.requestId ?? randomUUID()
     };
 
     const requestSignal = buildRequestSignal(connection.timeoutMs, options?.signal);

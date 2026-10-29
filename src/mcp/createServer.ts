@@ -6,7 +6,6 @@ import type { ResolvedServerConfig } from "../config/schema.js";
 import { EapiDeviceReader, type EosDeviceReader } from "../connection/eosDeviceReader.js";
 import { APP_NAME, APP_VERSION } from "../core/version.js";
 import { toErrorMessage } from "../core/errors.js";
-import { defaultDiagnosticStateFile, diagnosticInventoryIdentity } from "../diagnostics/statePath.js";
 import { EapiClient } from "../eapi/client.js";
 import { EapiDiagnosticRunner } from "../diagnostics/eapiRunner.js";
 import { DiagnosticExecutor } from "../diagnostics/executor.js";
@@ -92,18 +91,7 @@ export async function startMcpServer(config: ResolvedServerConfig, inventoryMode
 
   const client = new EapiClient();
   const deviceReader = new EapiDeviceReader(config, client);
-  const journal = inventoryModel.hosts.some((host) => host.diagnosticsAllowed)
-    ? (await import("../diagnostics/journal.js")).openDiagnosticJournal(
-      config.diagnostics.stateFile ?? defaultDiagnosticStateFile(inventoryModel.path), diagnosticInventoryIdentity(inventoryModel.path)
-    )
-    : undefined;
-  let diagnostics: DiagnosticExecutor;
-  try {
-    diagnostics = new DiagnosticExecutor(inventoryModel, config, new EapiDiagnosticRunner(config, client), journal);
-  } catch (error) {
-    journal?.close();
-    throw error;
-  }
+  const diagnostics = new DiagnosticExecutor(inventoryModel, config, new EapiDiagnosticRunner(config, client));
 
   const server = new McpServer({
     name: APP_NAME,
@@ -138,10 +126,7 @@ export async function startMcpServer(config: ResolvedServerConfig, inventoryMode
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
     process.stdin.off("end", stop);
-    try { diagnostics.close(); } catch (error) {
-      console.error(toErrorMessage(error));
-      process.exitCode = 1;
-    }
+    diagnostics.close();
   };
   server.server.onclose = cleanup;
   process.once("SIGINT", stop);

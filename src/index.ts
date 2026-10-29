@@ -3,8 +3,6 @@ import { randomUUID } from "node:crypto";
 import { AppError, toErrorMessage } from "./core/errors.js";
 import { parseCliArgs, printHelp, printVersion } from "./cli.js";
 import { runProbe } from "./commands/probe.js";
-import { runInspectDiagnostics } from "./commands/inspectDiagnostics.js";
-import { runReleaseDiagnostics } from "./commands/releaseDiagnostics.js";
 import { runValidateInventory } from "./commands/validateInventory.js";
 import { printServerInfo } from "./commands/printServerInfo.js";
 import { loadServerConfig } from "./config/loadConfig.js";
@@ -47,16 +45,6 @@ async function main(): Promise<void> {
         ...(inventoryModel !== undefined ? { inventorySummary: inventoryModel.summary } : {})
       };
       printServerInfo(runtimeContext, cli.json ?? false);
-      return;
-    }
-
-    case "release-diagnostics": {
-      process.exitCode = await runReleaseDiagnostics(config, cli);
-      return;
-    }
-
-    case "inspect-diagnostics": {
-      process.exitCode = await runInspectDiagnostics(config, cli.json ?? false);
       return;
     }
 

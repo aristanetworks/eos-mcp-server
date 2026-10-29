@@ -1,12 +1,13 @@
 import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
+import type { IncomingMessage } from "node:http";
 import https from "node:https";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { resolveEapiConnection } from "../src/connection/resolveConnection.js";
 import { EapiClient } from "../src/eapi/client.js";
-import { FetchEapiTransport } from "../src/eapi/transport.js";
+import { FetchEapiTransport, type FetchLike } from "../src/eapi/transport.js";
 import { buildConfig, buildConnection, buildHost, setTestPasswordEnv, echoRpcTransport } from "./helpers.js";
 
 describe("resolveEapiConnection", () => {
@@ -173,7 +174,7 @@ describe("resolveEapiConnection", () => {
 
 describe("EapiClient", () => {
   it("sends runCmds requests to the command-api endpoint", async () => {
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn<FetchLike>(async () => ({
       ok: true,
       status: 200,
       json: async () => ({ result: [{ version: "4.32.1F" }] }),
@@ -201,7 +202,7 @@ describe("EapiClient", () => {
   });
 
   it("requests the connection's eAPI output version", async () => {
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn<FetchLike>(async () => ({
       ok: true,
       status: 200,
       json: async () => ({ result: [{ version: "4.32.1F" }] }),
@@ -212,7 +213,7 @@ describe("EapiClient", () => {
 
     await client.runShowCommands(buildConnection({ eapiVersion: "latest" }), ["show version"], "json");
 
-    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body.params.version).toBe("latest");
   });
 
@@ -231,7 +232,7 @@ describe("EapiClient", () => {
   });
 
   it("prepends enable command when enable option is true", async () => {
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn<FetchLike>(async () => ({
       ok: true,
       status: 200,
       json: async () => ({ result: [{}, { output: "! running-config\n" }] }),
@@ -243,7 +244,7 @@ describe("EapiClient", () => {
 
     await client.runShowCommands(connection, ["show running-config"], "text", { enable: true });
 
-    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body.params.cmds).toEqual(["enable", "show running-config"]);
   });
 
@@ -352,7 +353,7 @@ describe("EapiClient", () => {
   });
 
   it("does not prepend enable when enable option is omitted", async () => {
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn<FetchLike>(async () => ({
       ok: true,
       status: 200,
       json: async () => ({ result: [{ version: "4.32.1F" }] }),
@@ -364,7 +365,7 @@ describe("EapiClient", () => {
 
     await client.runShowCommands(connection, ["show version"], "json");
 
-    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body.params.cmds).toEqual(["show version"]);
   });
 
@@ -404,7 +405,7 @@ describe("EapiClient", () => {
       request.end = () => {
         const response = new EventEmitter() as EventEmitter & { statusCode: number };
         response.statusCode = 200;
-        callback?.(response);
+        callback?.(response as unknown as IncomingMessage);
         response.emit("data", Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: requestId, result: [{ version: "4.32.1F" }] })));
         response.emit("end");
       };
@@ -443,7 +444,7 @@ describe("EapiClient", () => {
       request.end = () => {
         const response = new EventEmitter() as EventEmitter & { statusCode: number };
         response.statusCode = 200;
-        callback?.(response);
+        callback?.(response as unknown as IncomingMessage);
         response.emit("data", Buffer.from('{"result":['));
         response.emit("data", Buffer.from(`{"output":"${"x".repeat(100)}"}`));
       };

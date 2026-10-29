@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import path from "node:path";
 import { loadServerConfig } from "../src/config/loadConfig.js";
 import { writeTempInventory } from "./helpers.js";
 
@@ -8,16 +7,18 @@ async function load(lines: string[]) {
 }
 
 describe("diagnostic settings", () => {
-  it("resolves the durable state file relative to the settings file", async () => {
-    const config = await load(["diagnostics:", "  stateFile: ./private/diagnostics.sqlite"]);
-    expect(config.diagnostics.stateFile).toBe(path.join(path.dirname(config.configPath ?? ""), "private/diagnostics.sqlite"));
+  it("rejects the removed state file setting with guidance", async () => {
+    await expect(load(["diagnostics:", "  stateFile: ./private/diagnostics.sqlite"]))
+      .rejects.toMatchObject({ code: "config_schema_invalid", message: expect.stringContaining("diagnostics.stateFile: Removed") });
+    await expect(load(["diagnostics:", "  unknownLimit: 5"]))
+      .rejects.toMatchObject({ message: expect.stringContaining("unknownLimit") });
   });
 
   it("supplies finite defaults without a settings file", async () => {
     const config = await loadServerConfig({ command: "serve" });
     expect(config.diagnostics).toEqual({
       defaultPingCount: 3, maxPingCount: 10, maxProbesPerRequest: 100, maxDestinationsPerRequest: 16, deviceConcurrency: 5,
-      pingReplyTimeoutMs: 1000, commandTimeoutMs: 30_000, httpTimeoutMs: 35_000, overallOperationTimeoutMs: 60_000
+      pingReplyTimeoutMs: 1000, commandTimeoutMs: 30_000, httpTimeoutMs: 35_000, overallOperationTimeoutMs: 60_000, nativeRequestTimeout: true
     });
   });
 
@@ -31,10 +32,11 @@ describe("diagnostic settings", () => {
   it("loads every limit and timeout from YAML", async () => {
     const config = await load([
       "diagnostics:", "  defaultPingCount: 4", "  maxPingCount: 20", "  maxProbesPerRequest: 200", "  maxDestinationsPerRequest: 8", "  deviceConcurrency: 2",
-      "  pingReplyTimeoutMs: 2000", "  commandTimeoutMs: 65000", "  httpTimeoutMs: 70000", "  overallOperationTimeoutMs: 90000"
+      "  pingReplyTimeoutMs: 2000", "  commandTimeoutMs: 65000", "  httpTimeoutMs: 70000", "  overallOperationTimeoutMs: 90000",
+      "  nativeRequestTimeout: false"
     ]);
     expect(config.diagnostics).toEqual({ defaultPingCount: 4, maxPingCount: 20, maxProbesPerRequest: 200, maxDestinationsPerRequest: 8, deviceConcurrency: 2,
-      pingReplyTimeoutMs: 2000, commandTimeoutMs: 65000, httpTimeoutMs: 70000, overallOperationTimeoutMs: 90000 });
+      pingReplyTimeoutMs: 2000, commandTimeoutMs: 65000, httpTimeoutMs: 70000, overallOperationTimeoutMs: 90000, nativeRequestTimeout: false });
   });
 
   it("validates HTTP timeouts independently rather than inventing a combined release timer", async () => {
@@ -45,7 +47,7 @@ describe("diagnostic settings", () => {
   it.each([
     "defaultPingCount: 11", "maxProbesPerRequest: 5", "commandTimeoutMs: 5000", "httpTimeoutMs: 10000",
     "deviceConcurrency: 0", "maxPingCount: -1", "pingReplyTimeoutMs: 1500", "overallOperationTimeoutMs: 0",
-    "httpTimeoutMs: 2147483648", "deviceConcurrency: true", "unknownLimit: 5", "maxPingCount: .inf", "maxDestinationsPerRequest: 0"
+    "httpTimeoutMs: 2147483648", "deviceConcurrency: true", "unknownLimit: 5", "maxPingCount: .inf", "maxDestinationsPerRequest: 0", "nativeRequestTimeout: 1"
   ])("rejects unsafe or contradictory settings: %s", async (line) => {
     await expect(load(["diagnostics:", `  ${line}`])).rejects.toMatchObject({ code: "config_schema_invalid" });
   });
