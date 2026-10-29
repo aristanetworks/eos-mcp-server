@@ -1,8 +1,10 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { vi, type Mock } from "vitest";
 import type { ResolvedServerConfig } from "../src/config/schema.js";
 import { diagnosticsConfigSchema } from "../src/config/diagnostics.js";
+import type { EosDeviceReader } from "../src/connection/eosDeviceReader.js";
 import type { EapiConnectionConfig } from "../src/eapi/types.js";
 import type { EapiTransport } from "../src/eapi/transport.js";
 import type { InventoryHostModel, InventoryModel } from "../src/inventory/types.js";
@@ -24,6 +26,15 @@ export function echoRpcTransport(transport: EapiTransport): EapiTransport {
       };
     }
   };
+}
+
+/** `EosDeviceReader.runShowCommands` mock typed against the real signature, so fixture
+ * results keep literal `output_format` values and `mock.calls` entries are typed.
+ */
+export function mockRunShowCommands(
+  implementation?: EosDeviceReader["runShowCommands"]
+): Mock<EosDeviceReader["runShowCommands"]> {
+  return vi.fn<EosDeviceReader["runShowCommands"]>(implementation);
 }
 
 export function buildConfig(overrides: Partial<ResolvedServerConfig> = {}): ResolvedServerConfig {

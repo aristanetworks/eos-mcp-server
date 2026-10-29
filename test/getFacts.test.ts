@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
-import { getFacts } from "../src/facts/getFacts.js";
-import { buildConfig, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
+import { getFacts, type GetFactsOptions } from "../src/facts/getFacts.js";
+import { buildConfig, mockRunShowCommands, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
 
 describe("getFacts", () => {
   it("returns fixed-core facts for a group target", async () => {
@@ -19,7 +19,7 @@ describe("getFacts", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async () => [
+      runShowCommands: mockRunShowCommands(async () => [
         {
           command: "show version",
           output_format: "json",
@@ -69,7 +69,7 @@ describe("getFacts", () => {
     const model = await loadInventoryModel(inventoryPath);
     const rawEntry = { hostname: "leaf1", version: "4.32.1F" };
     const runner = {
-      runShowCommands: vi.fn(async () => [
+      runShowCommands: mockRunShowCommands(async () => [
         { command: "show version", output_format: "json", output: rawEntry, raw_entry: rawEntry }
       ])
     };
@@ -110,7 +110,7 @@ describe("getFacts", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async () => [
+      runShowCommands: mockRunShowCommands(async () => [
         { command: "show version", output_format: "json", output: { hostname: "leaf1" } }
       ])
     };
@@ -123,7 +123,8 @@ describe("getFacts", () => {
           mcpPasswordEnv: "EOS_MCP_PASSWORD"
         }
       }),
-      { target: "leafs" },
+      // Deliberately omits include_raw (required by the type) to pin getFacts' behaviour for untyped callers.
+      { target: "leafs" } as GetFactsOptions,
       runner
     );
 

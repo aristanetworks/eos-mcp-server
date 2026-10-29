@@ -2,6 +2,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { writeTempInventory } from "./helpers.js";
 
 describe("stdio MCP smoke test", () => {
@@ -83,10 +84,10 @@ describe("stdio MCP smoke test", () => {
         expect(deniedPing.isError).toBe(true);
         expect(JSON.stringify(deniedPing.content)).toContain("Diagnostic permission denied");
 
-        const serverInfo = await client.callTool({
+        const serverInfo = CallToolResultSchema.parse(await client.callTool({
           name: "eos_get_server_info",
           arguments: {}
-        });
+        }));
 
         expect(serverInfo.content[0]?.type).toBe("text");
         expect(serverInfo.content[0] && "text" in serverInfo.content[0] ? serverInfo.content[0].text : "").toContain(

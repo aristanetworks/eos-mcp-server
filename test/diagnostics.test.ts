@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { AppError } from "../src/core/errors.js";
-import type { DiagnosticExecutionContext, PreparedDiagnostic } from "../src/diagnostics/types.js";
+import type { DiagnosticDeviceRunner, DiagnosticExecutionContext, PreparedDiagnostic } from "../src/diagnostics/types.js";
 import type { InventoryHostModel } from "../src/inventory/types.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
 import { DiagnosticExecutionError } from "../src/diagnostics/executionError.js";
@@ -15,7 +15,7 @@ const observation: DiagnosticObservation = { kind: "ping", output };
 const call = { target: "leaf1", request: { kind: "ping" as const, destinations: ["127.0.0.1"] } };
 
 function runner() {
-  return { execute: vi.fn(async () => observation) };
+  return { execute: vi.fn<DiagnosticDeviceRunner["execute"]>(async () => observation) };
 }
 
 async function groupModel(extra = "") {
@@ -274,8 +274,8 @@ describe("server-wide diagnostic admission and deadlines", () => {
 
 describe("multi-destination ping", () => {
   const sweep = (destinations: string[]) => ({ target: "switches", request: { kind: "ping" as const, destinations } });
-  const dispatched = (device: { execute: ReturnType<typeof vi.fn> }) =>
-    device.execute.mock.calls.map(([host, execution]: [InventoryHostModel, PreparedDiagnostic]) => `${host.inventoryHostname}>${execution.destination}`);
+  const dispatched = (device: { execute: Mock<DiagnosticDeviceRunner["execute"]> }) =>
+    device.execute.mock.calls.map(([host, execution]) => `${host.inventoryHostname}>${execution.destination}`);
 
   it("returns one result per host and destination in host-then-destination order", async () => {
     const device = runner();

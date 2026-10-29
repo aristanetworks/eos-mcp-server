@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import { getRunningConfig } from "../src/configuration/getRunningConfig.js";
-import { buildConfig, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
+import { buildConfig, mockRunShowCommands, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
 
 describe("getRunningConfig", () => {
   it("returns full config for a single host target", async () => {
@@ -15,8 +15,8 @@ describe("getRunningConfig", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async (_connection, commands) => [
-        { command: commands[0], output_format: "text", output: `ran ${commands[0]}` }
+      runShowCommands: mockRunShowCommands(async (_connection, commands) => [
+        { command: commands[0] ?? "show running-config", output_format: "text", output: `ran ${commands[0]}` }
       ])
     };
 
@@ -76,7 +76,7 @@ describe("getRunningConfig", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async (_connection: unknown, commands: string[]) => [
+      runShowCommands: mockRunShowCommands(async (_connection: unknown, commands: string[]) => [
         { command: commands[0] ?? "show running-config", output_format: "text", output: "! running-config\n" }
       ])
     };
@@ -115,8 +115,8 @@ describe("getRunningConfig", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async (_connection, commands) => [
-        { command: commands[0], output_format: "text", output: `ran ${commands[0]}` }
+      runShowCommands: mockRunShowCommands(async (_connection, commands) => [
+        { command: commands[0] ?? "show running-config", output_format: "text", output: `ran ${commands[0]}` }
       ])
     };
 

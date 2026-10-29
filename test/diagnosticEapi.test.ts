@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { EapiClient } from "../src/eapi/client.js";
+import type { EapiTransport } from "../src/eapi/transport.js";
 import type { EosTextCommandRunner } from "../src/eapi/types.js";
 import { EapiDiagnosticRunner } from "../src/diagnostics/eapiRunner.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
@@ -21,7 +22,7 @@ function createSingleSlotExecutor(runner: EosTextCommandRunner): DiagnosticExecu
 
 describe("diagnostic eAPI adapter", () => {
   it("sends one text request, in enable mode, using the configured version, diagnostic HTTP timeout, and EOS request timeout", async () => {
-    const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ result: [{ output: "" }, { output }] }), text: async () => "" }));
+    const postJson = vi.fn<EapiTransport["postJson"]>(async () => ({ ok: true, status: 200, json: async () => ({ result: [{ output: "" }, { output }] }), text: async () => "" }));
     const config = buildConfig({ readTimeoutMs: 7, eapiVersion: 1 });
     const runner = new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson })));
     const request = preparePing({ kind: "ping", destination: "::1", source: "::1", vrf: "default", count: 1 }, config.diagnostics);

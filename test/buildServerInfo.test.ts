@@ -7,8 +7,7 @@ describe("buildServerInfo", () => {
     const info = buildServerInfo({
       instanceId: "instance-1",
       startedAt: "2026-04-23T00:00:00.000Z",
-      config: buildConfig({ inventoryPath: "/tmp/lab.yml" }),
-      inventorySummary: undefined
+      config: buildConfig({ inventoryPath: "/tmp/lab.yml" })
     });
 
     expect(info.runtime_mode).toBe("read-only");
@@ -21,8 +20,7 @@ describe("buildServerInfo", () => {
     const info = buildServerInfo({
       instanceId: "instance-1",
       startedAt: "2026-04-23T00:00:00.000Z",
-      config: buildConfig({ eapiVersion: 1 }),
-      inventorySummary: undefined
+      config: buildConfig({ eapiVersion: 1 })
     });
 
     expect(info.capabilities.eapi_version).toBe(1);

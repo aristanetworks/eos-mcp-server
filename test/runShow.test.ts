@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AppError } from "../src/core/errors.js";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import { runShow } from "../src/show/runShow.js";
-import { buildConfig, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
+import { buildConfig, mockRunShowCommands, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
 
 function defaultReadConfig() {
   return buildConfig({
@@ -47,9 +47,11 @@ describe("runShow", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async (_connection, commands, format) =>
-        commands.map((command) => ({ command, output_format: format, output: { command, format } }))
-      )
+      runShowCommands: mockRunShowCommands(async (_connection, commands, format) => {
+        // A real reader resolves "auto" to the format it actually used; this fixture only echoes explicit formats.
+        if (format === "auto") throw new Error("fixture expects an explicit output format");
+        return commands.map((command) => ({ command, output_format: format, output: { command, format } }));
+      })
     };
 
     const result = await runShow(
@@ -87,7 +89,7 @@ describe("runShow", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async () => [
+      runShowCommands: mockRunShowCommands(async () => [
         { command: "show version", output_format: "text", output: "EOS text output" }
       ])
     };
@@ -133,7 +135,7 @@ describe("runShow", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async () => {
+      runShowCommands: mockRunShowCommands(async () => {
         throw new AppError("json_output_unavailable", "json output unavailable");
       })
     };
@@ -244,7 +246,7 @@ describe("runShow", () => {
   it("trims commands before dispatch", async () => {
     const { model, config } = await buildSingleHostRunShowFixture();
     const runner = {
-      runShowCommands: vi.fn(async (_connection, commands) =>
+      runShowCommands: mockRunShowCommands(async (_connection, commands) =>
         commands.map((command) => ({ command, output_format: "json", output: { command } }))
       )
     };
@@ -272,7 +274,7 @@ describe("runShow", () => {
   it("returns normalized command_results by default", async () => {
     const { model, config } = await buildSingleHostRunShowFixture();
     const runner = {
-      runShowCommands: vi.fn(async () => [
+      runShowCommands: mockRunShowCommands(async () => [
         {
           command: "show version",
           output_format: "json",
@@ -306,7 +308,7 @@ describe("runShow", () => {
   it("fails a device result when eapi result count does not match commands", async () => {
     const { model, config } = await buildSingleHostRunShowFixture();
     const runner = {
-      runShowCommands: vi.fn(async () => {
+      runShowCommands: mockRunShowCommands(async () => {
         throw new AppError("eapi_payload_invalid", "Unexpected eAPI payload structure: expected 1 result entries but received 0");
       })
     };
@@ -330,7 +332,7 @@ describe("runShow", () => {
   it("returns text output in normalized command_results", async () => {
     const { model, config } = await buildSingleHostRunShowFixture();
     const runner = {
-      runShowCommands: vi.fn(async () => [
+      runShowCommands: mockRunShowCommands(async () => [
         { command: "show version", output_format: "text", output: "Arista DCS-7050SX3-48YC8\n" }
       ])
     };
@@ -360,7 +362,7 @@ describe("runShow", () => {
     const { model, config } = await buildSingleHostRunShowFixture();
     const rawEntry = { version: "4.32.1F", modelName: "DCS-7050SX3-48YC8" };
     const runner = {
-      runShowCommands: vi.fn(async () => [
+      runShowCommands: mockRunShowCommands(async () => [
         {
           command: "show version",
           output_format: "json",
@@ -395,7 +397,7 @@ describe("runShow", () => {
   it("normalizes multiple command results in order", async () => {
     const { model, config } = await buildSingleHostRunShowFixture();
     const runner = {
-      runShowCommands: vi.fn(async () => [
+      runShowCommands: mockRunShowCommands(async () => [
         { command: "show version", output_format: "json", output: { version: "4.32.1F" } },
         { command: "show hostname", output_format: "json", output: { hostname: "leaf1" } }
       ])

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import { probeDevices } from "../src/probe/probeDevices.js";
-import { buildConfig, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
+import { buildConfig, mockRunShowCommands, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
 
 describe("probeDevices", () => {
   it("probes a group and returns per-device success results", async () => {
@@ -59,7 +59,7 @@ describe("probeDevices", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async () => {
+      runShowCommands: mockRunShowCommands(async () => {
         throw new Error("authentication failed");
       })
     };
@@ -96,7 +96,7 @@ describe("probeDevices", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async () => [
+      runShowCommands: mockRunShowCommands(async () => [
         { command: "show version", output_format: "json", output: { version: "4.32.1F" } }
       ])
     };
@@ -134,7 +134,7 @@ describe("probeDevices", () => {
     const model = await loadInventoryModel(inventoryPath);
     const rawEntry = { version: "4.32.1F" };
     const runner = {
-      runShowCommands: vi.fn(async () => [
+      runShowCommands: mockRunShowCommands(async () => [
         { command: "show version", output_format: "json", output: rawEntry, raw_entry: rawEntry }
       ])
     };

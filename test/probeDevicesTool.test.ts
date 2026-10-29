@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import { buildProbeDevicesToolResult } from "../src/mcp/tools/probeDevices.js";
-import { buildConfig, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
+import { buildConfig, mockRunShowCommands, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
 
 describe("buildProbeDevicesToolResult", () => {
   it("returns structured probe results", async () => {
@@ -19,7 +19,7 @@ describe("buildProbeDevicesToolResult", () => {
 
     const model = await loadInventoryModel(inventoryPath);
     const runner = {
-      runShowCommands: vi.fn(async () => [
+      runShowCommands: mockRunShowCommands(async () => [
         { command: "show version", output_format: "json", output: { version: "4.32.1F" } }
       ])
     };
@@ -32,7 +32,7 @@ describe("buildProbeDevicesToolResult", () => {
           mcpPasswordEnv: "EOS_MCP_PASSWORD"
         }
       }),
-      { target: "leafs" },
+      { target: "leafs", include_raw: false },
       runner
     );
 
