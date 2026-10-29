@@ -2,8 +2,14 @@
 
 ## Unreleased
 
-- **Breaking:** `eos_ping` replaces `destination` with `destinations`, an array of 1 to `diagnostics.maxDestinationsPerRequest` (default 16) unique IP literals. Use `destinations: ["<ip>"]` for a single ping; the old field is rejected with guidance. Destinations run concurrently within the existing diagnostic concurrency, each with its own reservation. Results always contain one entry per host and destination, each carrying `destination`, and `summary` counts those entries rather than devices. All destinations are validated before dispatch, and `maxProbesPerRequest` now counts hosts × destinations × count. Server info reports `limits.diagnostics.max_destinations_per_request`. See [ADR 0005](docs/adr/0005-multi-destination-ping.md).
+## 0.8.0-beta
+
+0.7.0-beta was not published to npm, so upgrading from 0.6.1-beta picks up both this section and the 0.7.0-beta section below.
+
+- **Breaking:** `eos_ping` replaces `destination` with `destinations`, an array of 1 to `diagnostics.maxDestinationsPerRequest` (default 16) unique IP literals. Use `destinations: ["<ip>"]` for a single ping; the old field is rejected with guidance. Duplicates are compared by canonical address, so different IPv6 spellings of one address are rejected, while an IPv4 address and its IPv4-mapped IPv6 form stay distinct. Destinations run concurrently within the existing diagnostic concurrency, each with its own reservation. Results always contain one entry per host and destination, each carrying `destination`, and `summary` counts those entries rather than devices. All destinations are validated before dispatch, and `maxProbesPerRequest` now counts hosts × destinations × count. Server info reports `limits.diagnostics.max_destinations_per_request`. See [ADR 0005](docs/adr/0005-multi-destination-ping.md).
 - Routes diagnostics through a per-kind `DiagnosticDefinition` (prepare, probe cost, interpret), so the executor no longer contains ping-specific logic.
+- Documents the Codex `supports_parallel_tool_calls = true` opt-in in the README's Codex configuration examples. Without it, Codex runs independent EOS tool calls serially.
+- Refreshes locked dependencies with `npm audit fix`, including `@modelcontextprotocol/sdk` 1.32.2 and its HTTP-transport dependencies. One advisory remains: zod's memory exhaustion when validating oversized constrained collections is fixed only in zod 4, which needs a separate migration.
 
 ## 0.7.0-beta
 
