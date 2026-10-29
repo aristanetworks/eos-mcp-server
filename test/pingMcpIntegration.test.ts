@@ -4,22 +4,29 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { describe, expect, it } from "vitest";
 import { writeTempInventory } from "./helpers.js";
 
+function writePingInventory() {
+  return writeTempInventory([
+    "vars:", "  ansible_network_os: eos", "  ansible_user: admin", "  ansible_password: admin",
+    "  mcp_validate_certs: false", "  mcp_diagnostics_allowed: true",
+    "hosts:", "  ping1:", `    ansible_host: ${process.env.EOS_PING_TEST_HOST ?? "172.20.20.11"}`
+  ]);
+}
+
+function serve(config: string) {
+  return new StdioClientTransport({
+    command: process.execPath,
+    args: [path.resolve("node_modules/tsx/dist/cli.mjs"), "src/index.ts", "serve", "--config", config],
+    stderr: "pipe"
+  });
+}
+
 describe.runIf(process.env.INTEGRATION === "1")("integration: EOS ping over MCP stdio", () => {
   it("loads diagnostic settings and returns real device measurements", async () => {
-    const inventory = await writeTempInventory([
-      "vars:", "  ansible_network_os: eos", "  ansible_user: admin", "  ansible_password: admin",
-      "  mcp_validate_certs: false", "  mcp_diagnostics_allowed: true",
-      "hosts:", "  ping1:", `    ansible_host: ${process.env.EOS_PING_TEST_HOST ?? "172.20.20.11"}`
-    ]);
+    const inventory = await writePingInventory();
     const config = await writeTempInventory([`inventory: ${inventory}`, "diagnostics:", "  defaultPingCount: 1", "  deviceConcurrency: 1"]);
     const client = new Client({ name: "ping-integration", version: "1" }, { capabilities: {} });
-    const transport = new StdioClientTransport({
-      command: process.execPath,
-      args: [path.resolve("node_modules/tsx/dist/cli.mjs"), "src/index.ts", "serve", "--config", config],
-      stderr: "pipe"
-    });
     try {
-      await client.connect(transport);
+      await client.connect(serve(config));
       const result = await client.callTool({ name: "eos_ping", arguments: { target: "ping1", destinations: ["::1"], source: "::1", vrf: "default" } });
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toMatchObject({
@@ -36,22 +43,15 @@ describe.runIf(process.env.INTEGRATION === "1")("integration: EOS ping over MCP 
   }, 20_000);
 
   it("reports time-bounded uncertain capacity after a real timeout while a second server runs alongside", async () => {
-    const inventory = await writeTempInventory([
-      "vars:", "  ansible_network_os: eos", "  ansible_user: admin", "  ansible_password: admin",
-      "  mcp_validate_certs: false", "  mcp_diagnostics_allowed: true",
-      "hosts:", "  ping1:", `    ansible_host: ${process.env.EOS_PING_TEST_HOST ?? "172.20.20.11"}`
+    const inventory = await writePingInventory();
+    const [timeoutConfig, normalConfig] = await Promise.all([
+      writeTempInventory([`inventory: ${inventory}`, "diagnostics:", "  deviceConcurrency: 1", "  overallOperationTimeoutMs: 200"]),
+      writeTempInventory([`inventory: ${inventory}`, "diagnostics:", "  defaultPingCount: 1", "  deviceConcurrency: 1"])
     ]);
-    const timeoutConfig = await writeTempInventory([`inventory: ${inventory}`, "diagnostics:", "  deviceConcurrency: 1", "  overallOperationTimeoutMs: 200"]);
-    const normalConfig = await writeTempInventory([`inventory: ${inventory}`, "diagnostics:", "  defaultPingCount: 1", "  deviceConcurrency: 1"]);
-    const serve = (config: string) => new StdioClientTransport({
-      command: process.execPath,
-      args: [path.resolve("node_modules/tsx/dist/cli.mjs"), "src/index.ts", "serve", "--config", config],
-      stderr: "pipe"
-    });
     const first = new Client({ name: "ping-reservation-integration", version: "1" }, { capabilities: {} });
     const second = new Client({ name: "ping-second-server", version: "1" }, { capabilities: {} });
     try {
-      await first.connect(serve(timeoutConfig));
+      await Promise.all([first.connect(serve(timeoutConfig)), second.connect(serve(normalConfig))]);
       const timedOut = await first.callTool({ name: "eos_ping", arguments: { target: "ping1", destinations: ["127.0.0.1"], count: 3 } });
       expect(timedOut.isError).toBe(true);
       const info = await first.callTool({ name: "eos_get_server_info", arguments: {} });
@@ -60,7 +60,6 @@ describe.runIf(process.env.INTEGRATION === "1")("integration: EOS ping over MCP 
         reservations: [{ inventory_hostname: "ping1", diagnostic: "ping", state: "uncertain", reason_code: "operation_timeout", releases_at: expect.any(String) }]
       } } });
 
-      await second.connect(serve(normalConfig));
       const result = await second.callTool({ name: "eos_ping", arguments: { target: "ping1", destinations: ["127.0.0.1"] } });
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toHaveProperty("summary.success_count", 1);

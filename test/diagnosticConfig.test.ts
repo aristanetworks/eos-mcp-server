@@ -9,7 +9,9 @@ async function load(lines: string[]) {
 describe("diagnostic settings", () => {
   it("rejects the removed state file setting with guidance", async () => {
     await expect(load(["diagnostics:", "  stateFile: ./private/diagnostics.sqlite"]))
-      .rejects.toMatchObject({ code: "config_schema_invalid", message: expect.stringContaining("diagnostics.stateFile was removed") });
+      .rejects.toMatchObject({ code: "config_schema_invalid", message: expect.stringContaining("diagnostics.stateFile: Removed") });
+    await expect(load(["diagnostics:", "  unknownLimit: 5"]))
+      .rejects.toMatchObject({ message: expect.stringContaining("unknownLimit") });
   });
 
   it("supplies finite defaults without a settings file", async () => {

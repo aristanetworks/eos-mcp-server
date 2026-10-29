@@ -35,20 +35,17 @@ describe("diagnostic eAPI adapter", () => {
     });
   });
 
-  it("derives the EOS request timeout from the command budget and omits it when disabled", async () => {
+  it.each([
+    { label: "derived from the command budget", settings: { commandTimeoutMs: 12_500 }, expected: 12.5 },
+    { label: "omitted when disabled", settings: { nativeRequestTimeout: false }, expected: undefined }
+  ])("sends the EOS request timeout $label", async ({ settings, expected }) => {
     const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ result: [{ output: "" }, { output }] }), text: async () => "" }));
-    const request = (config: ReturnType<typeof buildConfig>) => preparePing({ kind: "ping", destination: "::1" }, config.diagnostics);
-    const tuned = buildConfig();
-    tuned.diagnostics.commandTimeoutMs = 12_500;
-    const tunedRunner = new EapiDiagnosticRunner(tuned, new EapiClient(echoRpcTransport({ postJson })));
-    await tunedRunner.execute(host, request(tuned), context());
-    const disabled = buildConfig();
-    disabled.diagnostics.nativeRequestTimeout = false;
-    const disabledRunner = new EapiDiagnosticRunner(disabled, new EapiClient(echoRpcTransport({ postJson })));
-    await disabledRunner.execute(host, request(disabled), context());
-    const sentParams = postJson.mock.calls.map((call) => JSON.parse(String((call as unknown[])[1])).params);
-    expect(sentParams[0]).toHaveProperty("requestTimeout", 12.5);
-    expect(sentParams[1]).not.toHaveProperty("requestTimeout");
+    const config = buildConfig();
+    Object.assign(config.diagnostics, settings);
+    const runner = new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson })));
+    await runner.execute(host, preparePing({ kind: "ping", destination: "::1" }, config.diagnostics), context());
+    const body = (postJson.mock.calls[0] as unknown[] | undefined)?.[1];
+    expect(JSON.parse(String(body)).params.requestTimeout).toBe(expected);
   });
 
   it("classifies local credential rejection as not dispatched without losing the error code", async () => {

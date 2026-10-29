@@ -22,8 +22,8 @@ export interface DiagnosticReservation {
  * execution budget, then frees itself; a late confirmed response frees it sooner (ADR 0006).
  */
 export class DiagnosticConcurrency {
-  private readonly reservations = new Set<DiagnosticReservationInfo>();
-  private readonly releaseTimers = new Map<DiagnosticReservationInfo, NodeJS.Timeout>();
+  /** Held slots; an uncertain slot carries the timer that frees it. */
+  private readonly reservations = new Map<DiagnosticReservationInfo, NodeJS.Timeout | undefined>();
   private readonly waiting: Waiter[] = [];
   private closed = false;
 
@@ -32,14 +32,13 @@ export class DiagnosticConcurrency {
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    for (const timer of this.releaseTimers.values()) clearTimeout(timer);
-    this.releaseTimers.clear();
-    const error = this.closedError();
+    for (const timer of this.reservations.values()) clearTimeout(timer);
+    const error = closedError();
     for (const waiter of this.waiting.splice(0)) waiter.reject(error);
   }
 
   snapshot(): DiagnosticCapacitySnapshot {
-    const reservations = [...this.reservations].map((reservation) => ({ ...reservation }));
+    const reservations = Array.from(this.reservations.keys(), (reservation) => ({ ...reservation }));
     const uncertain = reservations.filter((reservation) => reservation.state === "uncertain").length;
     return {
       limit: this.limit,
@@ -54,17 +53,17 @@ export class DiagnosticConcurrency {
   acquire(signal: AbortSignal, intent: DiagnosticReservationIntent): Promise<DiagnosticReservation> {
     return new Promise((resolve, reject) => {
       if (signal.aborted) {
-        reject(new AppError("operation_aborted", "Diagnostic was cancelled while waiting for capacity"));
+        reject(abortedError());
         return;
       }
       if (this.closed) {
-        reject(this.closedError());
+        reject(closedError());
         return;
       }
       const cancelled = (): void => {
         const index = this.waiting.indexOf(waiter);
         if (index >= 0) this.waiting.splice(index, 1);
-        waiter.reject(new AppError("operation_aborted", "Diagnostic was cancelled while waiting for capacity"));
+        waiter.reject(abortedError());
       };
       const waiter: Waiter = {
         reject: (error) => {
@@ -94,7 +93,7 @@ export class DiagnosticConcurrency {
       state: "active",
       reserved_at: new Date().toISOString()
     };
-    this.reservations.add(state);
+    this.reservations.set(state, undefined);
     return {
       requestId,
       complete: () => this.free(state),
@@ -103,9 +102,9 @@ export class DiagnosticConcurrency {
   }
 
   private free(state: DiagnosticReservationInfo): void {
-    if (!this.reservations.delete(state)) return;
-    clearTimeout(this.releaseTimers.get(state));
-    this.releaseTimers.delete(state);
+    if (!this.reservations.has(state)) return;
+    clearTimeout(this.reservations.get(state));
+    this.reservations.delete(state);
     this.waiting.shift()?.grant();
   }
 
@@ -117,10 +116,14 @@ export class DiagnosticConcurrency {
     state.releases_at = new Date(now + this.uncertainHoldMs).toISOString();
     state.reason_code = reasonCode;
     // Unref so a held slot never keeps a stopping server alive.
-    this.releaseTimers.set(state, setTimeout(() => this.free(state), this.uncertainHoldMs).unref());
+    this.reservations.set(state, setTimeout(() => this.free(state), this.uncertainHoldMs).unref());
   }
+}
 
-  private closedError(): AppError {
-    return new AppError("diagnostic_server_stopping", "Diagnostic execution is shutting down");
-  }
+function closedError(): AppError {
+  return new AppError("diagnostic_server_stopping", "Diagnostic execution is shutting down");
+}
+
+function abortedError(): AppError {
+  return new AppError("operation_aborted", "Diagnostic was cancelled while waiting for capacity");
 }

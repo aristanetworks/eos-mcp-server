@@ -110,6 +110,7 @@ describe("time-bounded diagnostic reservations", () => {
 
   it("admits replacement work only after a timed-out command's hold has elapsed", async () => {
     vi.useFakeTimers();
+    const replacementRunMs = 2000;
     let active = 0;
     let peak = 0;
     let dispatched = 0;
@@ -128,7 +129,7 @@ describe("time-bounded diagnostic reservations", () => {
         return new Promise((resolve) => setTimeout(() => {
           active -= 1;
           resolve(observation);
-        }, 2000));
+        }, replacementRunMs));
       }
     };
     const config = buildConfig();
@@ -141,7 +142,7 @@ describe("time-bounded diagnostic reservations", () => {
     const replacement = executor.execute(call);
     await vi.advanceTimersByTimeAsync(config.diagnostics.commandTimeoutMs - 1);
     expect(dispatched).toBe(1);
-    await vi.advanceTimersByTimeAsync(2001);
+    await vi.advanceTimersByTimeAsync(1 + replacementRunMs);
     expect((await replacement).summary.success_count).toBe(1);
     expect(dispatched).toBe(2);
     expect(peak).toBe(1);
