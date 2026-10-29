@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type { DiagnosticExecutor } from "../../diagnostics/executor.js";
-import { AppError } from "../../core/errors.js";
 import { buildJsonToolResult } from "../toolResult.js";
 
 export const pingInputSchema = z.object({
@@ -18,28 +17,17 @@ export async function buildPingToolResult(
   executor: DiagnosticExecutor,
   signal?: AbortSignal
 ) {
-  try {
-    const payload = await executor.execute({
-      target: args.target,
-      request: {
-        kind: "ping",
-        destinations: args.destinations,
-        ...(args.count === undefined ? {} : { count: args.count }),
-        ...(args.vrf === undefined ? {} : { vrf: args.vrf }),
-        ...(args.source === undefined ? {} : { source: args.source })
-      },
-      includeRaw: args.include_raw,
-      ...(signal === undefined ? {} : { signal })
-    });
-    return buildJsonToolResult(payload);
-  } catch (error) {
-    if (error instanceof AppError && (error.code === "diagnostic_capacity_uncertain" || error.code.startsWith("diagnostic_state_"))) {
-      // The SDK otherwise reduces thrown errors to text and drops AppError.code.
-      return {
-        ...buildJsonToolResult({ error_code: error.code, message: error.message }),
-        isError: true
-      };
-    }
-    throw error;
-  }
+  const payload = await executor.execute({
+    target: args.target,
+    request: {
+      kind: "ping",
+      destinations: args.destinations,
+      ...(args.count === undefined ? {} : { count: args.count }),
+      ...(args.vrf === undefined ? {} : { vrf: args.vrf }),
+      ...(args.source === undefined ? {} : { source: args.source })
+    },
+    includeRaw: args.include_raw,
+    ...(signal === undefined ? {} : { signal })
+  });
+  return buildJsonToolResult(payload);
 }

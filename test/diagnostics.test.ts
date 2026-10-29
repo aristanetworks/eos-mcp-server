@@ -153,7 +153,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     expect(device.execute).toHaveBeenCalledTimes(2);
   });
 
-  it("never releases a lost HTTP request's slot on elapsed time alone", async () => {
+  it("holds a lost HTTP request's slot for the command budget, then frees it", async () => {
     const model = await groupModel();
     vi.useFakeTimers();
     const device = { execute: vi.fn().mockRejectedValueOnce(new AppError("eapi_transport_error", "lost response")).mockResolvedValue(observation) };
@@ -162,11 +162,13 @@ describe("server-wide diagnostic admission and deadlines", () => {
     const executor = new DiagnosticExecutor(model, config, device);
     const failed = await executor.execute(call);
     expect(failed.results[0]?.error_code).toBe("eapi_transport_error");
-    await expect(executor.execute(call)).rejects.toMatchObject({ code: "diagnostic_capacity_uncertain" });
-    await vi.advanceTimersByTimeAsync(86_400_000);
-    await expect(executor.execute(call)).rejects.toMatchObject({ code: "diagnostic_capacity_uncertain" });
-    expect(device.execute).toHaveBeenCalledTimes(1);
     expect(executor.getCapacity()).toMatchObject({ active_count: 0, uncertain_count: 1, available_count: 0 });
+    await vi.advanceTimersByTimeAsync(config.diagnostics.commandTimeoutMs - 1);
+    expect(executor.getCapacity()).toMatchObject({ uncertain_count: 1, available_count: 0 });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(executor.getCapacity()).toMatchObject({ uncertain_count: 0, available_count: 1 });
+    expect((await executor.execute(call)).summary.success_count).toBe(1);
+    expect(device.execute).toHaveBeenCalledTimes(2);
   });
 
   it.each(["not_dispatched", "completed"] as const)("releases an error explicitly classified as %s immediately", async (executionState) => {
@@ -189,9 +191,9 @@ describe("server-wide diagnostic admission and deadlines", () => {
     config.diagnostics.deviceConcurrency = 1;
     const executor = new DiagnosticExecutor(model, config, device);
     expect((await executor.execute(call)).results[0]?.error_code).toBe("diagnostic_test_failure");
-    expect(executor.getCapacity()).toMatchObject({ available_count: 0, uncertain_count: 1 });
-    await expect(executor.execute(call)).rejects.toMatchObject({ code: "diagnostic_capacity_uncertain" });
-    expect(device.execute).toHaveBeenCalledTimes(1);
+    expect(executor.getCapacity()).toMatchObject({
+      available_count: 0, uncertain_count: 1, reservations: [{ reason_code: "diagnostic_test_failure" }]
+    });
   });
 
   it("stops scheduling group hosts on the overall deadline and aborts HTTP work", async () => {
@@ -211,7 +213,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     expect(device.execute.mock.calls[0]?.[2].signal.aborted).toBe(true);
   });
 
-  it("retains an active command's slot after caller cancellation", async () => {
+  it("queues new work behind a cancelled command's slot until the command budget elapses", async () => {
     const model = await groupModel();
     vi.useFakeTimers();
     const device = { execute: vi.fn()
@@ -229,10 +231,14 @@ describe("server-wide diagnostic admission and deadlines", () => {
     await vi.advanceTimersByTimeAsync(0);
     controller.abort();
     await rejected;
-    await expect(executor.execute(call)).rejects.toMatchObject({ code: "diagnostic_capacity_uncertain" });
-    await vi.advanceTimersByTimeAsync(86_400_000);
-    await expect(executor.execute(call)).rejects.toMatchObject({ code: "diagnostic_capacity_uncertain" });
+    expect(executor.getCapacity()).toMatchObject({ uncertain_count: 1, available_count: 0 });
+    const queued = executor.execute(call);
+    await vi.advanceTimersByTimeAsync(config.diagnostics.commandTimeoutMs - 1);
+    expect(executor.getCapacity().queued_count).toBe(1);
     expect(device.execute).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await queued).summary.success_count).toBe(1);
+    expect(device.execute).toHaveBeenCalledTimes(2);
   });
 
   it("removes cancelled waiters and never dispatches them later", async () => {

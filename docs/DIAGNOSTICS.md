@@ -63,6 +63,7 @@ diagnostics:
   commandTimeoutMs: 30000
   httpTimeoutMs: 35000
   overallOperationTimeoutMs: 60000
+  nativeRequestTimeout: true
 ```
 
 | Setting | Meaning |
@@ -71,13 +72,14 @@ diagnostics:
 | `maxPingCount` | Maximum probes per device and destination |
 | `maxProbesPerRequest` | Maximum resolved host count × destination count × requested probes |
 | `maxDestinationsPerRequest` | Maximum destinations in one `eos_ping` call |
-| `deviceConcurrency` | Ledger-scoped diagnostic capacity, shared by active and uncertain executions across calls and preserved across server restarts |
+| `deviceConcurrency` | Diagnostic capacity of one server process, shared by its active and uncertain executions across calls |
 | `pingReplyTimeoutMs` | EOS per-reply timeout; a positive multiple of 1000 ms |
 | `commandTimeoutMs` | Conservative device execution budget; see lifecycle below |
 | `httpTimeoutMs` | Per-device diagnostic eAPI HTTP timeout, separate from `readTimeoutMs` |
 | `overallOperationTimeoutMs` | Whole diagnostic call deadline, including waiting for global capacity |
+| `nativeRequestTimeout` | Send EOS `runCmds.requestTimeout` set to `commandTimeoutMs`, so the device interrupts a ping that outlives its budget; set `false` for an EOS version that rejects the field |
 
-Optional `diagnostics.stateFile` selects the durable SQLite ledger; relative paths resolve beside the settings file. Otherwise, the server uses `$XDG_STATE_HOME/eos-mcp-server/<inventory-identity>/diagnostics.sqlite`, falling back to `~/.local/state` when `XDG_STATE_HOME` is absent or not absolute. The identity hashes the inventory's canonical filesystem path, so symlink aliases share the default ledger. Keep the inventory identity and ledger location stable across restarts. Changing/copying inventory paths or selecting another state file does not migrate prior reservations and must not be used to bypass them.
+Diagnostic capacity is held in memory by each server process; nothing is written to disk. Several MCP servers (for example two chat sessions) can run against the same inventory at once, each with its own `deviceConcurrency`. The former `diagnostics.stateFile` setting is rejected with guidance; delete it. Ledger files left under `$XDG_STATE_HOME/eos-mcp-server/` (or `~/.local/state/eos-mcp-server/`) by earlier versions are no longer read and can be deleted. See [ADR 0006](adr/0006-in-memory-timed-diagnostic-capacity.md).
 
 Existing `maxReadTargets` (default 50) and `maxResponseSizeBytes` (default 1,048,576) also apply. Diagnostic concurrency and timeouts are independent of the corresponding read settings. Effective diagnostic settings are reported by `eos_get_server_info` under `limits.diagnostics`.
 
@@ -91,84 +93,33 @@ The HTTP timeout must exceed the command budget by at least 1000 ms. Individual 
 
 ## Execution and lifecycle
 
-Each host/destination execution is one text-mode eAPI request containing `enable` followed by the generated ping command. The exact wire request ID is committed as `rpc_request_id` before dispatch. All eAPI responses, including read-tool responses, must use JSON-RPC 2.0, match the exact request ID, and contain exactly one `result` or `error` member. Missing/stale identity fails with `eapi_response_uncorrelated`; contradictory envelopes fail with `eapi_payload_invalid`. Neither is completion evidence, and an unrelated response is never exposed as the requested diagnostic's raw output. There are **no automatic ping retries**, including no JSON-to-text retry. Read-only auto fallback also requires a correlated error and uses a new ID for its subsequent request. Existing `eos_run_show` validation remains show-only.
+Each host/destination execution is one text-mode eAPI request containing `enable` followed by the generated ping command. The reservation ID is used as the exact wire request ID. All eAPI responses, including read-tool responses, must use JSON-RPC 2.0, match the exact request ID, and contain exactly one `result` or `error` member. Missing/stale identity fails with `eapi_response_uncorrelated`; contradictory envelopes fail with `eapi_payload_invalid`. Neither is completion evidence, and an unrelated response is never exposed as the requested diagnostic's raw output. There are **no automatic ping retries**, including no JSON-to-text retry. Read-only auto fallback also requires a correlated error and uses a new ID for its subsequent request. Existing `eos_run_show` validation remains show-only.
 
-On cEOS 4.34.3M, ping's `timeout` maps to a per-reply wait, not a whole-process deadline. The tool combines finite `repeat`, explicit one-second `interval`, and finite reply timeout; the conservative execution formula above must fit `commandTimeoutMs`. This budget is **not** a remote wall-clock kill timer. It assumes normal EOS command scheduling, not a stalled operating system or an indefinitely queued eAPI command. No remote process termination guarantee is made.
+On cEOS 4.34.3M, ping's `timeout` maps to a per-reply wait, not a whole-process deadline. The tool combines finite `repeat`, explicit one-second `interval`, and finite reply timeout; the conservative execution formula above must fit `commandTimeoutMs`. This budget is **not** a remote wall-clock kill timer. It assumes normal EOS command scheduling, not a stalled operating system or an indefinitely queued eAPI command. No remote process termination guarantee is made. The same budget is how long an uncertain slot is held (below).
 
-One admission controller is shared by all diagnostic calls using the server's ledger. The reservation is durably committed **before** the device runner can dispatch. Confirmed synchronous completion or a locally established rejection before dispatch releases capacity only after the removal commits. Unknown completion after transport loss, HTTP timeout, invalid eAPI payload (including correlated results with missing or non-text output), cancellation, or a post-dispatch RPC error becomes **uncertain and never expires automatically**. RPC interruption errors are not process-reaped certificates; even failed commands may conservatively retain capacity. Neither elapsed time nor HTTP abort proves that earlier work stopped or cannot start later. A late confirmed response can release its reservation only while the original owner still has the ledger open; there is no reset exposed through MCP.
-
-The ledger uses Node's built-in SQLite (Node 24+, potentially marked experimental by the runtime), FULL synchronous commits, and a separate SQLite ownership database. Only one server may own a ledger; another owner fails with `diagnostic_state_in_use`. OS locking releases ownership when a process crashes, without PID-age guessing or deleting a stale lock. All unfinished records, including records persisted as active before a crash, reopen as uncertain. Corrupt, incompatible, inventory-mismatched, or half-missing state is rejected rather than initialized as fresh capacity. A full SQLite integrity check runs before restored capacity is accepted and during offline inspection; malformed indexes must not hide occupied reservations. State write failure blocks further diagnostics with `diagnostic_state_write_failed`; an abort listener does not throw if writing uncertainty fails, because the earlier committed record still preserves the reservation.
+One admission controller is shared by all diagnostic calls in a server process. A slot is reserved **before** the device runner can dispatch. Confirmed synchronous completion or a locally established rejection before dispatch frees it immediately. Unknown completion after transport loss, HTTP timeout, invalid eAPI payload (including correlated results with missing or non-text output), cancellation, or a post-dispatch RPC error becomes **uncertain**: the slot stays held for `commandTimeoutMs` from that moment, then frees itself. A late confirmed response frees it sooner. RPC interruption errors are not treated as proof of completion. Restarting the server forgets uncertain slots; under normal scheduling the original command has finished within `commandTimeoutMs` of dispatch anyway. If EOS ever queued a request for longer than that, replacement work could overlap it; [ADR 0006](adr/0006-in-memory-timed-diagnostic-capacity.md) accepts that bounded risk for ping.
 
 A request fans out into one execution per resolved host and destination. Executions run concurrently, up to `deviceConcurrency`, through the same admission controller as every other call; each takes and releases its own reservation exactly as a single ping does. Executions are scheduled host by host, in destination order. Queued executions wait for capacity inside the same overall deadline, so size multi-destination requests so that roughly `ceil(executions / available capacity)` successive waves of pings fit within `overallOperationTimeoutMs`; uncertain reservations reduce available capacity. The device can also limit overlap: on cEOS 4.34.3M, eAPI executed at most three commands concurrently per device, and further delivered requests waited on the device while holding their server reservations. A single-host request therefore gains at most that device's eAPI concurrency, even when more server capacity is free.
 
-The overall deadline or MCP cancellation stops scheduling new executions, removes capacity waiters, and aborts in-flight HTTP work. Every in-flight execution of a cancelled multi-destination request becomes uncertain, so one cancellation can hold up to `deviceConcurrency` slots; queued executions are never dispatched. An overall timeout is a request-level `operation_timeout`, not a partial-results response. Already completed findings are not returned on that path. Do not blindly retry an interrupted diagnostic.
+The overall deadline or MCP cancellation stops scheduling new executions, removes capacity waiters, and aborts in-flight HTTP work. Every in-flight execution of a cancelled multi-destination request becomes uncertain, so one cancellation can hold up to `deviceConcurrency` slots for up to `commandTimeoutMs`; queued executions of that request are never dispatched. An overall timeout is a request-level `operation_timeout`, not a partial-results response. Already completed findings are not returned on that path. Do not blindly retry an interrupted diagnostic.
 
 ## Uncertain execution and capacity visibility
 
-`eos_get_server_info` returns a fresh `diagnostics.capacity` snapshot with:
+`eos_get_server_info` returns a fresh `diagnostics.capacity` snapshot for that server process with:
 
-- `scope: "state-file"` for the production durable ledger, `limit`, and `available_count`. A deliberately in-memory executor reports `server-instance`; production can use that mode only when no inventory host has diagnostic permission.
+- `limit` and `available_count`.
 - `active_count`, `uncertain_count`, and `queued_count`.
-- `reservations`: ID, inventory hostname, diagnostic kind, state, reservation timestamp, and (when uncertain) uncertainty timestamp and machine-readable reason code. New reservations also carry `rpc_request_id`, matching the journaled reservation ID and the actual wire ID. Legacy records without this field remain uncorrelated; no wire identity is invented for them. Destinations, endpoints, credentials, and original EOS output are not included.
-- `storage_error_code` when journal I/O has failed; new work is blocked even if the numeric limit would otherwise leave space.
+- `reservations`: ID (also the wire RPC ID), inventory hostname, diagnostic kind, state, reservation timestamp, and (when uncertain) uncertainty timestamp, `releases_at`, and machine-readable reason code. Destinations, endpoints, credentials, and original EOS output are not included.
 
-When every slot is uncertain, new requests fail immediately with `diagnostic_capacity_uncertain`. The MCP result has `isError: true` and structured `error_code`/`message`. Work already waiting for capacity is also rejected instead of waiting indefinitely; if uncertainty arises during group execution, those failures use the existing per-device envelope. If some healthy capacity remains, it can still execute diagnostics without freeing uncertain slots.
+Uncertain slots count against `deviceConcurrency` like active ones. New work queues behind them and is dispatched when a slot frees, within the overall deadline; if the deadline expires first the call fails with `operation_timeout`. If some capacity remains, diagnostics keep running without waiting for uncertain slots.
 
 The standalone `print-server-info` CLI has no live executor and reports `diagnostics.capacity: null`, not fabricated available capacity. Inspect the running MCP server for actual reservation state.
 
-### Offline inspection and operator recovery
-
-```bash
-eos-mcp-server inspect-diagnostics --config eos-mcp-server.yml --json
-# Or derive the default ledger from the same inventory identity:
-eos-mcp-server inspect-diagnostics --inventory inventory.yml --json
-```
-
-Inspection opens existing state read-only, including while another server owns it; it does not resolve credentials, contact devices, take over ownership, create a missing ledger, or clear records. Integrity, schema, reservations, and audit are read in one transaction, so a concurrent commit cannot mix before/after release states. A competing writer may fail closed while this short read snapshot is held; inspect current state before retrying an administrative release. Inspection reports recorded state, not proof that remote work completed.
-
-**Operational constraints:** use a persistent local filesystem that honors SQLite locking and sync, private owner-controlled state files (POSIX mode 0600), and an owner-controlled directory not writable by group/others. Network filesystems and ephemeral/container storage are not qualified durability mechanisms. Preserve the ledger, its `.lock.sqlite` ownership file, and any SQLite recovery files together. Do not delete, replace, copy, rotate, roll back, or change the ledger path to clear reservations. Loss of both ledger files cannot be distinguished locally from first initialization. Before upgrading from the earlier in-memory implementation, unresolved old executions require independent reconciliation; they cannot be recovered from a journal that did not yet exist.
-
-Restarting with the same ledger retains uncertainty. Recovery is now available only as an **offline, audited Operator Release** backed by a **Fencing Attestation**. There is no MCP reset, release-all operation, native completion-token lookup, or automatic timeout-based release. Stopping the MCP process establishes local ownership transfer, not remote termination.
-
-#### Operator release workflow
-
-1. Stop the server owning this ledger and prevent diagnostic resubmission. The release command refuses a live ledger owner; it does not stop one.
-2. Run `inspect-diagnostics --json` and retain the `inventory_identity`, exact selected reservation IDs, immutable host/admission timestamps, and recorded RPC IDs. Establish the original physical device and execution epoch from independent evidence/history, not just today's inventory mapping.
-3. Independently verify that the fence terminates running work, invalidates **accepted queued** work, and prevents later dispatch/replay. A timeout, empty process list, quiet counters, or repeated observations are insufficient.
-4. Prepare a private JSON attestation from [the deliberately invalid template](examples/diagnostic-release-evidence.template.json). Replace every placeholder with actual evidence. Change each assertion to true only after verification. Do not put credentials, raw packet contents, or EOS output in the file; use evidence references instead.
-5. Release only the exact covered IDs, then inspect the audit:
-
-```bash
-# Prepare with private permissions; the template cannot authorize a release as-is.
-umask 077
-cp docs/examples/diagnostic-release-evidence.template.json ./evidence.json
-# Human: complete the attestation from independently verified fencing evidence.
-chmod 600 ./evidence.json
-
-eos-mcp-server release-diagnostics --config eos-mcp-server.yml \
-  --reservation-id '<exact-id>' --evidence-file ./evidence.json \
-  --confirm-fenced --json
-# Repeat --reservation-id only for other IDs covered by the same attestation.
-eos-mcp-server inspect-diagnostics --config eos-mcp-server.yml --json
-```
-
-`--confirm-fenced`, an evidence file, and explicit unique IDs are mandatory. Evidence is private, owner-controlled UTF-8 JSON with unique keys, at most 65536 bytes and 100 explicitly covered reservations. There is no wildcard selection. The command performs no credential resolution, device call, URI fetch, fencing action, or network retry. A state-only config with an explicit `diagnostics.stateFile` can be used if the original inventory is unavailable; the attestation still must match the ledger's stored inventory identity. If config declares an inventory path, its canonical identity must also match.
-
-The attestation requires `evidence_version: 1`, a new UUID `attestation_id`, the exact `inventory_identity`, an accountable `verified_by`, a past UTC `verified_at`, a reason, and four literal-true assertions: `independent_evidence_verified`, `running_work_terminated`, `accepted_queued_work_cannot_execute`, and `replay_prevented`. Each covered reservation must match its exact ID, host and `reserved_at`, and its exact `rpc_request_id` (explicit JSON null for legacy records without one). It must also identify the physical device, fenced execution epoch, fencing time, and independent evidence reference. Fencing must follow reservation admission and precede verification. The selected CLI IDs and evidence scope must match exactly.
-
-#### Audit and authority
-
-The release audit and every selected deletion commit in **one FULL-synchronous SQLite transaction** under exclusive ledger ownership. A failed batch rolls back earlier deletions and its audit; unselected reservations remain held. The append-only-through-the-application audit records original reservation snapshots, the complete attestation, its canonical SHA-256 digest, an audit-content checksum, server recording time, and actual local OS username/UID. `verified_by` is a claimed accountable person, not authenticated identity; the OS account is collected independently. Local operators must be trusted and protected by OS access controls. This is not a cryptographic human-presence check, and an untrusted agent with the ledger owner's filesystem privileges is outside that protection.
-
-`inspect-diagnostics --json` exposes `release_audit` to local operators; MCP server info does not expose the evidence or audit. Checksums detect accidental inconsistency, not deliberate tampering by the trusted filesystem owner. The program validates consistency and explicit authority; it **cannot establish the truth of external fencing evidence**. Releasing on false attestation can violate remote concurrency safety.
-
-If CLI completion is lost, inspect the audit first. Repeating the exact committed attestation returns its original release ID with `already_committed: true` and makes no additional changes. Reusing an attestation UUID for changed evidence is rejected. This local administrative idempotency does not make EOS ping requests idempotent; never retry a ping just because its RPC ID is known.
-
-Ledger schema 1 upgrades atomically to schema 2, preserving unresolved reservations and adding release history. Read-only inspection of schema 1 does not migrate it. A rejected release also rolls back any migration. Schema-2 ledgers with missing or invalid audit history fail closed, and older schema-1-only binaries must not be used to bypass the audit.
-
 ### Native EOS timeout qualification
 
-The installed cEOS implementation exposes a `runCmds.requestTimeout` execution-stage interruption timer. It was accepted in a bounded read request, and a later loopback experiment observed an interruption response after 273 ms with a 250 ms native timer (RPC code 1001 / error 408). No ping process appeared in the subsequent samples. This single normal-load result does not qualify a dispatch-relative or process-exit deadline, nor establish the public support contract. The product does not enable it or treat timeout-shaped RPC errors as completion. No durable token-bound status/cancel method was qualified. See [the primary-source investigation](research/eos-diagnostic-lifecycle.md) for evidence, citations, and limits.
+The installed cEOS implementation exposes a `runCmds.requestTimeout` execution-stage interruption timer. It was accepted in a bounded read request, and a later loopback experiment observed an interruption response after 273 ms with a 250 ms native timer (RPC code 1001 / error 408). No ping process appeared in the subsequent samples. This single normal-load result does not qualify a dispatch-relative or process-exit deadline, nor establish the public support contract.
+
+Ping requests now send `requestTimeout` equal to `commandTimeoutMs` (in seconds) by default, so EOS also stops a command that outlives its budget. Re-checked on the cEOS 4.34.3M lab: a 4-probe loopback ping with a 30 s timeout completed normally in about 3.1 s; with 0.25 s EOS returned RPC 1001 / error 408 after 264 ms and no ping process remained on the device. The timer starts only when EOS begins executing the command, so it does not cover time a request spends queued before that. A timeout-shaped RPC error is still treated as unknown completion and holds the slot like any other uncertain execution. Other EOS versions and physical platforms have not been checked; if one rejects the field, every ping fails with an RPC error, and `diagnostics.nativeRequestTimeout: false` turns it off. No durable token-bound status/cancel method was qualified. See [the primary-source investigation](research/eos-diagnostic-lifecycle.md) for evidence, citations, and limits.
 
 ## Results
 
@@ -187,7 +138,7 @@ Execution `status: "success"` means ping executed and its output was understood.
 
 Each diagnostic kind supplies a `DiagnosticDefinition`: `prepare` validates the whole request before dispatch and returns the echoed request plus the executions every resolved host performs, `probeCount` prices one execution against the aggregate budget, and `interpret` turns observed output into a finding. The executor runs every prepared execution on every host and knows nothing kind-specific. Ping's definition, validation, compilation, and interpretation live in `src/diagnostics/ping.ts`; it prepares one execution per destination. Multiple destinations are therefore a property of ping's definition, not of the executor.
 
-Admission queueing is separate from reservation creation and state transitions; shutdown, storage failure, and uncertain-capacity exhaustion share queue rejection. A queued admission failure does not invalidate an earlier command whose completion was already committed. The eAPI adapter separates connection validation from dispatch/error handling instead of maintaining a dispatch flag. `DiagnosticExecutionError` carries a typed `not_dispatched`, `completed`, or `unknown` classification; ordinary errors and malformed acknowledgements remain uncertain. Capacity is reusable only after the corresponding durable removal succeeds.
+Admission queueing is separate from reservation state transitions; shutdown rejects queued work with `diagnostic_server_stopping`. The eAPI adapter separates connection validation from dispatch/error handling instead of maintaining a dispatch flag. `DiagnosticExecutionError` carries a typed `not_dispatched`, `completed`, or `unknown` classification; ordinary errors and malformed acknowledgements remain uncertain.
 
 The request, observation, and finding types are discriminated by `kind`; only `ping` is implemented. Add other real operations at this seam without exposing arbitrary command strings. A destination-based operation such as traceroute can reuse multi-destination fan-out by preparing one execution per destination, although its much longer execution bound makes large requests hard to fit in the overall deadline. Packet capture needs a separate decision about transport, privilege, visibility, asynchronous lifetime, artifacts, and sensitive data; no capture-session abstractions are fabricated now.
 
@@ -198,14 +149,12 @@ Validated against the repository's cEOS 4.34.3M lab over HTTPS eAPI:
 - IPv4/IPv6 loopback, explicit source and default VRF, and measured RTTs.
 - Explicit one-second pacing, finite repeat count, and reply-timeout behavior.
 - Group fan-out and 100% packet loss in the MGMT VRF.
-- Multi-destination fan-out: six 10-packet pings from one host to its BGP peers completed in 18.6 s (about 56 s when issued as serial calls). A ledger sampler observed five simultaneous active reservations, and direct concurrent eAPI requests confirmed the device ran at most three commands at once.
+- Multi-destination fan-out: six 10-packet pings from one host to its BGP peers completed in 18.6 s (about 56 s when issued as serial calls). A capacity sampler observed five simultaneous active reservations, and direct concurrent eAPI requests confirmed the device ran at most three commands at once.
 - Invalid VRF and unavailable source fail without fallback.
 - Overall HTTP cancellation can leave a short-lived device ping; observed processes exited after their finite probe sequence.
 - MCP stdio execution loads configured defaults and returns real measurements.
 
 Older EOS versions and physical platforms have not been qualified for this new tool; the existing read-path minimum does not establish ping compatibility.
-
-The refactor was also checked against synthetic ledgers and release audits written by the pre-refactor code (`0e208ec`): inspection, checksum validation, exact committed retries, legacy absent RPC IDs, and remaining reservations stayed compatible. Audit snapshots use the shared reservation codec, and evidence/audit digests share the same JSON SHA-256 implementation; the serialized formats and schema versions are unchanged.
 
 ```bash
 npm test
@@ -215,4 +164,4 @@ npm run build
 INTEGRATION=1 npm test
 ```
 
-Integration tests use the isolated `clab/testlab.clab.yaml` lab (admin/admin and lab-only TLS override). The read-path suite now defaults to that topology's unprefixed node names; `EOS_MCP_TEST_PREFIX=clab-testlab-` supports older prefixed deployments. All 13 read-path checks have been run alongside the ping suites, including the EOS code-1003 unconverted-command JSON-to-text read fallback; active ping still never retries. Optional `EOS_PING_TEST_HOST`, `EOS_PING_TEST_HOST_2`, and `EOS_PING_TEST_SILENT_HOST` override its device/silent-destination addresses. Unit tests additionally cover partial loss, input injection, mapped-address restrictions, fail-closed policy, invalid settings, concurrent calls, multi-destination ordering, concurrent destination dispatch, per-destination failure isolation, whole-request destination validation, multi-destination cancellation, uncertain reservations, cancellation, response-size enforcement, write-ahead ordering, blocked dispatch on storage failure, failed completion commits, private permissions, ownership exclusion, malformed/missing ledgers, actual child-process crash recovery, and offline non-mutating inspection. Operator-release tests use synthetic ledger records and synthetic attestations only: they cover exact scope, legacy null IDs, rejected/malformed evidence, private bounded file input, competing ownership, identity/timestamp mismatches, schema migration/rollback, partial deletion rollback, audit integrity and idempotent retry. They do not claim any real EOS execution was fenced or release live test reservations. Additional protocol regressions cover missing/stale IDs, invalid versions, contradictory result/error envelopes, no retry on an uncorrelated read error, persisted wire-ID ordering, and reservation survival across restart after an unrelated acknowledgement. The delayed-backend regression models a request timing out at 35 seconds and starting remotely after the former 65-second expiry: replacement work is now rejected, so modeled active execution stays within the configured ceiling. This is a deterministic fault model, not a claim to have reproduced live EOS queue overload. Live MCP integration also checks timeout-to-uncertain visibility and the structured capacity error before and after restarting with the same ledger.
+Integration tests use the isolated `clab/testlab.clab.yaml` lab (admin/admin and lab-only TLS override). The read-path suite now defaults to that topology's unprefixed node names; `EOS_MCP_TEST_PREFIX=clab-testlab-` supports older prefixed deployments. All 13 read-path checks have been run alongside the ping suites, including the EOS code-1003 unconverted-command JSON-to-text read fallback; active ping still never retries. Optional `EOS_PING_TEST_HOST`, `EOS_PING_TEST_HOST_2`, and `EOS_PING_TEST_SILENT_HOST` override its device/silent-destination addresses. Unit tests additionally cover partial loss, input injection, mapped-address restrictions, fail-closed policy, invalid settings, concurrent calls, multi-destination ordering, concurrent destination dispatch, per-destination failure isolation, whole-request destination validation, multi-destination cancellation, uncertain reservations and their timed release, early release on a late confirmed response, cancellation, and response-size enforcement. Additional protocol regressions cover missing/stale IDs, invalid versions, contradictory result/error envelopes, and no retry on an uncorrelated read error. Live MCP integration checks timeout-to-uncertain visibility and runs a second server against the same inventory while the first holds an uncertain slot.

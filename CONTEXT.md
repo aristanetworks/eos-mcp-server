@@ -25,20 +25,8 @@ Explicit authorization for an inventory host to perform diagnostics, additional 
 _Avoid_: Read permission, implicit diagnostic access
 
 **Uncertain Execution Reservation**:
-Diagnostic capacity held because an EOS execution may still run or start later and its remote completion cannot be confirmed.
-_Avoid_: Cooldown, expired job
-
-**Diagnostic Ledger**:
-The durable record of unresolved EOS diagnostic executions associated with an inventory identity, preserving **Uncertain Execution Reservations** across server restarts.
-_Avoid_: Cooldown cache, completed-job history
-
-**Fencing Attestation**:
-An accountable operator's assertion, grounded in independent evidence, that specified EOS diagnostic executions can no longer run, start from an accepted queue, or be replayed. It is an exercise of operator authority, not machine-confirmed EOS completion.
-_Avoid_: Timeout proof, quiet-device check, automatic completion
-
-**Operator Release**:
-The explicitly authorized removal of selected **Uncertain Execution Reservations** under a matching **Fencing Attestation**, preserving an audit of the authority and evidence relied upon.
-_Avoid_: Force-clear, device reset, automatic recovery
+Diagnostic capacity held because an EOS execution's remote completion cannot be confirmed. It is held for the execution budget (`commandTimeoutMs`) and then frees itself; a late confirmed response frees it sooner. It lives only in the server process that made it.
+_Avoid_: Permanent hold, completed job
 
 **Source Address**:
 The local IP address an EOS device uses to originate diagnostic probes within the selected routing context.

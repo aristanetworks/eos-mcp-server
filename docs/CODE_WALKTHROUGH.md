@@ -20,8 +20,6 @@ Execution starts at `src/index.ts`. It parses CLI args, loads config, then dispa
 - `validate-inventory`: validate inventory and print the result.
 - `print-server-info`: print sanitized server metadata.
 - `probe`: run the same probe logic as the MCP probe tool.
-- `inspect-diagnostics`: read existing reservations and release audit without device access, ownership takeover, or reset.
-- `release-diagnostics`: offline, exact-scope operator release with explicit fencing attestation and atomic audit; no device calls or MCP exposure.
 
 CLI parsing lives in `src/cli.ts`. The app name and version are read from `package.json` at runtime via `src/core/version.ts`. Shared error handling lives in `src/core/errors.ts`, which defines `AppError` and the stable machine-readable error codes used across the CLI and MCP layers.
 
@@ -53,7 +51,7 @@ eAPI protocol and transport are split:
 
 - `src/eapi/client.ts`: builds JSON-RPC `runCmds` requests using the connection's `eapiVersion` (`"latest"` by default, `1` when pinned in config), handles HTTP errors, invalid JSON, protocol version/response-ID correlation, exclusive result/error envelopes, JSON-RPC errors, and unexpected result counts. Supports opt-in enable mode (`{ enable: true }`) for privileged commands by prepending `enable` to the wire commands and stripping the extra result entry transparently. Per-request timeout and caller cancellation are combined with `AbortSignal`.
 - `src/eapi/transport.ts`: production HTTPS transport and test-friendly fetch transport. The production transport enforces `maxResponseSizeBytes` while chunks are received, before buffering an oversized device response.
-- `src/eapi/client.ts` also exposes single-execution text commands for active diagnostics, without JSON fallback retries, using the pre-journaled request identity supplied by the diagnostic execution context.
+- `src/eapi/client.ts` also exposes single-execution text commands for active diagnostics, without JSON fallback retries, using the reserved request identity supplied by the diagnostic execution context.
 - `src/eapi/types.ts`: shared eAPI types, the low-level `EosCommandRunner` interface used by `EapiDeviceReader`, `EapiCommandOptions`, and helpers for validating/drilling into eAPI JSON-RPC response payloads.
 
 ## Read Tool Services
@@ -77,17 +75,15 @@ Shared type-narrowing utilities (`isObject`, `readString`, `readBoolean`, `readN
 ## Diagnostic Execution
 
 - `src/diagnostics/executor.ts`: typed diagnostic orchestration, inventory opt-in and probe-budget checks, existing result envelopes, and cancellation. One executor is created per server instance.
-- `src/diagnostics/concurrency.ts`: admission shared by concurrent calls, with queueing separated from durable reservation creation, completion, and uncertainty transitions. Shutdown, storage failure, and exhausted uncertainty share queued-work rejection. Unknown completion never expires; cancelled waiters are removed.
+- `src/diagnostics/concurrency.ts`: in-memory admission shared by concurrent calls in one server process. Unknown completion holds a slot for `commandTimeoutMs`, then a timer frees it; a late confirmed response frees it sooner. Shutdown rejects queued work; cancelled waiters are removed.
 - `src/diagnostics/eapiRunner.ts`: connection resolution followed by one text eAPI attempt in enable mode. Separate error paths distinguish local rejection before dispatch from uncertain RPC, transport, or malformed-result failures after dispatch; there is no mutable dispatch flag or retry.
 - `src/diagnostics/executionError.ts`: typed `AppError` classification (`not_dispatched`, `completed`, or `unknown`). Only explicitly settled errors permit capacity reuse; ordinary errors remain uncertain.
 - `src/diagnostics/ping.ts`: literal-address/VRF/source/count validation, finite ping command construction, and loss/RTT interpretation. A no-reply finding is not an execution failure.
 - `src/diagnostics/types.ts`: request, prepared intent, observation, and finding types discriminated by diagnostic kind, plus the `DiagnosticDeviceRunner` seam. Only ping is implemented; capture sessions are not pre-modeled.
 
-Diagnostic execution reuses read-operation orchestration with independent settings and global admission. Unknown completion retains capacity indefinitely; HTTP abort and elapsed budgets are not remote kill signals. Each server-info call reads `DiagnosticExecutor.getCapacity()` afresh; the standalone CLI reports no live snapshot.
+Diagnostic execution reuses read-operation orchestration with independent settings and global admission. Unknown completion holds capacity for the command budget; HTTP abort is not a remote kill signal. Each server-info call reads `DiagnosticExecutor.getCapacity()` afresh; the standalone CLI reports no live snapshot.
 
-`journal.ts` provides private SQLite persistence and an exclusive ownership lock; `statePath.ts` supplies canonical inventory identity/default storage. Entries survive crashes, and commit failure blocks dispatch or reuse. The journal is injected through `journalTypes.ts`, so pure executor tests can remain in memory. Native SQLite loads only when production diagnostic permissions or ledger administration require it.
-
-`releaseEvidence.ts` validates attestation scope/consistency and uses shared JSON SHA-256 hashing for evidence and audit checksums; it does not verify external fencing. `reservationSchema.ts` validates and normalizes both unresolved records and audit snapshots, including absent legacy RPC IDs. The refactor preserves serialized records, checksum computation, and schema versions. Schema-1 migration, audit insertion, and selected deletions share the release transaction; ordinary server migration preserves occupied capacity. See [DIAGNOSTICS.md](DIAGNOSTICS.md).
+Capacity lives in memory per server process, so several servers can run against one inventory. See [DIAGNOSTICS.md](DIAGNOSTICS.md) and [ADR 0006](adr/0006-in-memory-timed-diagnostic-capacity.md).
 
 ## MCP Layer
 
@@ -126,11 +122,10 @@ Tests mirror the source layout:
 - Inventory and target behavior: `inventory.test.ts`, `targetResolution.test.ts`
 - eAPI and connection behavior: `eapiClient.test.ts`, `eosDeviceReader.test.ts`, `startupValidation.test.ts`, `responseSize.test.ts`
 - Read services and orchestration: `probeDevices.test.ts`, `runShow.test.ts`, `loggingQuery.test.ts`, `showLogging.test.ts`, `getFacts.test.ts`, `getRunningConfig.test.ts`, `readExecution.test.ts`
-- Diagnostics: `ping.test.ts`, `diagnosticConfig.test.ts`, `diagnostics.test.ts`, `diagnosticEapi.test.ts`, `diagnosticReservations.test.ts` (delayed-start/cancellation regressions and visibility)
-- Diagnostic persistence: `diagnosticJournal.test.ts` (including child-process crash/lock recovery), `diagnosticPersistence.test.ts` (write-ahead failures and queued-admission failure without invalidating completed work), `eapiCorrelation.test.ts`, `inspectDiagnostics.test.ts` (read-only CLI and concurrent-release snapshot consistency)
+- Diagnostics: `ping.test.ts`, `diagnosticConfig.test.ts`, `diagnostics.test.ts`, `diagnosticEapi.test.ts`, `diagnosticReservations.test.ts` (timed release, cancellation, late responses and visibility)
+- Response correlation: `eapiCorrelation.test.ts`
 - Server info and errors: `buildServerInfo.test.ts`, `errors.test.ts`, `errorTaxonomy.test.ts`
 - MCP adapters and stdio: `readToolsMcp.test.ts`, `probeDevicesTool.test.ts`, `listInventoryTool.test.ts`, `mcpStdioSmoke.test.ts`
 - Package/static policy: `packagePolicy.test.ts`, `packageSmoke.test.ts`
 - Optional cEOS integration (requires a configured lab): `integration.test.ts`, `pingIntegration.test.ts`, `pingMcpIntegration.test.ts`
-- Offline attested release and CLI: `diagnosticRelease.test.ts`, `releaseDiagnosticsCli.test.ts` (synthetic evidence only; no live EOS releases)
 - Shared test helpers: `test/helpers.ts`

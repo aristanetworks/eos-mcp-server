@@ -20,7 +20,7 @@ function createSingleSlotExecutor(runner: EosTextCommandRunner): DiagnosticExecu
 }
 
 describe("diagnostic eAPI adapter", () => {
-  it("sends one text request, in enable mode, using the configured version and diagnostic HTTP timeout", async () => {
+  it("sends one text request, in enable mode, using the configured version, diagnostic HTTP timeout, and EOS request timeout", async () => {
     const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ result: [{ output: "" }, { output }] }), text: async () => "" }));
     const config = buildConfig({ readTimeoutMs: 7, eapiVersion: 1 });
     const runner = new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson })));
@@ -30,7 +30,25 @@ describe("diagnostic eAPI adapter", () => {
     const [connection, body] = postJson.mock.calls[0] ?? [];
     expect(connection).toMatchObject({ timeoutMs: 35_000, validateCerts: true });
     expect(JSON.parse(String(body)).id).toBe("unit-rpc-id");
-    expect(JSON.parse(String(body)).params).toEqual({ version: 1, format: "text", cmds: ["enable", "ping vrf default ipv6 ::1 source ::1 repeat 1 timeout 1 interval 1 size 64"] });
+    expect(JSON.parse(String(body)).params).toEqual({
+      version: 1, format: "text", cmds: ["enable", "ping vrf default ipv6 ::1 source ::1 repeat 1 timeout 1 interval 1 size 64"], requestTimeout: 30
+    });
+  });
+
+  it("derives the EOS request timeout from the command budget and omits it when disabled", async () => {
+    const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ result: [{ output: "" }, { output }] }), text: async () => "" }));
+    const request = (config: ReturnType<typeof buildConfig>) => preparePing({ kind: "ping", destination: "::1" }, config.diagnostics);
+    const tuned = buildConfig();
+    tuned.diagnostics.commandTimeoutMs = 12_500;
+    const tunedRunner = new EapiDiagnosticRunner(tuned, new EapiClient(echoRpcTransport({ postJson })));
+    await tunedRunner.execute(host, request(tuned), context());
+    const disabled = buildConfig();
+    disabled.diagnostics.nativeRequestTimeout = false;
+    const disabledRunner = new EapiDiagnosticRunner(disabled, new EapiClient(echoRpcTransport({ postJson })));
+    await disabledRunner.execute(host, request(disabled), context());
+    const sentParams = postJson.mock.calls.map((call) => JSON.parse(String((call as unknown[])[1])).params);
+    expect(sentParams[0]).toHaveProperty("requestTimeout", 12.5);
+    expect(sentParams[1]).not.toHaveProperty("requestTimeout");
   });
 
   it("classifies local credential rejection as not dispatched without losing the error code", async () => {
@@ -74,7 +92,6 @@ describe("diagnostic eAPI adapter", () => {
     const executor = createSingleSlotExecutor(new EapiClient(echoRpcTransport({ postJson })));
     expect((await executor.execute(call)).results[0]?.error_code).toBe("eapi_text_output_invalid");
     expect(executor.getCapacity()).toMatchObject({ available_count: 0, uncertain_count: 1 });
-    await expect(executor.execute(call)).rejects.toMatchObject({ code: "diagnostic_capacity_uncertain" });
     expect(postJson).toHaveBeenCalledTimes(1);
   });
 
@@ -86,7 +103,6 @@ describe("diagnostic eAPI adapter", () => {
     const executor = createSingleSlotExecutor({ runTextCommands });
     expect((await executor.execute(call)).results[0]?.error_code).toBe("diagnostic_output_unrecognized");
     expect(executor.getCapacity()).toMatchObject({ available_count: 0, uncertain_count: 1 });
-    await expect(executor.execute(call)).rejects.toMatchObject({ code: "diagnostic_capacity_uncertain" });
     expect(runTextCommands).toHaveBeenCalledTimes(1);
   });
 
@@ -95,7 +111,6 @@ describe("diagnostic eAPI adapter", () => {
     const executor = createSingleSlotExecutor(new EapiClient(echoRpcTransport({ postJson })));
     expect((await executor.execute(call)).results[0]?.error_code).toBe("eapi_payload_invalid");
     expect(executor.getCapacity()).toMatchObject({ available_count: 0, uncertain_count: 1 });
-    await expect(executor.execute(call)).rejects.toMatchObject({ code: "diagnostic_capacity_uncertain" });
     expect(postJson).toHaveBeenCalledTimes(1);
   });
 
@@ -107,7 +122,6 @@ describe("diagnostic eAPI adapter", () => {
     const executor = createSingleSlotExecutor(new EapiClient(echoRpcTransport({ postJson })));
     await executor.execute(call);
     expect(executor.getCapacity()).toMatchObject({ uncertain_count: 1, available_count: 0 });
-    await expect(executor.execute(call)).rejects.toMatchObject({ code: "diagnostic_capacity_uncertain" });
   });
 
   it("does not claim command completion after a transport loss", async () => {

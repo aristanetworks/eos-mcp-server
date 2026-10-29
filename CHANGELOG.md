@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Breaking:** removes the durable diagnostic ledger and its exclusive lock, so several MCP servers (for example two chat sessions, or the desktop app alongside Claude Code) can use the same inventory at once. Previously a second server failed to start whenever any host allowed diagnostics, losing every tool. See [ADR 0006](docs/adr/0006-in-memory-timed-diagnostic-capacity.md), which supersedes ADRs 0002 to 0004.
+- When a ping's remote completion is unknown (timeout, cancellation, lost connection, malformed or uncorrelated response), its slot is now held for `diagnostics.commandTimeoutMs` and then freed automatically instead of indefinitely; a late confirmed response frees it sooner. New work queues behind held slots within the overall deadline. Server info reports `releases_at` for each uncertain reservation. `deviceConcurrency` now limits each server process rather than an inventory.
+- Ping requests now send EOS's native `runCmds.requestTimeout`, set to `diagnostics.commandTimeoutMs`, so the switch itself interrupts a ping that outlives its budget. On by default; set `diagnostics.nativeRequestTimeout: false` if an EOS version rejects the field. Server info reports it as `limits.diagnostics.native_request_timeout`. Verified on cEOS 4.34.3M only.
+- Removes the `inspect-diagnostics` and `release-diagnostics` commands, fencing attestations and release audit, the `diagnostics.stateFile` setting (now rejected with guidance), the `diagnostic_capacity_uncertain` and `diagnostic_state_*` errors, and the capacity snapshot's `scope`, `storage_error_code` and `rpc_request_id` fields (`reservation_id` is the wire RPC ID). Old ledger files under `~/.local/state/eos-mcp-server/` are no longer read and can be deleted.
+
 ## 0.8.0-beta
 
 0.7.0-beta was not published to npm, so upgrading from 0.6.1-beta picks up both this section and the 0.7.0-beta section below.

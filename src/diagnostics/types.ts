@@ -50,20 +50,19 @@ export interface DiagnosticDefinition {
   interpret(output: string, execution: PreparedDiagnostic): DiagnosticFinding;
 }
 
+/** `reservation_id` doubles as the execution's JSON-RPC request ID. */
 export interface DiagnosticReservationInfo {
   reservation_id: string;
-  rpc_request_id?: string;
   inventory_hostname: string;
   diagnostic: DiagnosticRequest["kind"];
   state: "active" | "uncertain";
   reserved_at: string;
   uncertain_since?: string;
+  releases_at?: string;
   reason_code?: string;
 }
 
 export interface DiagnosticCapacitySnapshot {
-  scope: "server-instance" | "state-file";
-  storage_error_code?: string;
   limit: number;
   available_count: number;
   active_count: number;
@@ -77,7 +76,7 @@ export interface DiagnosticExecutionContext {
   requestId: string;
 }
 
-/** Device execution seam: inventory identity, typed intent, and a pre-journaled attempt ID.
+/** Device execution seam: inventory identity, typed intent, and the reserved attempt ID.
  * Errors stay uncertain unless classified as not_dispatched/completed by DiagnosticExecutionError.
  */
 export interface DiagnosticDeviceRunner {

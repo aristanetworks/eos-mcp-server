@@ -20,7 +20,13 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
     }
 
     try {
-      const results = await this.runner.runTextCommands(connection, [buildPingCommand(request)], { enable: true, signal: context.signal, requestId: context.requestId });
+      const results = await this.runner.runTextCommands(connection, [buildPingCommand(request)], {
+        enable: true,
+        signal: context.signal,
+        requestId: context.requestId,
+        // Lets EOS stop the command itself at the same budget the server holds an uncertain slot for.
+        ...(this.config.diagnostics.nativeRequestTimeout ? { requestTimeoutSeconds: this.config.diagnostics.commandTimeoutMs / 1000 } : {})
+      });
       const output = results[0]?.output;
       if (results.length !== 1 || typeof output !== "string") {
         throw new DiagnosticExecutionError("diagnostic_output_unrecognized", "Expected one text result from EOS", "unknown");

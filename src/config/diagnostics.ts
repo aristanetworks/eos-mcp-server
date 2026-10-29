@@ -5,7 +5,6 @@ const MAX_TIMER_MS = 2_147_483_647;
 const positiveInteger = z.number().int().positive().max(MAX_TIMER_MS);
 
 export const diagnosticsConfigSchema = z.object({
-  stateFile: z.string().min(1).optional(),
   defaultPingCount: positiveInteger.default(3),
   maxPingCount: positiveInteger.default(10),
   maxProbesPerRequest: positiveInteger.default(100),
@@ -14,8 +13,9 @@ export const diagnosticsConfigSchema = z.object({
   pingReplyTimeoutMs: positiveInteger.multipleOf(1000).default(1000),
   commandTimeoutMs: positiveInteger.default(30_000),
   httpTimeoutMs: positiveInteger.default(35_000),
-  overallOperationTimeoutMs: positiveInteger.default(60_000)
-}).strict().superRefine((config, context) => {
+  overallOperationTimeoutMs: positiveInteger.default(60_000),
+  nativeRequestTimeout: z.boolean().default(true)
+}).strict("Unrecognized diagnostics setting. diagnostics.stateFile was removed: diagnostic capacity is now held in memory (ADR 0006), so delete it").superRefine((config, context) => {
   const invalid = (path: string, message: string): void => {
     context.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
   };

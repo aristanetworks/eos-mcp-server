@@ -1,5 +1,7 @@
 # Preserve diagnostic reservations across restart in a private SQLite ledger
 
+**Status: superseded by [ADR 0006](0006-in-memory-timed-diagnostic-capacity.md).** The ledger and its ownership lock were removed.
+
 Operator recovery follow-up: [ADR 0004](0004-offline-operator-attested-release.md) adds offline attested release and schema-2 audit; the persistence guarantees below remain in force.
 
 In-memory fail-closed reservations are insufficient when an MCP process restarts while EOS work may still run or start later. Production diagnostic execution therefore uses Node's built-in SQLite on private persistent local storage: commit a reservation before dispatch, commit confirmed removal before capacity reuse, and restore unfinished records as uncertain. A separate SQLite ownership database holds an exclusive OS-managed lock for the server lifetime, so process crashes release ownership without guessing from PID or lock age. Prefer one active server per ledger over independent processes silently allocating fresh capacity. Existing state is validated and bound to the canonical inventory identity; corruption, missing companion files, incompatible schemas, and write failures block work rather than recreate empty capacity.

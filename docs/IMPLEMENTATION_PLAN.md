@@ -12,8 +12,8 @@ The server is a permanent read-only MCP service. Scope includes inventory inspec
 - Inventory-authoritative host/group target resolution.
 - HTTPS eAPI client with TLS validation, custom CA support, credential validation, request cancellation, and response-size limits.
 - Eight MCP tools: server info, inventory, probe, ping, show, logging, facts, and running configuration.
-- Typed diagnostic execution with inherited opt-in, configurable budgets/timeouts, global admission, no retries, indefinite uncertain-execution reservations, and live sanitized capacity visibility. Write-ahead durable reservations, crash-safe ownership and offline inspection are implemented. Offline operator-attested release, atomic audit and schema migration are implemented. Machine-verified remote completion/deadline qualification remains follow-up work.
-- Local `validate-inventory`, `print-server-info`, `probe`, read-only `inspect-diagnostics`, and offline attested `release-diagnostics` commands.
+- Typed diagnostic execution with inherited opt-in, configurable budgets/timeouts, in-memory per-server admission, no retries, uncertain-execution reservations held for the command budget, and live sanitized capacity visibility. Machine-verified remote completion/deadline qualification remains follow-up work.
+- Local `validate-inventory`, `print-server-info`, and `probe` commands.
 - Bounded concurrency, target counts, command counts, logging messages, device responses, and aggregate tool responses.
 - Unit, MCP stdio smoke, package-policy, and optional cEOS integration coverage.
 

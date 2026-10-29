@@ -53,7 +53,7 @@ export class EapiClient {
     commands: string[],
     options?: RunTextCommandOptions
   ): Promise<EosCommandResult[]> {
-    const payload = await this.runCommands(connection, commands, "text", options, options?.requestId);
+    const payload = await this.runCommands(connection, commands, "text", options, options?.requestId, options?.requestTimeoutSeconds);
     return buildCommandResults(payload, commands, "text", false);
   }
 
@@ -62,7 +62,8 @@ export class EapiClient {
     commands: string[],
     format: EapiOutputFormat,
     options?: EapiCommandOptions,
-    requestId: string = randomUUID()
+    requestId: string = randomUUID(),
+    requestTimeoutSeconds?: number
   ): Promise<unknown> {
     if (commands.length === 0) {
       throw new AppError("eapi_commands_missing", "runCommands requires at least one command");
@@ -77,7 +78,8 @@ export class EapiClient {
       params: {
         version: connection.eapiVersion,
         cmds: wireCommands,
-        format
+        format,
+        ...(requestTimeoutSeconds === undefined ? {} : { requestTimeout: requestTimeoutSeconds })
       },
       id: requestId
     };
