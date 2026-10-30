@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import { AppError } from "../core/errors.js";
 import type { DiagnosticCapacitySnapshot, DiagnosticDeviceCapacity, DiagnosticRequest, DiagnosticReservationInfo } from "../diagnostics/types.js";
 
+type SlotKind = "read" | "diagnostic";
+
 interface Waiter {
   inventoryHostname: string;
-  isDiagnostic: boolean;
+  kind: SlotKind;
   grant: () => void;
   reject: (error: AppError) => void;
 }
@@ -58,7 +60,7 @@ export class EapiSlots {
     const reservations = Array.from(this.reservations.keys(), (reservation) => ({ ...reservation }));
     const uncertain = reservations.filter((reservation) => reservation.state === "uncertain").length;
     const serverAvailable = this.closed ? 0 : Math.max(0, this.limits.diagnosticServerLimit - reservations.length);
-    const queuedDiagnostics = this.waiting.filter((waiter) => waiter.isDiagnostic).length;
+    const queuedDiagnostics = this.waiting.filter((waiter) => waiter.kind === "diagnostic").length;
     return {
       limit: this.limits.diagnosticServerLimit,
       device_limit: this.limits.diagnosticDeviceLimit,
@@ -95,7 +97,7 @@ export class EapiSlots {
     for (const [inventoryHostname, readsHeld] of this.readsHeldByDevice) deviceEntry(inventoryHostname).read_active_count = readsHeld;
     for (const waiter of this.waiting) {
       const entry = deviceEntry(waiter.inventoryHostname);
-      if (waiter.isDiagnostic) entry.queued_count += 1;
+      if (waiter.kind === "diagnostic") entry.queued_count += 1;
       else entry.read_queued_count += 1;
     }
     for (const entry of devices.values()) {
@@ -106,14 +108,14 @@ export class EapiSlots {
 
   /** Waits for a read slot on the host; the returned function frees it. */
   acquireRead(signal: AbortSignal | undefined, inventoryHostname: string): Promise<() => void> {
-    return this.enqueue(signal, inventoryHostname, false, () => this.reserveRead(inventoryHostname));
+    return this.enqueue(signal, inventoryHostname, "read", () => this.reserveRead(inventoryHostname));
   }
 
   acquireDiagnostic(signal: AbortSignal | undefined, intent: DiagnosticReservationIntent): Promise<DiagnosticReservation> {
-    return this.enqueue(signal, intent.inventoryHostname, true, () => this.reserveDiagnostic(intent));
+    return this.enqueue(signal, intent.inventoryHostname, "diagnostic", () => this.reserveDiagnostic(intent));
   }
 
-  private enqueue<TSlot>(signal: AbortSignal | undefined, inventoryHostname: string, isDiagnostic: boolean, reserve: () => TSlot): Promise<TSlot> {
+  private enqueue<TSlot>(signal: AbortSignal | undefined, inventoryHostname: string, kind: SlotKind, reserve: () => TSlot): Promise<TSlot> {
     return new Promise((resolve, reject) => {
       if (signal?.aborted === true) {
         reject(abortedError());
@@ -131,7 +133,7 @@ export class EapiSlots {
       const stopListening = (): void => signal?.removeEventListener("abort", cancelled);
       const waiter: Waiter = {
         inventoryHostname,
-        isDiagnostic,
+        kind,
         reject: (error) => {
           stopListening();
           reject(error);
@@ -153,7 +155,7 @@ export class EapiSlots {
   private hasRoom(waiter: Waiter): boolean {
     const diagnosticsHeld = this.diagnosticSlotsHeldBy(waiter.inventoryHostname);
     const readsHeld = this.readsHeldByDevice.get(waiter.inventoryHostname) ?? 0;
-    if (!waiter.isDiagnostic) return diagnosticsHeld + readsHeld < this.limits.deviceLimit;
+    if (waiter.kind === "read") return diagnosticsHeld + readsHeld < this.limits.deviceLimit;
     return this.diagnosticHeadroom(diagnosticsHeld, readsHeld, this.limits.diagnosticServerLimit - this.reservations.size) > 0;
   }
 
@@ -176,16 +178,21 @@ export class EapiSlots {
   }
 
   private reserveRead(inventoryHostname: string): () => void {
-    this.readsHeldByDevice.set(inventoryHostname, (this.readsHeldByDevice.get(inventoryHostname) ?? 0) + 1);
+    this.adjustReadsHeld(inventoryHostname, 1);
     let released = false;
     return () => {
       if (released) return;
       released = true;
-      const stillHeld = (this.readsHeldByDevice.get(inventoryHostname) ?? 1) - 1;
-      if (stillHeld > 0) this.readsHeldByDevice.set(inventoryHostname, stillHeld);
-      else this.readsHeldByDevice.delete(inventoryHostname);
+      this.adjustReadsHeld(inventoryHostname, -1);
       this.grantWaiting();
     };
+  }
+
+  /** Keeps only hosts that hold reads, so the snapshot lists no idle hosts. */
+  private adjustReadsHeld(inventoryHostname: string, change: 1 | -1): void {
+    const readsHeld = (this.readsHeldByDevice.get(inventoryHostname) ?? 0) + change;
+    if (readsHeld > 0) this.readsHeldByDevice.set(inventoryHostname, readsHeld);
+    else this.readsHeldByDevice.delete(inventoryHostname);
   }
 
   private reserveDiagnostic(intent: DiagnosticReservationIntent): DiagnosticReservation {

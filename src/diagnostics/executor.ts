@@ -40,11 +40,13 @@ const diagnosticDefinitions: Record<DiagnosticRequest["kind"], DiagnosticDefinit
   ping: pingDiagnostic
 };
 
-/** Owns policy, budgets, fan-out, per-device and server-wide admission, cancellation, and result normalization. */
+/** Owns policy, budgets, fan-out, cancellation, and result normalization. Admission, per device and
+ * server-wide, belongs to the EapiSlots it shares with read tools.
+ */
 export class DiagnosticExecutor {
   private readonly shutdown = new AbortController();
 
-  /** `slots` is shared with read tools in a running server; tests may omit it. */
+  /** A running server passes its shared `slots`; tests may omit it to get a private instance. */
   constructor(
     private readonly model: InventoryModel,
     private readonly config: ResolvedServerConfig,
