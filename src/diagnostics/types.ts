@@ -62,24 +62,24 @@ export interface DiagnosticReservationInfo {
   reason_code?: string;
 }
 
-/** Slot usage of one inventory host; only hosts holding or awaiting a slot are listed. */
-export interface DiagnosticDeviceCapacity {
-  inventory_hostname: string;
-  /** Slots this host can take now: its own headroom, capped by server-wide availability. */
+interface DiagnosticSlotCounts {
   available_count: number;
   active_count: number;
   uncertain_count: number;
   queued_count: number;
 }
 
+/** Slot usage of one inventory host; only hosts holding or awaiting a slot are listed.
+ * `available_count` is its own headroom, capped by server-wide availability.
+ */
+export interface DiagnosticDeviceCapacity extends DiagnosticSlotCounts {
+  inventory_hostname: string;
+}
+
 /** Top-level counts are server-wide; `devices` breaks them down per host. */
-export interface DiagnosticCapacitySnapshot {
+export interface DiagnosticCapacitySnapshot extends DiagnosticSlotCounts {
   limit: number;
   device_limit: number;
-  available_count: number;
-  active_count: number;
-  uncertain_count: number;
-  queued_count: number;
   devices: DiagnosticDeviceCapacity[];
   reservations: DiagnosticReservationInfo[];
 }

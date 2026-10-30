@@ -140,4 +140,52 @@ describe("per-device diagnostic concurrency", () => {
     dispatched[3]?.settle();
     expect((await waitingOnLeaf1).summary.success_count).toBe(1);
   });
+
+  it("removes a cancelled waiter behind a full device without disturbing other waiters", async () => {
+    vi.useFakeTimers();
+    const config = buildConfig();
+    config.diagnostics.deviceConcurrency = 1;
+    const { runner, dispatched } = controlledRunner();
+    const executor = new DiagnosticExecutor(await twoHostModel(), config, runner);
+    const holdingLeaf1 = executor.execute(ping("leaf1"));
+    await vi.advanceTimersByTimeAsync(0);
+    const controller = new AbortController();
+    const cancelledWaiter = executor.execute({ ...ping("leaf1"), signal: controller.signal });
+    const cancelledRejection = expect(cancelledWaiter).rejects.toMatchObject({ code: "operation_aborted" });
+    const laterWaiter = executor.execute(ping("leaf1"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(executor.getCapacity().devices).toEqual([
+      { inventory_hostname: "leaf1", available_count: 0, active_count: 1, uncertain_count: 0, queued_count: 2 }
+    ]);
+    controller.abort();
+    await cancelledRejection;
+    expect(executor.getCapacity()).toMatchObject({ active_count: 1, queued_count: 1 });
+    dispatched[0]?.settle();
+    await holdingLeaf1;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(dispatched).toHaveLength(2);
+    dispatched[1]?.settle();
+    expect((await laterWaiter).summary.success_count).toBe(1);
+  });
+
+  it("wakes a waiter on another device when an uncertain slot holding the server ceiling expires", async () => {
+    vi.useFakeTimers();
+    const config = buildConfig();
+    config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
+    const { runner, dispatched } = controlledRunner();
+    const executor = new DiagnosticExecutor(await twoHostModel(), config, runner);
+    const lost = executor.execute(ping("leaf1"));
+    await vi.advanceTimersByTimeAsync(0);
+    dispatched[0]?.fail(new AppError("eapi_transport_error", "lost"));
+    await lost;
+    const waitingOnLeaf2 = executor.execute(ping("leaf2"));
+    await vi.advanceTimersByTimeAsync(config.diagnostics.commandTimeoutMs - 1);
+    expect(dispatched).toHaveLength(1);
+    expect(executor.getCapacity()).toMatchObject({ available_count: 0, uncertain_count: 1, queued_count: 1 });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(dispatched.map((execution) => execution.hostname)).toEqual(["leaf1", "leaf2"]);
+    dispatched[1]?.settle();
+    expect((await waitingOnLeaf2).summary.success_count).toBe(1);
+  });
 });

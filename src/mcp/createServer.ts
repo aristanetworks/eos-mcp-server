@@ -23,6 +23,7 @@ import { buildShowLoggingToolResult, showLoggingInputSchema } from "./tools/show
 
 // Every tool leaves device state unchanged, which lets clients run independent
 // calls concurrently; server-side limits still bound diagnostics (ADR 0008).
+// Most tools reach only inventory devices.
 const closedWorldReadOnly: ToolAnnotations = { readOnlyHint: true, openWorldHint: false };
 // Ping destinations need not be in inventory.
 const openWorldReadOnly: ToolAnnotations = { readOnlyHint: true, openWorldHint: true };

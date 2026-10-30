@@ -34,7 +34,6 @@ export interface DiagnosticConcurrencyLimits {
 export class DiagnosticConcurrency {
   /** Held slots; an uncertain slot carries the timer that frees it. */
   private readonly reservations = new Map<DiagnosticReservationInfo, NodeJS.Timeout | undefined>();
-  private readonly heldByDevice = new Map<string, number>();
   private readonly waiting: Waiter[] = [];
   private closed = false;
 
@@ -52,6 +51,20 @@ export class DiagnosticConcurrency {
     const reservations = Array.from(this.reservations.keys(), (reservation) => ({ ...reservation }));
     const uncertain = reservations.filter((reservation) => reservation.state === "uncertain").length;
     const serverAvailable = this.closed ? 0 : Math.max(0, this.limits.serverLimit - reservations.length);
+    return {
+      limit: this.limits.serverLimit,
+      device_limit: this.limits.deviceLimit,
+      available_count: serverAvailable,
+      active_count: reservations.length - uncertain,
+      uncertain_count: uncertain,
+      queued_count: this.waiting.length,
+      devices: this.deviceBreakdown(reservations, serverAvailable),
+      reservations
+    };
+  }
+
+  /** Per-host counts for every host holding or awaiting a slot, sorted by hostname. */
+  private deviceBreakdown(reservations: DiagnosticReservationInfo[], serverAvailable: number): DiagnosticDeviceCapacity[] {
     const devices = new Map<string, DiagnosticDeviceCapacity>();
     const deviceEntry = (inventoryHostname: string): DiagnosticDeviceCapacity => {
       let entry = devices.get(inventoryHostname);
@@ -71,16 +84,7 @@ export class DiagnosticConcurrency {
       const deviceAvailable = this.limits.deviceLimit - entry.active_count - entry.uncertain_count;
       entry.available_count = Math.max(0, Math.min(deviceAvailable, serverAvailable));
     }
-    return {
-      limit: this.limits.serverLimit,
-      device_limit: this.limits.deviceLimit,
-      available_count: serverAvailable,
-      active_count: reservations.length - uncertain,
-      uncertain_count: uncertain,
-      queued_count: this.waiting.length,
-      devices: Array.from(devices.values()).sort((left, right) => left.inventory_hostname.localeCompare(right.inventory_hostname)),
-      reservations
-    };
+    return Array.from(devices.values()).sort((left, right) => left.inventory_hostname.localeCompare(right.inventory_hostname));
   }
 
   acquire(signal: AbortSignal, intent: DiagnosticReservationIntent): Promise<DiagnosticReservation> {
@@ -120,7 +124,16 @@ export class DiagnosticConcurrency {
 
   private hasRoom(inventoryHostname: string): boolean {
     return this.reservations.size < this.limits.serverLimit
-      && (this.heldByDevice.get(inventoryHostname) ?? 0) < this.limits.deviceLimit;
+      && this.slotsHeldBy(inventoryHostname) < this.limits.deviceLimit;
+  }
+
+  /** Counted from the held reservations, which never exceed the server limit. */
+  private slotsHeldBy(inventoryHostname: string): number {
+    let held = 0;
+    for (const reservation of this.reservations.keys()) {
+      if (reservation.inventory_hostname === inventoryHostname) held += 1;
+    }
+    return held;
   }
 
   private reserve(intent: DiagnosticReservationIntent): DiagnosticReservation {
@@ -133,7 +146,6 @@ export class DiagnosticConcurrency {
       reserved_at: new Date().toISOString()
     };
     this.reservations.set(state, undefined);
-    this.heldByDevice.set(intent.inventoryHostname, (this.heldByDevice.get(intent.inventoryHostname) ?? 0) + 1);
     return {
       requestId,
       complete: () => this.free(state),
@@ -145,13 +157,12 @@ export class DiagnosticConcurrency {
     if (!this.reservations.has(state)) return;
     clearTimeout(this.reservations.get(state));
     this.reservations.delete(state);
-    const stillHeld = (this.heldByDevice.get(state.inventory_hostname) ?? 1) - 1;
-    if (stillHeld > 0) this.heldByDevice.set(state.inventory_hostname, stillHeld);
-    else this.heldByDevice.delete(state.inventory_hostname);
     this.grantWaiting();
   }
 
-  /** Grant the oldest waiters that can run now; a waiter on a full device keeps its place. */
+  /** Grant the oldest waiters that can run now; a waiter on a full device keeps its place.
+   * The loop guard only stops the scan early once the server is full; hasRoom decides each grant.
+   */
   private grantWaiting(): void {
     let index = 0;
     while (index < this.waiting.length && this.reservations.size < this.limits.serverLimit) {
