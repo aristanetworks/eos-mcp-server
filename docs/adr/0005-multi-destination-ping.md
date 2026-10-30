@@ -1,5 +1,7 @@
 # Accept multiple destinations in one ping request
 
+Admission limits refined by [ADR 0007](0007-per-device-diagnostic-concurrency.md): executions now share a per-device limit under a server-wide ceiling instead of one process-wide `deviceConcurrency`.
+
 Testing several destinations from the same target, such as every BGP peer of a switch, required one `eos_ping` call per destination. MCP clients do not reliably run those calls concurrently: measured on 2026-10-28, Claude Code dispatched six pings issued in one turn strictly one at a time, and Codex runs MCP calls serially unless the server connection opts into parallel calls. Labelling ping read-only to change client scheduling would misstate an active diagnostic that generates traffic and writes durable reservations. Instead, `eos_ping` takes `destinations` (one or more unique IP literals) and runs one execution per resolved host and destination concurrently inside the server, so every client gets the same behavior from one call.
 
 Make this a breaking change rather than adding a second tool or an optional alias: one interface serves a single ping (a one-element array) and a sweep, and responses always contain one result per host and destination, each naming its destination. The removed `destination` field is rejected with guidance instead of being silently accepted. `summary` counts host/destination executions; `resolved_devices` still lists hosts.

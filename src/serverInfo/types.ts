@@ -44,6 +44,7 @@ export interface ServerInfo {
       max_probes_per_request: number;
       max_destinations_per_request: number;
       device_concurrency: number;
+      max_concurrent_diagnostics: number;
       ping_reply_timeout_ms: number;
       command_timeout_ms: number;
       http_timeout_ms: number;

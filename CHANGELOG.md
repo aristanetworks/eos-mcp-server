@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Breaking:** `diagnostics.deviceConcurrency` now limits each device instead of the whole server process, and its default drops from 5 to 3, the measured cEOS 4.34.3M eAPI concurrency. The new `diagnostics.maxConcurrentDiagnostics` (default 32) caps the whole server; `deviceConcurrency` must not exceed it. Pings to different devices no longer queue behind one another, a ping waiting on a busy device no longer holds up one to a free device, and uncertain slots on one device no longer block others. A configuration that used `deviceConcurrency` to cap the whole server should also set `maxConcurrentDiagnostics`. The capacity snapshot adds `device_limit` and a per-host `devices` breakdown, and server info adds `limits.diagnostics.max_concurrent_diagnostics`. See [ADR 0007](docs/adr/0007-per-device-diagnostic-concurrency.md).
+
 ## 0.8.1-beta
 
 - **Breaking:** removes the durable diagnostic ledger and its exclusive lock, so several MCP servers (for example two chat sessions, or the desktop app alongside Claude Code) can use the same inventory at once. Previously a second server failed to start whenever any host allowed diagnostics, losing every tool. See [ADR 0006](docs/adr/0006-in-memory-timed-diagnostic-capacity.md), which supersedes ADRs 0002 to 0004.

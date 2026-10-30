@@ -143,6 +143,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     const device = { execute: vi.fn().mockImplementationOnce(() => first.promise).mockResolvedValue(observation) };
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
     const executor = new DiagnosticExecutor(model, config, device);
     const one = executor.execute(call);
     const two = executor.execute({ ...call, target: "leaf2" });
@@ -159,6 +160,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     const device = { execute: vi.fn().mockRejectedValueOnce(new AppError("eapi_transport_error", "lost response")).mockResolvedValue(observation) };
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
     const executor = new DiagnosticExecutor(model, config, device);
     const failed = await executor.execute(call);
     expect(failed.results[0]?.error_code).toBe("eapi_transport_error");
@@ -176,6 +178,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     const device = { execute: vi.fn().mockRejectedValueOnce(new DiagnosticExecutionError("diagnostic_test_failure", "Classified adapter failure", executionState)).mockResolvedValue(observation) };
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
     const executor = new DiagnosticExecutor(model, config, device);
     expect((await executor.execute(call)).results[0]?.error_code).toBe("diagnostic_test_failure");
     expect((await executor.execute(call)).summary.success_count).toBe(1);
@@ -189,6 +192,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     const device = { execute: vi.fn().mockRejectedValue(error) };
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
     const executor = new DiagnosticExecutor(model, config, device);
     expect((await executor.execute(call)).results[0]?.error_code).toBe("diagnostic_test_failure");
     expect(executor.getCapacity()).toMatchObject({
@@ -204,6 +208,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     })) };
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
     config.diagnostics.overallOperationTimeoutMs = 50;
     const pending = new DiagnosticExecutor(model, config, device).execute({ ...call, target: "switches" });
     const rejected = expect(pending).rejects.toMatchObject({ code: "operation_timeout" });
@@ -223,6 +228,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
       .mockResolvedValue(observation) };
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
     config.diagnostics.overallOperationTimeoutMs = 120_000;
     const executor = new DiagnosticExecutor(model, config, device);
     const controller = new AbortController();
@@ -248,6 +254,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     const device = { execute: vi.fn().mockImplementationOnce(() => first.promise).mockResolvedValue(observation) };
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
     const executor = new DiagnosticExecutor(model, config, device);
     const active = executor.execute(call);
     const controller = new AbortController();
@@ -298,6 +305,7 @@ describe("multi-destination ping", () => {
     }) };
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 2;
+    config.diagnostics.maxConcurrentDiagnostics = 2;
     const executor = new DiagnosticExecutor(await groupModel(), config, device);
     const running = executor.execute({ ...call, request: { kind: "ping", destinations: ["127.0.0.1", "127.0.0.2", "127.0.0.3"] } });
     await vi.advanceTimersByTimeAsync(0);
@@ -375,6 +383,7 @@ describe("multi-destination ping", () => {
     })) };
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 2;
+    config.diagnostics.maxConcurrentDiagnostics = 2;
     const executor = new DiagnosticExecutor(await groupModel(), config, device);
     const controller = new AbortController();
     const running = executor.execute({ ...call, request: { kind: "ping", destinations: ["127.0.0.1", "127.0.0.2", "127.0.0.3"] }, signal: controller.signal });

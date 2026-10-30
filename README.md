@@ -153,7 +153,8 @@ diagnostics:
   maxPingCount: 10
   maxProbesPerRequest: 100
   maxDestinationsPerRequest: 16
-  deviceConcurrency: 5
+  deviceConcurrency: 3
+  maxConcurrentDiagnostics: 32
   pingReplyTimeoutMs: 1000
   commandTimeoutMs: 30000
   httpTimeoutMs: 35000
@@ -190,7 +191,7 @@ Supported config fields:
 
 For read tools, `readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole read-tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized result of device read operations. `eapiVersion` selects the eAPI JSON output schema sent as the `runCmds` `version` parameter: `latest` (the default) returns the current schema for each command, and `1` pins the original schema for consumers that depend on it. It only affects JSON output, so `eos_get_running_config` and `eos_show_logging` are unchanged.
 
-`eos_ping` uses its own configurable `diagnostics` timeouts and per-server concurrency, while sharing `maxReadTargets` and `maxResponseSizeBytes`. Omitted diagnostic settings retain the defaults shown above; invalid or contradictory settings fail validation. Ping requires explicit inventory permission and has no automatic retries. Response IDs and protocol envelopes are validated before output is accepted. When a ping's remote completion is unknown (timeout, cancellation, lost connection), its slot is held for `commandTimeoutMs` and then freed automatically; inspect the running server's `eos_get_server_info.diagnostics.capacity`. Capacity lives in memory, so several MCP servers can use the same inventory at once. See [Network diagnostics](docs/DIAGNOSTICS.md), including the distinction between a reply timeout, command budget, and remote process termination.
+`eos_ping` uses its own configurable `diagnostics` timeouts and concurrency (per device, under a per-server ceiling), while sharing `maxReadTargets` and `maxResponseSizeBytes`. Omitted diagnostic settings retain the defaults shown above; invalid or contradictory settings fail validation. Ping requires explicit inventory permission and has no automatic retries. Response IDs and protocol envelopes are validated before output is accepted. When a ping's remote completion is unknown (timeout, cancellation, lost connection), its slot is held for `commandTimeoutMs` and then freed automatically; inspect the running server's `eos_get_server_info.diagnostics.capacity`. Capacity lives in memory, so several MCP servers can use the same inventory at once. See [Network diagnostics](docs/DIAGNOSTICS.md), including the distinction between a reply timeout, command budget, and remote process termination.
 
 `actor` and `logFile` remain sanitized runtime metadata and do not enable a general tool-call audit log.
 
@@ -605,7 +606,7 @@ Input:
 
 ### `eos_ping`
 
-Runs bounded ping from an inventory host or group to one or more destinations, requiring inherited `mcp_diagnostics_allowed: true`. It generates traffic without changing configuration. Each destination must be a unicast IPv4/IPv6 literal, and duplicates are rejected, including different spellings of the same IPv6 address; use a one-element `destinations` array for a single ping. Destinations run concurrently within the server's diagnostic concurrency, up to 16 per call by default. Optional VRF and source IP apply to every destination and never silently fall back. Count defaults to 3 per destination and is capped at 10 unless changed in settings.
+Runs bounded ping from an inventory host or group to one or more destinations, requiring inherited `mcp_diagnostics_allowed: true`. It generates traffic without changing configuration. Each destination must be a unicast IPv4/IPv6 literal, and duplicates are rejected, including different spellings of the same IPv6 address; use a one-element `destinations` array for a single ping. Destinations run concurrently, up to `diagnostics.deviceConcurrency` at once per device (default 3), with up to 16 destinations per call by default. Optional VRF and source IP apply to every destination and never silently fall back. Count defaults to 3 per destination and is capped at 10 unless changed in settings.
 
 ```json
 {

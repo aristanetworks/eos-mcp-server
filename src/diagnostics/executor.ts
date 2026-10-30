@@ -8,7 +8,6 @@ import {
   buildReadDeviceSuccess,
   buildReadOperationResultEnvelope,
   enforceReadTargetLimit,
-  mapWithConcurrency,
   runWithOperationTimeout,
   type ReadDeviceResultBase,
   type ReadOperationResultEnvelope
@@ -41,7 +40,7 @@ const diagnosticDefinitions: Record<DiagnosticRequest["kind"], DiagnosticDefinit
   ping: pingDiagnostic
 };
 
-/** Owns policy, budgets, fan-out, global admission, cancellation, and result normalization. */
+/** Owns policy, budgets, fan-out, per-device and server-wide admission, cancellation, and result normalization. */
 export class DiagnosticExecutor {
   private readonly concurrency: DiagnosticConcurrency;
   private readonly shutdown = new AbortController();
@@ -51,7 +50,10 @@ export class DiagnosticExecutor {
     private readonly config: ResolvedServerConfig,
     private readonly runner: DiagnosticDeviceRunner
   ) {
-    this.concurrency = new DiagnosticConcurrency(config.diagnostics.deviceConcurrency, config.diagnostics.commandTimeoutMs);
+    this.concurrency = new DiagnosticConcurrency(
+      { serverLimit: config.diagnostics.maxConcurrentDiagnostics, deviceLimit: config.diagnostics.deviceConcurrency },
+      config.diagnostics.commandTimeoutMs
+    );
   }
 
   close(): void {
@@ -75,7 +77,6 @@ export class DiagnosticExecutor {
     const operationName = `eos_${options.request.kind}`;
     const operationConfig: ResolvedServerConfig = {
       ...this.config,
-      deviceConcurrency: this.config.diagnostics.deviceConcurrency,
       overallOperationTimeoutMs: this.config.diagnostics.overallOperationTimeoutMs
     };
 
@@ -90,10 +91,11 @@ export class DiagnosticExecutor {
       throw new AppError("diagnostic_probe_limit_exceeded", `Request exceeds maxProbesPerRequest ${this.config.diagnostics.maxProbesPerRequest}`);
     }
 
-    // Each host/execution pair takes its own reservation; results stay in host-then-execution order.
+    // Each host/execution pair takes its own reservation, and all are queued at once so the admission
+    // controller, not fan-out order, decides which device runs next. Results stay in host-then-execution order.
     const hostExecutions = resolvedTarget.resolvedHosts.flatMap((host) => prepared.executions.map((execution) => ({ host, execution })));
     const results = await runWithOperationTimeout(operationConfig, operationName, (operationSignal) =>
-      mapWithConcurrency(hostExecutions, operationConfig.deviceConcurrency, async ({ host, execution }) => {
+      Promise.all(hostExecutions.map(async ({ host, execution }) => {
         try {
           return await this.runExecution(definition, host, execution, operationSignal, options.includeRaw === true);
         } catch (error) {
@@ -105,7 +107,7 @@ export class DiagnosticExecutor {
               : {})
           };
         }
-      }, operationSignal), signal);
+      })), signal);
 
     return buildReadOperationResultEnvelope(options.target, { resolvedTarget, results, summary: buildDeviceResultSummary(results) }, {
       extra: { request: prepared.request },

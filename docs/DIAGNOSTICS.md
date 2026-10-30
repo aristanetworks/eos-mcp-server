@@ -58,7 +58,8 @@ diagnostics:
   maxPingCount: 10
   maxProbesPerRequest: 100
   maxDestinationsPerRequest: 16
-  deviceConcurrency: 5
+  deviceConcurrency: 3
+  maxConcurrentDiagnostics: 32
   pingReplyTimeoutMs: 1000
   commandTimeoutMs: 30000
   httpTimeoutMs: 35000
@@ -72,14 +73,15 @@ diagnostics:
 | `maxPingCount` | Maximum probes per device and destination |
 | `maxProbesPerRequest` | Maximum resolved host count × destination count × requested probes |
 | `maxDestinationsPerRequest` | Maximum destinations in one `eos_ping` call |
-| `deviceConcurrency` | Diagnostic capacity of one server process, shared by its active and uncertain executions across calls |
+| `deviceConcurrency` | Diagnostic slots one inventory host may hold across all calls, counting active and uncertain executions; must not exceed `maxConcurrentDiagnostics` |
+| `maxConcurrentDiagnostics` | Diagnostic slots of one server process across all devices and calls |
 | `pingReplyTimeoutMs` | EOS per-reply timeout; a positive multiple of 1000 ms |
 | `commandTimeoutMs` | Conservative device execution budget; see lifecycle below |
 | `httpTimeoutMs` | Per-device diagnostic eAPI HTTP timeout, separate from `readTimeoutMs` |
 | `overallOperationTimeoutMs` | Whole diagnostic call deadline, including waiting for global capacity |
 | `nativeRequestTimeout` | Send EOS `runCmds.requestTimeout` set to `commandTimeoutMs`, so the device interrupts a ping that outlives its budget; set `false` for an EOS version that rejects the field |
 
-Diagnostic capacity is held in memory by each server process; nothing is written to disk. Several MCP servers (for example two chat sessions) can run against the same inventory at once, each with its own `deviceConcurrency`. The former `diagnostics.stateFile` setting is rejected with guidance; delete it. Ledger files left under `$XDG_STATE_HOME/eos-mcp-server/` (or `~/.local/state/eos-mcp-server/`) by earlier versions are no longer read and can be deleted. See [ADR 0006](adr/0006-in-memory-timed-diagnostic-capacity.md).
+Diagnostic capacity is held in memory by each server process; nothing is written to disk. Several MCP servers (for example two chat sessions) can run against the same inventory at once, each with its own `deviceConcurrency` and `maxConcurrentDiagnostics`. The former `diagnostics.stateFile` setting is rejected with guidance; delete it. Ledger files left under `$XDG_STATE_HOME/eos-mcp-server/` (or `~/.local/state/eos-mcp-server/`) by earlier versions are no longer read and can be deleted. See [ADR 0006](adr/0006-in-memory-timed-diagnostic-capacity.md).
 
 Existing `maxReadTargets` (default 50) and `maxResponseSizeBytes` (default 1,048,576) also apply. Diagnostic concurrency and timeouts are independent of the corresponding read settings. Effective diagnostic settings are reported by `eos_get_server_info` under `limits.diagnostics`.
 
@@ -97,21 +99,22 @@ Each host/destination execution is one text-mode eAPI request containing `enable
 
 On cEOS 4.34.3M, ping's `timeout` maps to a per-reply wait, not a whole-process deadline. The tool combines finite `repeat`, explicit one-second `interval`, and finite reply timeout; the conservative execution formula above must fit `commandTimeoutMs`. This budget is **not** a remote wall-clock kill timer. It assumes normal EOS command scheduling, not a stalled operating system or an indefinitely queued eAPI command. No remote process termination guarantee is made. The same budget is how long an uncertain slot is held (below).
 
-One admission controller is shared by all diagnostic calls in a server process. A slot is reserved **before** the device runner can dispatch. Confirmed synchronous completion or a locally established rejection before dispatch frees it immediately. Unknown completion after transport loss, HTTP timeout, invalid eAPI payload (including correlated results with missing or non-text output), cancellation, or a post-dispatch RPC error becomes **uncertain**: the slot stays held for `commandTimeoutMs` from that moment, then frees itself. A late confirmed response frees it sooner. RPC interruption errors are not treated as proof of completion. Restarting the server forgets uncertain slots; under normal scheduling the original command has finished within `commandTimeoutMs` of dispatch anyway. If EOS ever queued a request for longer than that, replacement work could overlap it; [ADR 0006](adr/0006-in-memory-timed-diagnostic-capacity.md) accepts that bounded risk for ping.
+One admission controller is shared by all diagnostic calls in a server process. It grants a slot only while the execution's device holds fewer than `deviceConcurrency` slots and the process holds fewer than `maxConcurrentDiagnostics`. Waiters are served oldest first, skipping any whose device is still full, so a ping waiting on a busy device never holds up a later one to a free device ([ADR 0007](adr/0007-per-device-diagnostic-concurrency.md)). A slot is reserved **before** the device runner can dispatch. Confirmed synchronous completion or a locally established rejection before dispatch frees it immediately. Unknown completion after transport loss, HTTP timeout, invalid eAPI payload (including correlated results with missing or non-text output), cancellation, or a post-dispatch RPC error becomes **uncertain**: the slot stays held for `commandTimeoutMs` from that moment, then frees itself. A late confirmed response frees it sooner. RPC interruption errors are not treated as proof of completion. Restarting the server forgets uncertain slots; under normal scheduling the original command has finished within `commandTimeoutMs` of dispatch anyway. If EOS ever queued a request for longer than that, replacement work could overlap it; [ADR 0006](adr/0006-in-memory-timed-diagnostic-capacity.md) accepts that bounded risk for ping.
 
-A request fans out into one execution per resolved host and destination. Executions run concurrently, up to `deviceConcurrency`, through the same admission controller as every other call; each takes and releases its own reservation exactly as a single ping does. Executions are scheduled host by host, in destination order. Queued executions wait for capacity inside the same overall deadline, so size multi-destination requests so that roughly `ceil(executions / available capacity)` successive waves of pings fit within `overallOperationTimeoutMs`; uncertain reservations reduce available capacity. The device can also limit overlap: on cEOS 4.34.3M, eAPI executed at most three commands concurrently per device, and further delivered requests waited on the device while holding their server reservations. A single-host request therefore gains at most that device's eAPI concurrency, even when more server capacity is free.
+A request fans out into one execution per resolved host and destination. All of them queue with the same admission controller as every other call at once; each takes and releases its own reservation exactly as a single ping does. Different devices run in parallel, each up to `deviceConcurrency`, within `maxConcurrentDiagnostics` for the whole process. Queued executions wait for capacity inside the same overall deadline, so size requests so that roughly `ceil(destinations / deviceConcurrency)` successive waves of pings per host fit within `overallOperationTimeoutMs`; uncertain reservations reduce available capacity. The default `deviceConcurrency` of 3 matches cEOS 4.34.3M, where eAPI executed at most three commands concurrently per device and further delivered requests waited on the device while holding their server reservations. Set it to the device's own eAPI concurrency for other platforms.
 
-The overall deadline or MCP cancellation stops scheduling new executions, removes capacity waiters, and aborts in-flight HTTP work. Every in-flight execution of a cancelled multi-destination request becomes uncertain, so one cancellation can hold up to `deviceConcurrency` slots for up to `commandTimeoutMs`; queued executions of that request are never dispatched. An overall timeout is a request-level `operation_timeout`, not a partial-results response. Already completed findings are not returned on that path. Do not blindly retry an interrupted diagnostic.
+The overall deadline or MCP cancellation stops scheduling new executions, removes capacity waiters, and aborts in-flight HTTP work. Every in-flight execution of a cancelled multi-destination request becomes uncertain, so one cancellation can hold up to `deviceConcurrency` slots on each targeted device for up to `commandTimeoutMs`; queued executions of that request are never dispatched. An overall timeout is a request-level `operation_timeout`, not a partial-results response. Already completed findings are not returned on that path. Do not blindly retry an interrupted diagnostic.
 
 ## Uncertain execution and capacity visibility
 
 `eos_get_server_info` returns a fresh `diagnostics.capacity` snapshot for that server process with:
 
-- `limit` and `available_count`.
-- `active_count`, `uncertain_count`, and `queued_count`.
+- `limit` (`maxConcurrentDiagnostics`), `device_limit` (`deviceConcurrency`), and server-wide `available_count`.
+- Server-wide `active_count`, `uncertain_count`, and `queued_count`.
+- `devices`: for each inventory host holding or awaiting a slot, its `available_count` (its own headroom, capped by server-wide availability), `active_count`, `uncertain_count`, and `queued_count`.
 - `reservations`: ID (also the wire RPC ID), inventory hostname, diagnostic kind, state, reservation timestamp, and (when uncertain) uncertainty timestamp, `releases_at`, and machine-readable reason code. Destinations, endpoints, credentials, and original EOS output are not included.
 
-Uncertain slots count against `deviceConcurrency` like active ones. New work queues behind them and is dispatched when a slot frees, within the overall deadline; if the deadline expires first the call fails with `operation_timeout`. If some capacity remains, diagnostics keep running without waiting for uncertain slots.
+Uncertain slots count against their device's `deviceConcurrency` and against `maxConcurrentDiagnostics` like active ones. New work for that device queues behind them and is dispatched when a slot frees, within the overall deadline; if the deadline expires first the call fails with `operation_timeout`. Other devices keep running without waiting for them.
 
 The standalone `print-server-info` CLI has no live executor and reports `diagnostics.capacity: null`, not fabricated available capacity. Inspect the running MCP server for actual reservation state.
 
@@ -134,7 +137,7 @@ Execution `status: "success"` means ping executed and its output was understood.
 
 ## Extension seam
 
-`DiagnosticExecutor.execute` accepts typed diagnostic intent and owns authorization, aggregate budgets, fan-out, fail-closed global admission, cancellation, result envelopes, and response limits. `getCapacity()` exposes a detached snapshot; server-info obtains it at call time rather than caching startup state. `DiagnosticDeviceRunner.execute` accepts inventory identity and one prepared execution; the eAPI adapter owns connection resolution and a single command execution.
+`DiagnosticExecutor.execute` accepts typed diagnostic intent and owns authorization, aggregate budgets, fan-out, fail-closed per-device and server-wide admission, cancellation, result envelopes, and response limits. `getCapacity()` exposes a detached snapshot; server-info obtains it at call time rather than caching startup state. `DiagnosticDeviceRunner.execute` accepts inventory identity and one prepared execution; the eAPI adapter owns connection resolution and a single command execution.
 
 Each diagnostic kind supplies a `DiagnosticDefinition`: `prepare` validates the whole request before dispatch and returns the echoed request plus the executions every resolved host performs, `probeCount` prices one execution against the aggregate budget, and `interpret` turns observed output into a finding. The executor runs every prepared execution on every host and knows nothing kind-specific. Ping's definition, validation, compilation, and interpretation live in `src/diagnostics/ping.ts`; it prepares one execution per destination. Multiple destinations are therefore a property of ping's definition, not of the executor.
 
