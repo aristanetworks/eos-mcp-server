@@ -1,0 +1,15 @@
+# Advertise every tool, including ping, as read-only to MCP clients
+
+Supersedes the tool-annotation reasoning of [ADR 0005](0005-multi-destination-ping.md). Its multi-destination request shape is unchanged.
+
+MCP clients decide from tool annotations whether independent calls may run at the same time. Codex 0.165.0 runs MCP calls concurrently only when the server connection sets `supports_parallel_tool_calls` or the tool advertises `readOnlyHint: true`. Claude Code runs only read-only MCP tools concurrently with each other and has no per-server opt-in; measured on 2026-10-28, six unannotated pings issued in one turn ran strictly one at a time, and overlapping them took one subagent per call. No EOS tool advertised annotations, so show commands were serialized as well as pings.
+
+ADR 0005 declined `readOnlyHint` on `eos_ping` because ping generates traffic and wrote durable reservations. [ADR 0006](0006-in-memory-timed-diagnostic-capacity.md) removed the durable ledger, so ping now writes nothing that outlives the server process. The MCP specification defines `readOnlyHint` as "does not modify its environment." Ping changes no configuration, routing, or other persistent device state; its residue is transient neighbor-cache entries and counters, the same kind of effect a show command leaves in eAPI counters and AAA accounting. Generating bounded probe traffic is observation of the network, not modification of it. [ADR 0001](0001-non-configuring-diagnostics.md) still holds that non-configuring diagnostics are not harmless reads, but annotations are advisory hints that the specification tells clients not to trust for safety; the real controls are server-side and apply regardless of how a client schedules calls.
+
+Every tool now advertises `readOnlyHint: true`. `eos_ping` also advertises `openWorldHint: true`, because its destinations need not be in inventory; the other tools advertise `openWorldHint: false`, because they only reach inventory devices. `destructiveHint` and `idempotentHint` are omitted, since clients ignore them for read-only tools.
+
+Accepted consequences:
+
+- Clients may run several pings, or pings alongside show commands, at once. Inventory diagnostic authorization, packet and destination bounds, per-device and server-wide concurrency ([ADR 0007](0007-per-device-diagnostic-concurrency.md)), and the overall timeout still apply. Concurrent calls that exceed a device's limit queue inside their overall deadline and can time out rather than fail fast.
+- Some clients may also use `readOnlyHint` to relax confirmation prompts, so a user may be asked less often before a ping runs. Ping still requires `mcp_diagnostics_allowed: true` in inventory.
+- A future diagnostic that does change device state or exposes sensitive data, such as packet capture, must not inherit this annotation without its own decision.

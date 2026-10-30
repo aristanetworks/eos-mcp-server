@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import type { z } from "zod";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { EapiDeviceReader, type EosDeviceReader } from "../connection/eosDeviceReader.js";
@@ -20,6 +21,12 @@ import { buildProbeDevicesToolResult, probeDevicesInputSchema } from "./tools/pr
 import { buildRunShowToolResult, runShowInputSchema } from "./tools/runShow.js";
 import { buildShowLoggingToolResult, showLoggingInputSchema } from "./tools/showLogging.js";
 
+// Every tool leaves device state unchanged, which lets clients run independent
+// calls concurrently; server-side limits still bound diagnostics (ADR 0008).
+const closedWorldReadOnly: ToolAnnotations = { readOnlyHint: true, openWorldHint: false };
+// Ping destinations need not be in inventory.
+const openWorldReadOnly: ToolAnnotations = { readOnlyHint: true, openWorldHint: true };
+
 interface McpRuntimeDependencies {
   runtimeContext: ServerRuntimeContext;
   inventoryModel: InventoryModel;
@@ -34,48 +41,56 @@ function buildToolDefinitions(deps: McpRuntimeDependencies) {
       name: "eos_get_server_info",
       description: "Return a sanitized summary of current server capabilities, limits, runtime mode, and inventory summary.",
       inputSchema: getServerInfoInputSchema,
+      annotations: closedWorldReadOnly,
       handler: async () => buildGetServerInfoToolResult(deps.runtimeContext, deps.diagnostics.getCapacity())
     },
     {
       name: "eos_list_inventory",
       description: "Return a sanitized operational view of the loaded inventory. By default only EOS-eligible hosts are shown, while all groups remain visible with actionable status.",
       inputSchema: listInventoryInputSchema,
+      annotations: closedWorldReadOnly,
       handler: async (args: z.infer<typeof listInventoryInputSchema>) => buildListInventoryToolResult(deps.inventoryModel, args)
     },
     {
       name: "eos_probe_devices",
       description: "Probe EOS device readiness for a host or group target by validating connectivity, authentication, and harmless command execution.",
       inputSchema: probeDevicesInputSchema,
+      annotations: closedWorldReadOnly,
       handler: async (args: z.infer<typeof probeDevicesInputSchema>) => buildProbeDevicesToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
     },
     {
       name: "eos_ping",
       description: "Run bounded, non-configuring ping diagnostics from an inventory host or group to one or more destinations concurrently. Requires explicit diagnostic permission. Destinations are unicast IP literals. Returns one result per host and destination; execution success is separate from reachability, and no replies do not identify a cause.",
       inputSchema: pingInputSchema,
+      annotations: openWorldReadOnly,
       handler: async (args: z.infer<typeof pingInputSchema>, extra: { signal: AbortSignal }) => buildPingToolResult(args, deps.diagnostics, extra.signal)
     },
     {
       name: "eos_run_show",
       description: "Run one or more EOS show commands against a host or group target. Supports auto/json/text output modes with strict show-only validation.",
       inputSchema: runShowInputSchema,
+      annotations: closedWorldReadOnly,
       handler: async (args: z.infer<typeof runShowInputSchema>) => buildRunShowToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
     },
     {
       name: "eos_show_logging",
       description: "Retrieve bounded EOS logging output for a host or group target using a minimum severity threshold and message-count limit.",
       inputSchema: showLoggingInputSchema,
+      annotations: closedWorldReadOnly,
       handler: async (args: z.infer<typeof showLoggingInputSchema>) => buildShowLoggingToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
     },
     {
       name: "eos_get_facts",
       description: "Collect a fixed core set of EOS device facts for a host or group target.",
       inputSchema: getFactsInputSchema,
+      annotations: closedWorldReadOnly,
       handler: async (args: z.infer<typeof getFactsInputSchema>) => buildGetFactsToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
     },
     {
       name: "eos_get_running_config",
       description: "Retrieve running configuration text for a host target, or for a group target when a raw EOS section selector is provided.",
       inputSchema: getRunningConfigInputSchema,
+      annotations: closedWorldReadOnly,
       handler: async (args: z.infer<typeof getRunningConfigInputSchema>) => buildGetRunningConfigToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
     }
   ];
@@ -100,7 +115,7 @@ export async function startMcpServer(config: ResolvedServerConfig, inventoryMode
 
   const registerTool = server.registerTool.bind(server) as (
     name: string,
-    config: { description: string; inputSchema: unknown },
+    config: { description: string; inputSchema: unknown; annotations: ToolAnnotations },
     handler: (args: unknown, extra: { signal: AbortSignal }) => Promise<unknown>
   ) => void;
 
@@ -109,7 +124,8 @@ export async function startMcpServer(config: ResolvedServerConfig, inventoryMode
       tool.name,
       {
         description: tool.description,
-        inputSchema: tool.inputSchema
+        inputSchema: tool.inputSchema,
+        annotations: tool.annotations
       },
       tool.handler as (args: unknown, extra: { signal: AbortSignal }) => Promise<unknown>
     );

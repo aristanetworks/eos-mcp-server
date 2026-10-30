@@ -1,5 +1,7 @@
 # Accept multiple destinations in one ping request
 
+Tool-annotation reasoning superseded by [ADR 0008](0008-read-only-tool-annotations.md): every tool, including ping, now advertises `readOnlyHint: true`.
+
 Admission limits refined by [ADR 0007](0007-per-device-diagnostic-concurrency.md): executions now share a per-device limit under a server-wide ceiling instead of one process-wide `deviceConcurrency`.
 
 Testing several destinations from the same target, such as every BGP peer of a switch, required one `eos_ping` call per destination. MCP clients do not reliably run those calls concurrently: measured on 2026-10-28, Claude Code dispatched six pings issued in one turn strictly one at a time, and Codex runs MCP calls serially unless the server connection opts into parallel calls. Labelling ping read-only to change client scheduling would misstate an active diagnostic that generates traffic and writes durable reservations. Instead, `eos_ping` takes `destinations` (one or more unique IP literals) and runs one execution per resolved host and destination concurrently inside the server, so every client gets the same behavior from one call.

@@ -77,6 +77,14 @@ describe("stdio MCP smoke test", () => {
           ).toContain("target");
         }
 
+        // Clients such as Claude Code and Codex only run independent calls
+        // concurrently when the tool advertises readOnlyHint (ADR 0008).
+        const annotationsByTool = Object.fromEntries(tools.tools.map((tool) => [tool.name, tool.annotations]));
+        for (const name of toolNames) {
+          expect(annotationsByTool[name]?.readOnlyHint, `${name} must advertise readOnlyHint`).toBe(true);
+          expect(annotationsByTool[name]?.openWorldHint, `${name} openWorldHint`).toBe(name === "eos_ping");
+        }
+
         const deniedPing = await client.callTool({
           name: "eos_ping",
           arguments: { target: "leaf1", destinations: ["127.0.0.1"] }
