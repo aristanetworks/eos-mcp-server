@@ -1,39 +1,33 @@
 # Concurrent EOS MCP calls in Codex
 
-## Cause and applied change
+## Current behavior
 
-Codex 0.165.0's MCP handler permits parallel calls when either the server connection has `supports_parallel_tool_calls = true` or the tool advertises `annotations.readOnlyHint = true`. Otherwise it defaults to serial execution. EOS tool registrations currently omit annotations, and the project configuration previously omitted the parallel opt-in.
+Codex 0.165.0's MCP handler permits parallel calls when either the server connection has `supports_parallel_tool_calls = true` or the tool advertises `annotations.readOnlyHint = true`. Otherwise it defaults to serial execution.
 
-The project's `.codex/config.toml` now contains:
+Every EOS tool, including `eos_ping`, now advertises `readOnlyHint: true` ([ADR 0008](../docs/adr/0008-read-only-tool-annotations.md)), so Codex runs independent EOS calls concurrently without any client setting. `supports_parallel_tool_calls = true` under `[mcp_servers.eos]` is only needed with server versions that predate the annotation. It is harmless to keep.
 
-```toml
-[mcp_servers.eos]
-supports_parallel_tool_calls = true
-```
+Client concurrency does not bypass the server's limits. Diagnostic permission, packet bounds and the overall timeout still apply, and every eAPI request takes one of its device's shared slots ([ADR 0009](../docs/adr/0009-shared-per-device-eapi-slots.md)):
 
-This is a client scheduling setting. EOS diagnostic permissions, packet bounds, global capacity, cancellation, and durable reservations still apply. Ping remains an active diagnostic; it has not been relabeled as read-only merely to influence scheduling.
+- each device runs at most `deviceConcurrency` requests at once across all calls (default 3, the measured cEOS limit);
+- diagnostics may hold at most `diagnostics.deviceConcurrency` of them per device (default 2), so a slot stays free for show commands;
+- diagnostics across the whole server are capped by `diagnostics.maxConcurrentDiagnostics` (default 32).
 
-## Evidence
+Concurrent pings to different devices therefore overlap fully, while a third concurrent ping from the same device waits for a slot. A single `eos_ping` call with several `destinations` already runs them concurrently on the server.
 
-- Direct stdio requests to the actual EOS server, with a three-second mock at the eAPI client boundary, reached that boundary at the same millisecond and completed together after three seconds. The test used a temporary inventory and separate state directory.
-- Three live ping calls submitted together through this conversation reached diagnostic admission one at a time. A read-only observer of the reservation ledger saw one new active reservation at a time despite three available slots.
-- After editing the configuration, Codex's installed `app-server --strict-config --print-startup-config` accepted it (exit 0). Before the client refreshed, the conversation still completed three pings at 3.85, 8.07, and 12.16 seconds.
-- Subsequent live verification on 2026-10-28 succeeded with server instance `172b506c-8cfc-4508-8a17-bd4463860c02`: three concurrent requests from node2-1, source 10.255.1.3, to 10.255.1.4, 10.255.1.5, and 10.255.1.6 finished at 5.096, 5.184, and 5.038 seconds after submission respectively. Each returned 3/3 replies with zero loss. A read-only observer sampled the live reservation ledger every 50 ms and recorded three simultaneous active diagnostics, confirming execution overlap rather than merely concurrent submission.
-- Two subagents could not call EOS tools: the runtime rejected them with `MCP tool eos/eos_ping is not available to the model`. They sent no pings. This is a separate tool-exposure failure; its exact cause is unproven.
+## Verification
 
-## Activation and verification
+Request three concurrent pings from different devices, for example node2-1, node2-2 and node2-3, each to 10.255.0.1 with ten packets. They should finish in about the time of one ping (about 9 s on the lab), not three times that. To confirm overlap rather than concurrent submission, call `eos_get_server_info` while they run: `diagnostics.capacity.active_count` should be 3, with one active slot under each host in `devices`.
 
-Reload the Codex client or start a fresh session in this project. A one-session explicit override is also available:
+Do not send all three from one device to test client concurrency: with the default diagnostic share of 2, the third waits for a slot by design.
 
-```bash
-codex -c 'mcp_servers.eos.supports_parallel_tool_calls=true'
-```
+## History (2026-10-28)
 
-Then request three concurrent pings from node2-1, source 10.255.1.3, to 10.255.1.4, 10.255.1.5, and 10.255.1.6, three packets each. Verify overlapping active reservations or server dispatch timestamps, as well as total elapsed time. Concurrent completion should be close to one ping operation plus client overhead rather than the sum of three operations. Do not infer overlap from Promise.all alone.
+Before the annotation existed, EOS tools advertised no annotations and Codex ran them serially:
 
-Two uncertain reservations from interrupted earlier operations currently reduce capacity from five to three. Leave them intact unless completing the documented operator recovery procedure. Three slots suffice for this verification.
-
-The project `.codex/config.toml` is Git-ignored; this fix is local. No EOS server source changes were made. Live verification confirms parallel pings now work.
+- Direct stdio requests to the server, with a three-second mock at the eAPI client boundary, reached that boundary at the same millisecond and completed together after three seconds, so the server itself was never the bottleneck.
+- Three live pings submitted together through Codex reached diagnostic admission one at a time, finishing at 3.85, 8.07 and 12.16 seconds.
+- Adding `supports_parallel_tool_calls = true` to the project's Git-ignored `.codex/config.toml` fixed it after a client reload: three pings from node2-1 to 10.255.1.4, 10.255.1.5 and 10.255.1.6 finished at 5.10, 5.18 and 5.04 seconds, each with 3/3 replies. Sampling the server's capacity every 50 ms showed three simultaneous active diagnostics. (The server then kept capacity in a durable SQLite ledger, since replaced by in-memory capacity in [ADR 0006](../docs/adr/0006-in-memory-timed-diagnostic-capacity.md).)
+- Two Codex subagents could not call EOS tools: the runtime rejected them with `MCP tool eos/eos_ping is not available to the model`. That tool-exposure failure is separate, and its cause was not established.
 
 ## Primary sources
 
