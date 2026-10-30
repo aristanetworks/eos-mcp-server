@@ -272,7 +272,6 @@ With just an inventory file:
 
 ```toml
 [mcp_servers.eos]
-supports_parallel_tool_calls = true
 command = "npx"
 args = ["-y", "@aristanetworks/eos-mcp-server", "serve", "--inventory", "/absolute/path/to/inventory.yml"]
 env_vars = ["EOS_MCP_PASSWORD"]
@@ -282,7 +281,6 @@ Or with a [server config file](#server-config-file) for additional options:
 
 ```toml
 [mcp_servers.eos]
-supports_parallel_tool_calls = true
 command = "npx"
 args = ["-y", "@aristanetworks/eos-mcp-server", "serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
 env_vars = ["EOS_MCP_PASSWORD"]
@@ -290,10 +288,11 @@ env_vars = ["EOS_MCP_PASSWORD"]
 
 Every EOS tool, including `eos_ping`, advertises the MCP `readOnlyHint`
 annotation, so Codex and Claude Code can run independent tool calls
-concurrently without further configuration. `supports_parallel_tool_calls = true`
-under `[mcp_servers.eos]` is only needed with servers older than this release,
-which omit the annotation. The server still enforces its configured diagnostic
-permission, concurrency and packet limits ([ADR 0008](docs/adr/0008-read-only-tool-annotations.md)).
+concurrently without further configuration. With older server versions, which
+omit the annotation, add `supports_parallel_tool_calls = true` under
+`[mcp_servers.eos]` to get the same behavior in Codex. The server still enforces
+its configured diagnostic permission, concurrency and packet limits
+([ADR 0008](docs/adr/0008-read-only-tool-annotations.md)).
 A single `eos_ping` call with several `destinations` already runs them
 concurrently on the server, so client concurrency matters for other independent
 calls, such as show commands on different devices or pings that need different
