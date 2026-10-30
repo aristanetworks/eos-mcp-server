@@ -1,5 +1,7 @@
 # Limit diagnostic concurrency per device, under a server-wide ceiling
 
+Refined by [ADR 0009](0009-shared-per-device-eapi-slots.md): reads now share each device's slots, the top-level `deviceConcurrency` (default 3) is the per-device total, and `diagnostics.deviceConcurrency` (default 2) is the diagnostic share.
+
 Refines the admission limit of [ADR 0005](0005-multi-destination-ping.md) and [ADR 0006](0006-in-memory-timed-diagnostic-capacity.md). Their reservation lifecycle, uncertain-slot hold, and no-retry rules are unchanged.
 
 Until now `diagnostics.deviceConcurrency` (default 5) was one first-come pool for the whole server process; despite its name it did not know which device a slot belonged to. Measured on 2026-10-29 against the cEOS 4.34.3M lab, that made a VTEP full mesh (six hosts, five destinations each, one call per host from six concurrent subagents) take turns: each call took all five slots, but the device ran only three pings at a time. Six direct concurrent eAPI pings to one device finished as three at about 2.1 s and three at about 4.3 s. The two extra slots per call sat queued on the device while idle devices waited for capacity, so calls finished one after another about 2 s apart. The single pool also let one unhealthy device block every other: a few uncertain slots on it held the whole server's capacity for `commandTimeoutMs`.

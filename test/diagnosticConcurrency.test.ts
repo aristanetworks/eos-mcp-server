@@ -155,7 +155,7 @@ describe("per-device diagnostic concurrency", () => {
     const laterWaiter = executor.execute(ping("leaf1"));
     await vi.advanceTimersByTimeAsync(0);
     expect(executor.getCapacity().devices).toEqual([
-      { inventory_hostname: "leaf1", available_count: 0, active_count: 1, uncertain_count: 0, queued_count: 2 }
+      { inventory_hostname: "leaf1", available_count: 0, active_count: 1, uncertain_count: 0, queued_count: 2, read_active_count: 0, read_queued_count: 0 }
     ]);
     controller.abort();
     await cancelledRejection;

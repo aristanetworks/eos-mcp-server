@@ -142,7 +142,8 @@ inventory: ./inventory.yml
 actor: lab-user
 readTimeoutMs: 10000
 overallOperationTimeoutMs: 30000
-deviceConcurrency: 5
+deviceConcurrency: 3
+readFanOut: 10
 maxReadTargets: 50
 maxShowCommandsPerRequest: 5
 maxLoggingMessagesPerRequest: 1000
@@ -153,7 +154,7 @@ diagnostics:
   maxPingCount: 10
   maxProbesPerRequest: 100
   maxDestinationsPerRequest: 16
-  deviceConcurrency: 3
+  deviceConcurrency: 2
   maxConcurrentDiagnostics: 32
   pingReplyTimeoutMs: 1000
   commandTimeoutMs: 30000
@@ -176,7 +177,8 @@ Supported config fields:
 - `caFile`
 - `readTimeoutMs`
 - `overallOperationTimeoutMs`
-- `deviceConcurrency`
+- `deviceConcurrency` — eAPI requests one device may run at once across all calls, reads and diagnostics together (default 3, the measured cEOS limit)
+- `readFanOut` — hosts one read call contacts at once (default 10)
 - `maxReadTargets`
 - `maxShowCommandsPerRequest`
 - `maxLoggingMessagesPerRequest`
@@ -606,7 +608,7 @@ Input:
 
 ### `eos_ping`
 
-Runs bounded ping from an inventory host or group to one or more destinations, requiring inherited `mcp_diagnostics_allowed: true`. It generates traffic without changing configuration. Each destination must be a unicast IPv4/IPv6 literal, and duplicates are rejected, including different spellings of the same IPv6 address; use a one-element `destinations` array for a single ping. Destinations run concurrently, up to `diagnostics.deviceConcurrency` at once per device (default 3), with up to 16 destinations per call by default. Optional VRF and source IP apply to every destination and never silently fall back. Count defaults to 3 per destination and is capped at 10 unless changed in settings.
+Runs bounded ping from an inventory host or group to one or more destinations, requiring inherited `mcp_diagnostics_allowed: true`. It generates traffic without changing configuration. Each destination must be a unicast IPv4/IPv6 literal, and duplicates are rejected, including different spellings of the same IPv6 address; use a one-element `destinations` array for a single ping. Destinations run concurrently, up to `diagnostics.deviceConcurrency` at once per device (default 2, leaving a slot of the device's shared eAPI limit for reads), with up to 16 destinations per call by default. Optional VRF and source IP apply to every destination and never silently fall back. Count defaults to 3 per destination and is capped at 10 unless changed in settings.
 
 ```json
 {

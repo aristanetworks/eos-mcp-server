@@ -38,6 +38,7 @@ export async function loadServerConfig(options: CliOptions): Promise<ResolvedSer
     readTimeoutMs: fileConfig.readTimeoutMs,
     overallOperationTimeoutMs: fileConfig.overallOperationTimeoutMs,
     deviceConcurrency: fileConfig.deviceConcurrency,
+    readFanOut: fileConfig.readFanOut,
     maxReadTargets: fileConfig.maxReadTargets,
     maxShowCommandsPerRequest: fileConfig.maxShowCommandsPerRequest,
     maxLoggingMessagesPerRequest: fileConfig.maxLoggingMessagesPerRequest,

@@ -17,9 +17,19 @@ describe("diagnostic settings", () => {
   it("supplies finite defaults without a settings file", async () => {
     const config = await loadServerConfig({ command: "serve" });
     expect(config.diagnostics).toEqual({
-      defaultPingCount: 3, maxPingCount: 10, maxProbesPerRequest: 100, maxDestinationsPerRequest: 16, deviceConcurrency: 3, maxConcurrentDiagnostics: 32,
+      defaultPingCount: 3, maxPingCount: 10, maxProbesPerRequest: 100, maxDestinationsPerRequest: 16, deviceConcurrency: 2, maxConcurrentDiagnostics: 32,
       pingReplyTimeoutMs: 1000, commandTimeoutMs: 30_000, httpTimeoutMs: 35_000, overallOperationTimeoutMs: 60_000, nativeRequestTimeout: true
     });
+    expect(config).toMatchObject({ deviceConcurrency: 3, readFanOut: 10 });
+  });
+
+  it("keeps the diagnostic share within the shared per-device eAPI limit", async () => {
+    await expect(load(["diagnostics:", "  deviceConcurrency: 4"])).rejects.toMatchObject({
+      code: "config_resolved_invalid",
+      message: expect.stringContaining("top-level deviceConcurrency")
+    });
+    const raised = await load(["deviceConcurrency: 6", "readFanOut: 4", "diagnostics:", "  deviceConcurrency: 4"]);
+    expect(raised).toMatchObject({ deviceConcurrency: 6, readFanOut: 4, diagnostics: { deviceConcurrency: 4 } });
   });
 
   it("merges partial settings with diagnostic defaults", async () => {

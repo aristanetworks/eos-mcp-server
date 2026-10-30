@@ -10,6 +10,7 @@ import { toErrorMessage } from "../core/errors.js";
 import { EapiClient } from "../eapi/client.js";
 import { EapiDiagnosticRunner } from "../diagnostics/eapiRunner.js";
 import { DiagnosticExecutor } from "../diagnostics/executor.js";
+import { EapiSlots, eapiSlotLimits } from "../operations/eapiSlots.js";
 import { buildPingToolResult, pingInputSchema } from "./tools/ping.js";
 import type { InventoryModel } from "../inventory/types.js";
 import type { ServerRuntimeContext } from "../serverInfo/types.js";
@@ -106,8 +107,9 @@ export async function startMcpServer(config: ResolvedServerConfig, inventoryMode
   };
 
   const client = new EapiClient();
-  const deviceReader = new EapiDeviceReader(config, client);
-  const diagnostics = new DiagnosticExecutor(inventoryModel, config, new EapiDiagnosticRunner(config, client));
+  const slots = new EapiSlots(eapiSlotLimits(config), config.diagnostics.commandTimeoutMs);
+  const deviceReader = new EapiDeviceReader(config, client, slots);
+  const diagnostics = new DiagnosticExecutor(inventoryModel, config, new EapiDiagnosticRunner(config, client), slots);
 
   const server = new McpServer({
     name: APP_NAME,

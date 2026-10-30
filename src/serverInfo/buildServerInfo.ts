@@ -30,6 +30,7 @@ export function buildServerInfo(context: ServerRuntimeContext, diagnosticCapacit
       read_timeout_ms: context.config.readTimeoutMs,
       overall_operation_timeout_ms: context.config.overallOperationTimeoutMs ?? null,
       device_concurrency: context.config.deviceConcurrency,
+      read_fan_out: context.config.readFanOut,
       max_read_targets: context.config.maxReadTargets,
       max_show_commands_per_request: context.config.maxShowCommandsPerRequest,
       max_logging_messages_per_request: context.config.maxLoggingMessagesPerRequest,
