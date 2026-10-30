@@ -1,6 +1,7 @@
 import type { ResolvedServerConfig } from "../config/schema.js";
 import type { EosCommandResult, EosCommandRunner, EapiOutputMode, RunShowCommandOptions } from "../eapi/types.js";
 import type { InventoryHostModel } from "../inventory/types.js";
+import type { EapiSlots } from "../operations/eapiSlots.js";
 import { resolveEapiConnection } from "./resolveConnection.js";
 
 /**
@@ -18,23 +19,32 @@ export interface EosDeviceReader {
   ): Promise<EosCommandResult[]>;
 }
 
+/** Each request first waits for one of the host's shared eAPI slots and frees it when the request
+ * settles (ADR 0009), so `readTimeoutMs` starts at dispatch, not while queued.
+ */
 export class EapiDeviceReader implements EosDeviceReader {
   constructor(
     private readonly config: ResolvedServerConfig,
-    private readonly runner: EosCommandRunner
+    private readonly runner: EosCommandRunner,
+    private readonly slots: EapiSlots
   ) {}
 
-  runShowCommands(
+  async runShowCommands(
     host: InventoryHostModel,
     commands: string[],
     outputMode: EapiOutputMode,
     options?: RunShowCommandOptions
   ): Promise<EosCommandResult[]> {
-    return this.runner.runShowCommands(
-      resolveEapiConnection(this.config, host),
-      commands,
-      outputMode,
-      options
-    );
+    const release = await this.slots.acquireRead(options?.signal, host.inventoryHostname);
+    try {
+      return await this.runner.runShowCommands(
+        resolveEapiConnection(this.config, host),
+        commands,
+        outputMode,
+        options
+      );
+    } finally {
+      release();
+    }
   }
 }

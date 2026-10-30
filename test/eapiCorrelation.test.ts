@@ -16,6 +16,7 @@ describe("diagnostic completion response correlation", () => {
     });
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
     const model = buildInventoryModel({ diagnosticsAllowed: true, effectiveVars: { ansible_user: "admin", ansible_password: "test-password" } });
     const executor = new DiagnosticExecutor(model, config, new EapiDiagnosticRunner(config, new EapiClient({ postJson })));
     expect((await executor.execute(call)).results[0]?.error_code).toBe("eapi_response_uncorrelated");
@@ -30,6 +31,7 @@ describe("diagnostic completion response correlation", () => {
     }));
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
     const executor = new DiagnosticExecutor(buildInventoryModel({
       diagnosticsAllowed: true, effectiveVars: { ansible_user: "admin", ansible_password: "test-password" }
     }), config, new EapiDiagnosticRunner(config, new EapiClient({ postJson })));
@@ -61,6 +63,7 @@ describe("diagnostic completion response correlation", () => {
     }));
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
     const executor = new DiagnosticExecutor(buildInventoryModel({
       diagnosticsAllowed: true, effectiveVars: { ansible_user: "admin", ansible_password: "test-password" }
     }), config, new EapiDiagnosticRunner(config, new EapiClient({ postJson })));

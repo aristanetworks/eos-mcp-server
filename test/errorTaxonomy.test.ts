@@ -5,7 +5,7 @@ import { getFacts } from "../src/facts/getFacts.js";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import { probeDevices } from "../src/probe/probeDevices.js";
 import { runShow } from "../src/show/runShow.js";
-import { buildConfig, mockRunShowCommands, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
+import { buildConfig, buildEapiSlots, mockRunShowCommands, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
 
 describe("error taxonomy", () => {
   describe("inventory errors", () => {
@@ -164,7 +164,7 @@ describe("error taxonomy", () => {
         model,
         config,
         { target: "leaf1", include_raw: false },
-        new EapiDeviceReader(config, { runShowCommands: vi.fn() })
+        new EapiDeviceReader(config, { runShowCommands: vi.fn() }, buildEapiSlots(config))
       );
 
       expect(result.results[0]?.status).toBe("failed");

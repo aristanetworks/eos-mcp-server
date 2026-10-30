@@ -10,7 +10,7 @@ import { probeDevices } from "../src/probe/probeDevices.js";
 import { runShow } from "../src/show/runShow.js";
 import { showLogging } from "../src/logging/showLogging.js";
 import type { ResolvedServerConfig } from "../src/config/schema.js";
-import { buildConfig, writeTempInventory } from "./helpers.js";
+import { buildConfig, buildEapiSlots, writeTempInventory } from "./helpers.js";
 
 // Match clab/testlab.clab.yaml (prefix: ""); allow older prefixed labs explicitly.
 const LAB_PREFIX = process.env.EOS_MCP_TEST_PREFIX ?? "";
@@ -76,7 +76,7 @@ describe.runIf(INTEGRATION)("integration: EOS read-path tools", () => {
 
     model = await loadInventoryModel(inventoryPath);
     config = buildConfig();
-    runner = new EapiDeviceReader(config, new EapiClient());
+    runner = new EapiDeviceReader(config, new EapiClient(), buildEapiSlots(config));
   }, 30_000);
 
   it("probes a single host successfully", async () => {

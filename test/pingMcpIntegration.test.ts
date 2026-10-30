@@ -56,7 +56,8 @@ describe.runIf(process.env.INTEGRATION === "1")("integration: EOS ping over MCP 
       expect(timedOut.isError).toBe(true);
       const info = await first.callTool({ name: "eos_get_server_info", arguments: {} });
       expect(info.structuredContent).toMatchObject({ diagnostics: { capacity: {
-        limit: 1, available_count: 0, active_count: 0, uncertain_count: 1,
+        device_limit: 1, active_count: 0, uncertain_count: 1,
+        devices: [{ inventory_hostname: "ping1", available_count: 0, active_count: 0, uncertain_count: 1 }],
         reservations: [{ inventory_hostname: "ping1", diagnostic: "ping", state: "uncertain", reason_code: "operation_timeout", releases_at: expect.any(String) }]
       } } });
 

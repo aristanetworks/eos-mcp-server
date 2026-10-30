@@ -16,6 +16,7 @@ const call = { target: "leaf1", request: { kind: "ping" as const, destinations: 
 function createSingleSlotExecutor(runner: EosTextCommandRunner): DiagnosticExecutor {
   const config = buildConfig();
   config.diagnostics.deviceConcurrency = 1;
+  config.diagnostics.maxConcurrentDiagnostics = 1;
   return new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true, effectiveVars: host.effectiveVars }), config,
     new EapiDiagnosticRunner(config, runner));
 }

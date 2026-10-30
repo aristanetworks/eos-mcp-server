@@ -75,15 +75,15 @@ Shared type-narrowing utilities (`isObject`, `readString`, `readBoolean`, `readN
 ## Diagnostic Execution
 
 - `src/diagnostics/executor.ts`: typed diagnostic orchestration, inventory opt-in and probe-budget checks, existing result envelopes, and cancellation. One executor is created per server instance.
-- `src/diagnostics/concurrency.ts`: in-memory admission shared by concurrent calls in one server process. Unknown completion holds a slot for `commandTimeoutMs`, then a timer frees it; a late confirmed response frees it sooner. Shutdown rejects queued work; cancelled waiters are removed.
+- `src/operations/eapiSlots.ts`: in-memory admission shared by every eAPI request in one server process. Reads and diagnostics share each device's slots; diagnostics also have a per-device share and a server-wide ceiling. `EapiDeviceReader` holds a read slot per request. Waiters are served oldest first, skipping those that cannot run yet. Unknown completion holds a slot for `commandTimeoutMs`, then a timer frees it; a late confirmed response frees it sooner. Shutdown rejects queued work; cancelled waiters are removed.
 - `src/diagnostics/eapiRunner.ts`: connection resolution followed by one text eAPI attempt in enable mode. Separate error paths distinguish local rejection before dispatch from uncertain RPC, transport, or malformed-result failures after dispatch; there is no mutable dispatch flag or retry.
 - `src/diagnostics/executionError.ts`: typed `AppError` classification (`not_dispatched`, `completed`, or `unknown`). Only explicitly settled errors permit capacity reuse; ordinary errors remain uncertain.
 - `src/diagnostics/ping.ts`: literal-address/VRF/source/count validation, finite ping command construction, and loss/RTT interpretation. A no-reply finding is not an execution failure.
 - `src/diagnostics/types.ts`: request, prepared intent, observation, and finding types discriminated by diagnostic kind, plus the `DiagnosticDeviceRunner` seam. Only ping is implemented; capture sessions are not pre-modeled.
 
-Diagnostic execution reuses read-operation orchestration with independent settings and global admission. Unknown completion holds capacity for the command budget; HTTP abort is not a remote kill signal. Each server-info call reads `DiagnosticExecutor.getCapacity()` afresh; the standalone CLI reports no live snapshot.
+Diagnostic execution reuses read-operation orchestration with independent settings and per-device admission under a server-wide ceiling. Unknown completion holds capacity for the command budget; HTTP abort is not a remote kill signal. Each server-info call reads `DiagnosticExecutor.getCapacity()` afresh; the standalone CLI reports no live snapshot.
 
-Capacity lives in memory per server process, so several servers can run against one inventory. See [DIAGNOSTICS.md](DIAGNOSTICS.md) and [ADR 0006](adr/0006-in-memory-timed-diagnostic-capacity.md).
+Capacity lives in memory per server process, so several servers can run against one inventory. See [DIAGNOSTICS.md](DIAGNOSTICS.md) [ADR 0006](adr/0006-in-memory-timed-diagnostic-capacity.md), and [ADR 0007](adr/0007-per-device-diagnostic-concurrency.md).
 
 ## MCP Layer
 

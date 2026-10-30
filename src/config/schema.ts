@@ -14,6 +14,7 @@ export const serverConfigFileSchema = z
     readTimeoutMs: z.number().int().positive().optional(),
     overallOperationTimeoutMs: z.number().int().positive().optional(),
     deviceConcurrency: z.number().int().positive().optional(),
+    readFanOut: z.number().int().positive().optional(),
     maxReadTargets: z.number().int().positive().optional(),
     maxShowCommandsPerRequest: z.number().int().positive().optional(),
     maxLoggingMessagesPerRequest: z.number().int().positive().max(9999).optional(),
@@ -41,7 +42,10 @@ export const resolvedServerConfigSchema = z
     caFile: z.string().min(1).optional(),
     readTimeoutMs: z.number().int().positive().default(10_000),
     overallOperationTimeoutMs: z.number().int().positive().optional(),
-    deviceConcurrency: z.number().int().positive().default(5),
+    /** eAPI slots one host may hold across all calls, reads and diagnostics (ADR 0009). */
+    deviceConcurrency: z.number().int().positive().default(3),
+    /** Hosts one read call contacts at once. */
+    readFanOut: z.number().int().positive().default(10),
     maxReadTargets: z.number().int().positive().default(50),
     maxShowCommandsPerRequest: z.number().int().positive().default(5),
     maxLoggingMessagesPerRequest: z.number().int().positive().max(9999).default(1000),
@@ -56,6 +60,15 @@ export const resolvedServerConfigSchema = z
         mcpPasswordEnv: z.string().min(1).optional()
       })
       .default({})
+  })
+  .superRefine((config, context) => {
+    if (config.diagnostics.deviceConcurrency > config.deviceConcurrency) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["diagnostics", "deviceConcurrency"],
+        message: "Must not exceed the top-level deviceConcurrency, which covers reads and diagnostics together"
+      });
+    }
   });
 
 export type ServerConfigFile = z.infer<typeof serverConfigFileSchema>;

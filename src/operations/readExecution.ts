@@ -62,7 +62,7 @@ export async function executeReadOperation<TDeviceResult extends ReadDeviceResul
     config,
     options.operationName,
     (signal) =>
-      mapWithConcurrency(resolvedTarget.resolvedHosts, config.deviceConcurrency, async (host) => {
+      mapWithConcurrency(resolvedTarget.resolvedHosts, config.readFanOut, async (host) => {
         try {
           return await options.run(host, signal);
         } catch (error) {

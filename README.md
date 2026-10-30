@@ -87,7 +87,7 @@ No install step is needed. `npx` downloads the package on first use and caches i
 npx -y @aristanetworks/eos-mcp-server --help
 ```
 
-The [MCP client examples](#connect-to-an-mcp-client) below use `npx`. `-y` skips npm's install confirmation prompt, which an MCP client can't answer. Without a version, npx checks the registry for the latest release each time it launches the server. To pin a specific release, append a version, for example `@aristanetworks/eos-mcp-server@0.8.1-beta`.
+The [MCP client examples](#connect-to-an-mcp-client) below use `npx`. `-y` skips npm's install confirmation prompt, which an MCP client can't answer. Without a version, npx checks the registry for the latest release each time it launches the server. To pin a specific release, append a version, for example `@aristanetworks/eos-mcp-server@0.9.0-beta`.
 
 ### Or install globally
 
@@ -142,7 +142,8 @@ inventory: ./inventory.yml
 actor: lab-user
 readTimeoutMs: 10000
 overallOperationTimeoutMs: 30000
-deviceConcurrency: 5
+deviceConcurrency: 3
+readFanOut: 10
 maxReadTargets: 50
 maxShowCommandsPerRequest: 5
 maxLoggingMessagesPerRequest: 1000
@@ -153,7 +154,8 @@ diagnostics:
   maxPingCount: 10
   maxProbesPerRequest: 100
   maxDestinationsPerRequest: 16
-  deviceConcurrency: 5
+  deviceConcurrency: 2
+  maxConcurrentDiagnostics: 32
   pingReplyTimeoutMs: 1000
   commandTimeoutMs: 30000
   httpTimeoutMs: 35000
@@ -175,7 +177,8 @@ Supported config fields:
 - `caFile`
 - `readTimeoutMs`
 - `overallOperationTimeoutMs`
-- `deviceConcurrency`
+- `deviceConcurrency` — eAPI requests one device may run at once across all calls, reads and diagnostics together (default 3, the measured cEOS limit)
+- `readFanOut` — hosts one read call contacts at once (default 10)
 - `maxReadTargets`
 - `maxShowCommandsPerRequest`
 - `maxLoggingMessagesPerRequest`
@@ -190,7 +193,7 @@ Supported config fields:
 
 For read tools, `readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole read-tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized result of device read operations. `eapiVersion` selects the eAPI JSON output schema sent as the `runCmds` `version` parameter: `latest` (the default) returns the current schema for each command, and `1` pins the original schema for consumers that depend on it. It only affects JSON output, so `eos_get_running_config` and `eos_show_logging` are unchanged.
 
-`eos_ping` uses its own configurable `diagnostics` timeouts and per-server concurrency, while sharing `maxReadTargets` and `maxResponseSizeBytes`. Omitted diagnostic settings retain the defaults shown above; invalid or contradictory settings fail validation. Ping requires explicit inventory permission and has no automatic retries. Response IDs and protocol envelopes are validated before output is accepted. When a ping's remote completion is unknown (timeout, cancellation, lost connection), its slot is held for `commandTimeoutMs` and then freed automatically; inspect the running server's `eos_get_server_info.diagnostics.capacity`. Capacity lives in memory, so several MCP servers can use the same inventory at once. See [Network diagnostics](docs/DIAGNOSTICS.md), including the distinction between a reply timeout, command budget, and remote process termination.
+`eos_ping` uses its own configurable `diagnostics` timeouts and concurrency (per device, under a per-server ceiling), while sharing `maxReadTargets` and `maxResponseSizeBytes`. Omitted diagnostic settings retain the defaults shown above; invalid or contradictory settings fail validation. Ping requires explicit inventory permission and has no automatic retries. Response IDs and protocol envelopes are validated before output is accepted. When a ping's remote completion is unknown (timeout, cancellation, lost connection), its slot is held for `commandTimeoutMs` and then freed automatically; inspect the running server's `eos_get_server_info.diagnostics.capacity`. Capacity lives in memory, so several MCP servers can use the same inventory at once. See [Network diagnostics](docs/DIAGNOSTICS.md), including the distinction between a reply timeout, command budget, and remote process termination.
 
 `actor` and `logFile` remain sanitized runtime metadata and do not enable a general tool-call audit log.
 
@@ -271,7 +274,6 @@ With just an inventory file:
 
 ```toml
 [mcp_servers.eos]
-supports_parallel_tool_calls = true
 command = "npx"
 args = ["-y", "@aristanetworks/eos-mcp-server", "serve", "--inventory", "/absolute/path/to/inventory.yml"]
 env_vars = ["EOS_MCP_PASSWORD"]
@@ -281,19 +283,20 @@ Or with a [server config file](#server-config-file) for additional options:
 
 ```toml
 [mcp_servers.eos]
-supports_parallel_tool_calls = true
 command = "npx"
 args = ["-y", "@aristanetworks/eos-mcp-server", "serve", "--config", "/absolute/path/to/eos-mcp-server.yml"]
 env_vars = ["EOS_MCP_PASSWORD"]
 ```
 
-Set `supports_parallel_tool_calls = true` under `[mcp_servers.eos]` to let
-Codex dispatch independent tool calls, including pings, concurrently. Without
-this opt-in, tools that omit the MCP read-only annotation may run serially even
-when requested together. Reload Codex after changing the setting. The server
-still enforces its configured diagnostic concurrency and packet limits.
+Every EOS tool, including `eos_ping`, advertises the MCP `readOnlyHint`
+annotation, so Codex and Claude Code can run independent tool calls
+concurrently without further configuration. With older server versions, which
+omit the annotation, add `supports_parallel_tool_calls = true` under
+`[mcp_servers.eos]` to get the same behavior in Codex. The server still enforces
+its configured diagnostic permission, concurrency and packet limits
+([ADR 0008](docs/adr/0008-read-only-tool-annotations.md)).
 A single `eos_ping` call with several `destinations` already runs them
-concurrently on the server, so this setting matters for other independent
+concurrently on the server, so client concurrency matters for other independent
 calls, such as show commands on different devices or pings that need different
 VRFs, sources, or counts.
 
@@ -605,7 +608,7 @@ Input:
 
 ### `eos_ping`
 
-Runs bounded ping from an inventory host or group to one or more destinations, requiring inherited `mcp_diagnostics_allowed: true`. It generates traffic without changing configuration. Each destination must be a unicast IPv4/IPv6 literal, and duplicates are rejected, including different spellings of the same IPv6 address; use a one-element `destinations` array for a single ping. Destinations run concurrently within the server's diagnostic concurrency, up to 16 per call by default. Optional VRF and source IP apply to every destination and never silently fall back. Count defaults to 3 per destination and is capped at 10 unless changed in settings.
+Runs bounded ping from an inventory host or group to one or more destinations, requiring inherited `mcp_diagnostics_allowed: true`. It generates traffic without changing configuration. Each destination must be a unicast IPv4/IPv6 literal, and duplicates are rejected, including different spellings of the same IPv6 address; use a one-element `destinations` array for a single ping. Destinations run concurrently, up to `diagnostics.deviceConcurrency` at once per device (default 2, leaving a slot of the device's shared eAPI limit for reads), with up to 16 destinations per call by default. Optional VRF and source IP apply to every destination and never silently fall back. Count defaults to 3 per destination and is capped at 10 unless changed in settings.
 
 ```json
 {

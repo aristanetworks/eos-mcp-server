@@ -34,6 +34,7 @@ export interface ServerInfo {
     read_timeout_ms: number;
     overall_operation_timeout_ms: number | null;
     device_concurrency: number;
+    read_fan_out: number;
     max_read_targets: number;
     max_show_commands_per_request: number;
     max_logging_messages_per_request: number;
@@ -44,6 +45,7 @@ export interface ServerInfo {
       max_probes_per_request: number;
       max_destinations_per_request: number;
       device_concurrency: number;
+      max_concurrent_diagnostics: number;
       ping_reply_timeout_ms: number;
       command_timeout_ms: number;
       http_timeout_ms: number;

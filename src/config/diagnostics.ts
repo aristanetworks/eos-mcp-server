@@ -10,7 +10,8 @@ export const diagnosticsConfigSchema = z.object({
   maxPingCount: positiveInteger.default(10),
   maxProbesPerRequest: positiveInteger.default(100),
   maxDestinationsPerRequest: positiveInteger.default(16),
-  deviceConcurrency: positiveInteger.default(5),
+  deviceConcurrency: positiveInteger.default(2),
+  maxConcurrentDiagnostics: positiveInteger.default(32),
   pingReplyTimeoutMs: positiveInteger.multipleOf(1000).default(1000),
   commandTimeoutMs: positiveInteger.default(30_000),
   httpTimeoutMs: positiveInteger.default(35_000),
@@ -25,6 +26,9 @@ export const diagnosticsConfigSchema = z.object({
   }
   if (config.maxPingCount > config.maxProbesPerRequest) {
     invalid("maxPingCount", "Must not exceed maxProbesPerRequest");
+  }
+  if (config.deviceConcurrency > config.maxConcurrentDiagnostics) {
+    invalid("deviceConcurrency", "Must not exceed maxConcurrentDiagnostics");
   }
   if (pingExecutionBoundMs(config.maxPingCount, config.pingReplyTimeoutMs) > config.commandTimeoutMs) {
     invalid("commandTimeoutMs", "Must cover maxPingCount * (pingReplyTimeoutMs + 1000) + 1000 ms");

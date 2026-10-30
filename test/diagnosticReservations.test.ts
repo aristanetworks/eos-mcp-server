@@ -23,6 +23,7 @@ describe("time-bounded diagnostic reservations", () => {
     const response = new Promise<DiagnosticObservation>((_resolve, reject) => { fail = reject; });
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
     const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, { execute: () => response });
     const pending = executor.execute(call);
     await vi.advanceTimersByTimeAsync(0);
@@ -51,6 +52,7 @@ describe("time-bounded diagnostic reservations", () => {
     const response = new Promise<DiagnosticObservation>((_resolve, reject) => { fail = reject; });
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
     const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, { execute: () => response });
     const context = { instanceId: "instance-1", startedAt: new Date().toISOString(), config };
     const info = () => buildGetServerInfoToolResult(context, executor.getCapacity()).structuredContent;
@@ -72,6 +74,7 @@ describe("time-bounded diagnostic reservations", () => {
     const response = new Promise<DiagnosticObservation>((resolve) => { finish = resolve; });
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
     const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, { execute: () => response });
     const controller = new AbortController();
     const active = executor.execute({ ...call, signal: controller.signal });
@@ -92,6 +95,7 @@ describe("time-bounded diagnostic reservations", () => {
   it("continues using healthy capacity without freeing an uncertain reservation", async () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 2;
+    config.diagnostics.maxConcurrentDiagnostics = 2;
     const runner = { execute: vi.fn().mockRejectedValueOnce(new AppError("eapi_transport_error", "lost")).mockResolvedValue(observation) };
     const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, runner);
     await executor.execute(call);
@@ -134,6 +138,7 @@ describe("time-bounded diagnostic reservations", () => {
     };
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
     const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, runner);
     const first = executor.execute(call);
     await vi.advanceTimersByTimeAsync(35_000);

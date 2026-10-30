@@ -1,6 +1,6 @@
 {
   "name": "@aristanetworks/eos-mcp-server",
-  "version": "0.8.1-beta",
+  "version": "0.9.0-beta",
   "description": "MCP server for Arista EOS eAPI",
   "license": "Apache-2.0",
   "type": "module",

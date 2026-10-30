@@ -8,12 +8,11 @@ import {
   buildReadDeviceSuccess,
   buildReadOperationResultEnvelope,
   enforceReadTargetLimit,
-  mapWithConcurrency,
   runWithOperationTimeout,
   type ReadDeviceResultBase,
   type ReadOperationResultEnvelope
 } from "../operations/readExecution.js";
-import { DiagnosticConcurrency } from "./concurrency.js";
+import { EapiSlots, eapiSlotLimits } from "../operations/eapiSlots.js";
 import { DiagnosticExecutionError } from "./executionError.js";
 import { pingDiagnostic } from "./ping.js";
 import type {
@@ -41,26 +40,27 @@ const diagnosticDefinitions: Record<DiagnosticRequest["kind"], DiagnosticDefinit
   ping: pingDiagnostic
 };
 
-/** Owns policy, budgets, fan-out, global admission, cancellation, and result normalization. */
+/** Owns policy, budgets, fan-out, cancellation, and result normalization. Admission, per device and
+ * server-wide, belongs to the EapiSlots it shares with read tools.
+ */
 export class DiagnosticExecutor {
-  private readonly concurrency: DiagnosticConcurrency;
   private readonly shutdown = new AbortController();
 
+  /** A running server passes its shared `slots`; tests may omit it to get a private instance. */
   constructor(
     private readonly model: InventoryModel,
     private readonly config: ResolvedServerConfig,
-    private readonly runner: DiagnosticDeviceRunner
-  ) {
-    this.concurrency = new DiagnosticConcurrency(config.diagnostics.deviceConcurrency, config.diagnostics.commandTimeoutMs);
-  }
+    private readonly runner: DiagnosticDeviceRunner,
+    private readonly slots = new EapiSlots(eapiSlotLimits(config), config.diagnostics.commandTimeoutMs)
+  ) {}
 
   close(): void {
     this.shutdown.abort(new AppError("diagnostic_server_stopping", "Diagnostic executor is stopping"));
-    this.concurrency.close();
+    this.slots.close();
   }
 
   getCapacity(): DiagnosticCapacitySnapshot {
-    return this.concurrency.snapshot();
+    return this.slots.snapshot();
   }
 
   async execute(options: {
@@ -75,7 +75,6 @@ export class DiagnosticExecutor {
     const operationName = `eos_${options.request.kind}`;
     const operationConfig: ResolvedServerConfig = {
       ...this.config,
-      deviceConcurrency: this.config.diagnostics.deviceConcurrency,
       overallOperationTimeoutMs: this.config.diagnostics.overallOperationTimeoutMs
     };
 
@@ -90,10 +89,11 @@ export class DiagnosticExecutor {
       throw new AppError("diagnostic_probe_limit_exceeded", `Request exceeds maxProbesPerRequest ${this.config.diagnostics.maxProbesPerRequest}`);
     }
 
-    // Each host/execution pair takes its own reservation; results stay in host-then-execution order.
+    // Each host/execution pair takes its own reservation, and all are queued at once so the admission
+    // controller, not fan-out order, decides which device runs next. Results stay in host-then-execution order.
     const hostExecutions = resolvedTarget.resolvedHosts.flatMap((host) => prepared.executions.map((execution) => ({ host, execution })));
     const results = await runWithOperationTimeout(operationConfig, operationName, (operationSignal) =>
-      mapWithConcurrency(hostExecutions, operationConfig.deviceConcurrency, async ({ host, execution }) => {
+      Promise.all(hostExecutions.map(async ({ host, execution }) => {
         try {
           return await this.runExecution(definition, host, execution, operationSignal, options.includeRaw === true);
         } catch (error) {
@@ -105,7 +105,7 @@ export class DiagnosticExecutor {
               : {})
           };
         }
-      }, operationSignal), signal);
+      })), signal);
 
     return buildReadOperationResultEnvelope(options.target, { resolvedTarget, results, summary: buildDeviceResultSummary(results) }, {
       extra: { request: prepared.request },
@@ -140,7 +140,7 @@ export class DiagnosticExecutor {
     request: PreparedDiagnostic,
     signal: AbortSignal
   ): Promise<DiagnosticObservation> {
-    const reservation = await this.concurrency.acquire(signal, { inventoryHostname: host.inventoryHostname, diagnostic: request.kind });
+    const reservation = await this.slots.acquireDiagnostic(signal, { inventoryHostname: host.inventoryHostname, diagnostic: request.kind });
     if (signal.aborted) {
       reservation.complete();
       throw new AppError("operation_aborted", "Diagnostic was cancelled before dispatch");

@@ -62,12 +62,30 @@ export interface DiagnosticReservationInfo {
   reason_code?: string;
 }
 
-export interface DiagnosticCapacitySnapshot {
-  limit: number;
+interface DiagnosticSlotCounts {
   available_count: number;
   active_count: number;
   uncertain_count: number;
   queued_count: number;
+}
+
+/** Slot usage of one inventory host; only hosts holding or awaiting a slot are listed.
+ * The four shared counts are diagnostic slots; `available_count` is the diagnostic headroom,
+ * capped by the host's shared eAPI headroom and server-wide availability.
+ */
+export interface DiagnosticDeviceCapacity extends DiagnosticSlotCounts {
+  inventory_hostname: string;
+  read_active_count: number;
+  read_queued_count: number;
+}
+
+/** Top-level counts are server-wide diagnostics; `devices` breaks them down per host, with reads. */
+export interface DiagnosticCapacitySnapshot extends DiagnosticSlotCounts {
+  limit: number;
+  device_limit: number;
+  /** eAPI slots one host may hold across reads and diagnostics. */
+  eapi_device_limit: number;
+  devices: DiagnosticDeviceCapacity[];
   reservations: DiagnosticReservationInfo[];
 }
 
