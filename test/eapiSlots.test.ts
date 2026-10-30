@@ -5,7 +5,6 @@ import { EapiSlots } from "../src/operations/eapiSlots.js";
 import { buildConfig, buildHost, setTestPasswordEnv } from "./helpers.js";
 
 const limits = { deviceLimit: 3, diagnosticDeviceLimit: 2, diagnosticServerLimit: 32 };
-const neverAborted = new AbortController().signal;
 const showVersion: EosCommandResult = { command: "show version", output_format: "json", output: {} };
 
 function ping(inventoryHostname = "leaf1") {
@@ -30,11 +29,11 @@ async function flush(): Promise<void> {
 describe("shared per-device eAPI slots", () => {
   it("keeps a slot free for reads when diagnostics reach their per-device share", async () => {
     const slots = new EapiSlots(limits, 30_000);
-    await slots.acquireDiagnostic(neverAborted, ping());
-    await slots.acquireDiagnostic(neverAborted, ping());
+    await slots.acquireDiagnostic(undefined, ping());
+    await slots.acquireDiagnostic(undefined, ping());
     let thirdPingGranted = false;
-    void slots.acquireDiagnostic(neverAborted, ping()).then(() => { thirdPingGranted = true; });
-    const releaseRead = await slots.acquireRead(neverAborted, "leaf1");
+    void slots.acquireDiagnostic(undefined, ping()).then(() => { thirdPingGranted = true; });
+    const releaseRead = await slots.acquireRead(undefined, "leaf1");
     await flush();
     expect(thirdPingGranted).toBe(false);
     expect(slots.snapshot().devices).toEqual([{
@@ -48,12 +47,12 @@ describe("shared per-device eAPI slots", () => {
 
   it("makes reads and diagnostics share the device limit, serving waiters oldest first", async () => {
     const slots = new EapiSlots(limits, 30_000);
-    const releaseFirstRead = await slots.acquireRead(neverAborted, "leaf1");
-    await slots.acquireRead(neverAborted, "leaf1");
-    await slots.acquireRead(neverAborted, "leaf1");
+    const releaseFirstRead = await slots.acquireRead(undefined, "leaf1");
+    await slots.acquireRead(undefined, "leaf1");
+    await slots.acquireRead(undefined, "leaf1");
     const granted: string[] = [];
-    void slots.acquireDiagnostic(neverAborted, ping()).then(() => granted.push("ping"));
-    void slots.acquireRead(neverAborted, "leaf1").then(() => granted.push("read"));
+    void slots.acquireDiagnostic(undefined, ping()).then(() => granted.push("ping"));
+    void slots.acquireRead(undefined, "leaf1").then(() => granted.push("read"));
     await flush();
     expect(granted).toEqual([]);
     expect(slots.snapshot()).toMatchObject({
@@ -69,15 +68,15 @@ describe("shared per-device eAPI slots", () => {
 
   it("does not limit reads on one device by diagnostics on another", async () => {
     const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1 }, 30_000);
-    await slots.acquireDiagnostic(neverAborted, ping("leaf1"));
-    const releaseRead = await slots.acquireRead(neverAborted, "leaf2");
+    await slots.acquireDiagnostic(undefined, ping("leaf1"));
+    const releaseRead = await slots.acquireRead(undefined, "leaf2");
     expect(slots.snapshot()).toMatchObject({ available_count: 0, devices: [{ inventory_hostname: "leaf1" }, { inventory_hostname: "leaf2", read_active_count: 1 }] });
     releaseRead();
   });
 
   it("removes a cancelled read waiter", async () => {
     const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1 }, 30_000);
-    await slots.acquireRead(neverAborted, "leaf1");
+    await slots.acquireRead(undefined, "leaf1");
     const controller = new AbortController();
     const waiting = slots.acquireRead(controller.signal, "leaf1");
     expect(slots.snapshot().devices[0]?.read_queued_count).toBe(1);

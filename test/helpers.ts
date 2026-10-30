@@ -8,6 +8,7 @@ import type { EosDeviceReader } from "../src/connection/eosDeviceReader.js";
 import type { EapiConnectionConfig } from "../src/eapi/types.js";
 import type { EapiTransport } from "../src/eapi/transport.js";
 import type { InventoryHostModel, InventoryModel } from "../src/inventory/types.js";
+import { EapiSlots, eapiSlotLimits } from "../src/operations/eapiSlots.js";
 
 /** Fixture EOS server: echo protocol identity around abbreviated result/error payloads.
  * Explicit fields override defaults; missing-envelope tests must use a raw transport.
@@ -58,6 +59,11 @@ export function buildConfig(overrides: Partial<ResolvedServerConfig> = {}): Reso
     defaultConnection: {},
     ...overrides
   };
+}
+
+/** The shared eAPI slots a server would build from `config`. */
+export function buildEapiSlots(config: ResolvedServerConfig = buildConfig()): EapiSlots {
+  return new EapiSlots(eapiSlotLimits(config), config.diagnostics.commandTimeoutMs);
 }
 
 export function setTestPasswordEnv(value = "secret", name = "EOS_MCP_PASSWORD"): void {

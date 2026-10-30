@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { EapiDeviceReader } from "../src/connection/eosDeviceReader.js";
-import { buildConfig, buildHost, setTestPasswordEnv } from "./helpers.js";
+import { buildConfig, buildEapiSlots, buildHost, setTestPasswordEnv } from "./helpers.js";
 
 describe("EapiDeviceReader", () => {
   it("resolves the inventory host connection before delegating command intent", async () => {
@@ -14,7 +14,8 @@ describe("EapiDeviceReader", () => {
       buildConfig({
         defaultConnection: { ansibleUser: "admin", mcpPasswordEnv: "EOS_MCP_PASSWORD" }
       }),
-      runner
+      runner,
+      buildEapiSlots()
     );
 
     const result = await reader.runShowCommands(

@@ -1,5 +1,6 @@
 import { EapiDeviceReader } from "../connection/eosDeviceReader.js";
 import { EapiClient } from "../eapi/client.js";
+import { EapiSlots, eapiSlotLimits } from "../operations/eapiSlots.js";
 import { loadInventoryModel } from "../inventory/loadInventory.js";
 import { probeDevices } from "../probe/probeDevices.js";
 import { AppError } from "../core/errors.js";
@@ -16,7 +17,7 @@ export async function runProbe(config: ResolvedServerConfig, target: string, asJ
     model,
     config,
     { target, include_raw: false },
-    new EapiDeviceReader(config, new EapiClient())
+    new EapiDeviceReader(config, new EapiClient(), new EapiSlots(eapiSlotLimits(config), config.diagnostics.commandTimeoutMs))
   );
 
   if (asJson) {

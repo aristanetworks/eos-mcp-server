@@ -99,26 +99,23 @@ export class EapiSlots {
       else entry.read_queued_count += 1;
     }
     for (const entry of devices.values()) {
-      const diagnosticsHeld = entry.active_count + entry.uncertain_count;
-      const diagnosticHeadroom = this.limits.diagnosticDeviceLimit - diagnosticsHeld;
-      const deviceHeadroom = this.limits.deviceLimit - diagnosticsHeld - entry.read_active_count;
-      entry.available_count = Math.max(0, Math.min(diagnosticHeadroom, deviceHeadroom, serverAvailable));
+      entry.available_count = this.diagnosticHeadroom(entry.active_count + entry.uncertain_count, entry.read_active_count, serverAvailable);
     }
     return Array.from(devices.values()).sort((left, right) => left.inventory_hostname.localeCompare(right.inventory_hostname));
   }
 
   /** Waits for a read slot on the host; the returned function frees it. */
-  acquireRead(signal: AbortSignal, inventoryHostname: string): Promise<() => void> {
+  acquireRead(signal: AbortSignal | undefined, inventoryHostname: string): Promise<() => void> {
     return this.enqueue(signal, inventoryHostname, false, () => this.reserveRead(inventoryHostname));
   }
 
-  acquireDiagnostic(signal: AbortSignal, intent: DiagnosticReservationIntent): Promise<DiagnosticReservation> {
+  acquireDiagnostic(signal: AbortSignal | undefined, intent: DiagnosticReservationIntent): Promise<DiagnosticReservation> {
     return this.enqueue(signal, intent.inventoryHostname, true, () => this.reserveDiagnostic(intent));
   }
 
-  private enqueue<TSlot>(signal: AbortSignal, inventoryHostname: string, isDiagnostic: boolean, reserve: () => TSlot): Promise<TSlot> {
+  private enqueue<TSlot>(signal: AbortSignal | undefined, inventoryHostname: string, isDiagnostic: boolean, reserve: () => TSlot): Promise<TSlot> {
     return new Promise((resolve, reject) => {
-      if (signal.aborted) {
+      if (signal?.aborted === true) {
         reject(abortedError());
         return;
       }
@@ -131,15 +128,16 @@ export class EapiSlots {
         if (index >= 0) this.waiting.splice(index, 1);
         waiter.reject(abortedError());
       };
+      const stopListening = (): void => signal?.removeEventListener("abort", cancelled);
       const waiter: Waiter = {
         inventoryHostname,
         isDiagnostic,
         reject: (error) => {
-          signal.removeEventListener("abort", cancelled);
+          stopListening();
           reject(error);
         },
         grant: () => {
-          signal.removeEventListener("abort", cancelled);
+          stopListening();
           resolve(reserve());
         }
       };
@@ -147,7 +145,7 @@ export class EapiSlots {
         waiter.grant();
       } else {
         this.waiting.push(waiter);
-        signal.addEventListener("abort", cancelled, { once: true });
+        signal?.addEventListener("abort", cancelled, { once: true });
       }
     });
   }
@@ -155,9 +153,17 @@ export class EapiSlots {
   private hasRoom(waiter: Waiter): boolean {
     const diagnosticsHeld = this.diagnosticSlotsHeldBy(waiter.inventoryHostname);
     const readsHeld = this.readsHeldByDevice.get(waiter.inventoryHostname) ?? 0;
-    if (diagnosticsHeld + readsHeld >= this.limits.deviceLimit) return false;
-    if (!waiter.isDiagnostic) return true;
-    return diagnosticsHeld < this.limits.diagnosticDeviceLimit && this.reservations.size < this.limits.diagnosticServerLimit;
+    if (!waiter.isDiagnostic) return diagnosticsHeld + readsHeld < this.limits.deviceLimit;
+    return this.diagnosticHeadroom(diagnosticsHeld, readsHeld, this.limits.diagnosticServerLimit - this.reservations.size) > 0;
+  }
+
+  /** Diagnostic slots a host could take now: the tightest of its diagnostic share, its shared device
+   * slots, and the server-wide diagnostic slots still free. Admission and the snapshot both use it.
+   */
+  private diagnosticHeadroom(diagnosticsHeld: number, readsHeld: number, serverAvailable: number): number {
+    const diagnosticShareLeft = this.limits.diagnosticDeviceLimit - diagnosticsHeld;
+    const deviceSlotsLeft = this.limits.deviceLimit - diagnosticsHeld - readsHeld;
+    return Math.max(0, Math.min(diagnosticShareLeft, deviceSlotsLeft, serverAvailable));
   }
 
   /** Counted from the held reservations, which never exceed the server-wide diagnostic limit. */

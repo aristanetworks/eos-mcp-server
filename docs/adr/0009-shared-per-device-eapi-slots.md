@@ -29,7 +29,7 @@ One admission controller per server process (`src/operations/eapiSlots.ts`, gene
 - Pings alone can never fill a device: a read waits only for other reads ahead of it, never for pings. Concurrent pings per device drop from three to two.
 - Many concurrent reads to one device now queue in the server instead of on the device, so a read's `readTimeoutMs` no longer includes time spent behind other requests.
 - The `diagnostics.capacity` snapshot keeps its server-wide diagnostic counts and adds `eapi_device_limit`, plus `read_active_count` and `read_queued_count` for each listed host. Server info adds `limits.read_fan_out`.
-- The `probe-devices` CLI command runs outside the server and does not use shared slots.
+- The `probe` CLI command runs in its own process, so it builds its own slots from the same settings.
 - Other platforms may run more or fewer concurrent eAPI requests; both per-device limits stay configurable.
 
 ## Alternatives considered
