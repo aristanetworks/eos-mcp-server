@@ -99,6 +99,7 @@ export function buildHost(overrides: Partial<InventoryHostModel> = {}): Inventor
     eligible: true,
     readAllowed: true,
     diagnosticsAllowed: false,
+    packetCaptureAllowed: false,
     ineligibilityReasons: [],
     groupMemberships: [],
     ...overrides

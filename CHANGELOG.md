@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Adds **Packet Capture Permission**: the inventory variable `mcp_packet_capture_allowed`, denied by default and inherited like `mcp_diagnostics_allowed`. A host is capture-allowed only when it is read-allowed, diagnostics-allowed and opted in, so read denial or a missing diagnostic opt-in also denies capture. Non-boolean values fail validation. `eos_list_inventory` reports `packet_capture_allowed` per host, and `validate-inventory --json` now includes `hosts` with each host's `read_allowed`, `diagnostics_allowed` and `packet_capture_allowed`. No capture tool exists yet. Captures can reveal cleartext secrets in decoded protocols, such as SNMPv1/v2c community strings; see [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md) and [ADR 0010](docs/adr/0010-bounded-synchronous-packet-capture.md).
+
 ## 0.9.0-beta
 
 - **Breaking:** `diagnostics.deviceConcurrency` now limits each device instead of the whole server process, and its default drops from 5 to 3, the measured cEOS 4.34.3M eAPI concurrency. The new `diagnostics.maxConcurrentDiagnostics` (default 32) caps the whole server; `deviceConcurrency` must not exceed it. Pings to different devices no longer queue behind one another, a ping waiting on a busy device no longer holds up one to a free device, and uncertain slots on one device no longer block others. A configuration that used `deviceConcurrency` to cap the whole server should also set `maxConcurrentDiagnostics`. The capacity snapshot adds `device_limit` and a per-host `devices` breakdown, and server info adds `limits.diagnostics.max_concurrent_diagnostics`. See [ADR 0007](docs/adr/0007-per-device-diagnostic-concurrency.md).

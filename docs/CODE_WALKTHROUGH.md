@@ -35,7 +35,7 @@ Supporting inventory modules:
 - `src/inventory/internalTypes.ts` / `src/inventory/internalUtils.ts`: shared types and helpers used across the parsing/normalization/validation pipeline.
 - `src/inventory/effectiveVars.ts`: global/group/host variable inheritance and same-depth conflict handling.
 - `src/inventory/graph.ts`: group parent maps, group depths, host lineage, direct memberships, and resolved group hosts.
-- `src/inventory/policy.ts`: EOS eligibility and read access evaluation, including `mcp_read_allowed` and the explicit `mcp_diagnostics_allowed` opt-in (read denial vetoes both).
+- `src/inventory/policy.ts`: EOS eligibility and read access evaluation, including `mcp_read_allowed`, the explicit `mcp_diagnostics_allowed` opt-in, and the `mcp_packet_capture_allowed` opt-in above it (read denial vetoes all three; a missing diagnostic opt-in vetoes capture).
 - `src/inventory/resolveTarget.ts`: host/group target resolution and policy fail-closed checks.
 - `src/inventory/listInventoryView.ts`: sanitized inventory view for MCP output.
 

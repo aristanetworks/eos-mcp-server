@@ -292,3 +292,48 @@ describe("inventory validation", () => {
     expect(result.errors.some((error) => error.code === "inventory_platform_conflict")).toBe(true);
   });
 });
+
+describe("packet capture permission", () => {
+  async function captureModel(hostVars: string[]) {
+    return loadInventoryModel(await writeTempInventory([
+      "vars:", "  ansible_network_os: eos",
+      "groups:", "  capture_ok:", "    hosts: [leaf1, leaf2]", "    vars:",
+      "      mcp_diagnostics_allowed: true", "      mcp_packet_capture_allowed: true",
+      "hosts:", "  leaf1: {}", "  leaf2:", ...(hostVars.length > 0 ? hostVars.map((line) => `    ${line}`) : ["    ansible_host: leaf2"])
+    ]));
+  }
+
+  it("makes group members capture-allowed when inherited with read and diagnostic permission", async () => {
+    const model = await captureModel([]);
+    expect(model.hostMap.get("leaf1")?.packetCaptureAllowed).toBe(true);
+    expect(model.hostMap.get("leaf2")?.packetCaptureAllowed).toBe(true);
+  });
+
+  it("denies capture to a host without diagnostic permission", async () => {
+    const model = await captureModel(["mcp_diagnostics_allowed: false"]);
+    expect(model.hostMap.get("leaf2")?.packetCaptureAllowed).toBe(false);
+  });
+
+  it("denies capture to a read-denied host even with diagnostic and capture opt-ins", async () => {
+    const model = await captureModel(["mcp_read_allowed: false"]);
+    expect(model.hostMap.get("leaf2")?.packetCaptureAllowed).toBe(false);
+  });
+
+  it("denies capture by default to a diagnostics-allowed host", async () => {
+    const model = await loadInventoryModel(await writeTempInventory([
+      "hosts:", "  leaf1:", "    ansible_network_os: eos", "    mcp_diagnostics_allowed: true"
+    ]));
+    expect(model.hostMap.get("leaf1")?.diagnosticsAllowed).toBe(true);
+    expect(model.hostMap.get("leaf1")?.packetCaptureAllowed).toBe(false);
+  });
+
+  it("strictly validates the capture opt-in instead of accepting truthy strings", async () => {
+    const result = await validateInventory(await writeTempInventory([
+      "hosts:", "  leaf1:", "    ansible_network_os: eos", '    mcp_packet_capture_allowed: "true"'
+    ]));
+    expect(result.ok).toBe(false);
+    expect(result.errors).toEqual(expect.arrayContaining([expect.objectContaining({
+      code: "inventory_var_type_invalid", path: "hosts.leaf1.mcp_packet_capture_allowed"
+    })]));
+  });
+});

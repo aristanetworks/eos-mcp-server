@@ -35,6 +35,8 @@ Canonical Ansible-style YAML and simplified YAML are supported. Structural keys 
 
 `mcp_diagnostics_allowed` defaults to `false` and must explicitly resolve to boolean `true` to permit diagnostics. It follows existing inheritance; EOS eligibility and read permission are prerequisites. Mixed diagnostic permission in a group fails the entire request before dispatch.
 
+`mcp_packet_capture_allowed` defaults to `false` and must explicitly resolve to boolean `true` to permit packet capture. It follows the same inheritance and requires diagnostic permission, so read ⊂ diagnostics ⊂ capture. See [ADR 0010](adr/0010-bounded-synchronous-packet-capture.md).
+
 ## Connection security
 
 - HTTPS is required.

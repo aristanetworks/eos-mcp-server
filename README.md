@@ -436,6 +436,7 @@ still using their individual credentials.
 - `mcp_read_allowed` defaults to `true` for eligible EOS hosts. Set it to `false` — inherited like any other variable — to explicitly deny read access to a host or group.
 - Read operations fail closed if the resolved target contains ineligible or read-denied hosts.
 - `mcp_diagnostics_allowed` defaults to `false`. Set this inherited boolean to `true` to permit `eos_ping`; read denial still vetoes diagnostics. A mixed-permission group fails before any dispatch.
+- `mcp_packet_capture_allowed` defaults to `false`. This inherited boolean is the packet capture opt-in, the top of a permission ladder: a host is capture-allowed only when it is read-allowed, `mcp_diagnostics_allowed: true`, and `mcp_packet_capture_allowed: true`. Captures return decoded packets and can reveal cleartext secrets in those protocols, such as SNMPv1/v2c community strings. No capture tool exists yet. See [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md).
 - A diagnostic destination is distinct from the inventory target and may be an address outside inventory.
 
 ## Connection and authentication
@@ -543,6 +544,8 @@ Default behavior performs:
 
 Use `--inventory-only` to skip the startup connection checks.
 
+With `--json`, a valid inventory's result includes `hosts`, the same per-host entries `eos_list_inventory` returns with ineligible hosts included, so `read_allowed`, `diagnostics_allowed` and `packet_capture_allowed` can be checked before serving.
+
 ### `print-server-info`
 
 Print the server's sanitized runtime/config summary.
@@ -583,7 +586,7 @@ Input:
 
 ### `eos_list_inventory`
 
-Returns a sanitized view of the loaded inventory.
+Returns a sanitized view of the loaded inventory. Each host reports `eligible`, `read_allowed`, `diagnostics_allowed` and `packet_capture_allowed`.
 
 Input:
 

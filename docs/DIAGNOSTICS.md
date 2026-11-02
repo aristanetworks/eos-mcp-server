@@ -19,7 +19,20 @@ hosts:
     ansible_host: 192.0.2.11
 ```
 
-`mcp_read_allowed: false` also denies diagnostics, regardless of the opt-in. Every resolved host must be eligible and authorized; a mixed-permission group fails before any commands are dispatched. `eos_list_inventory` reports `diagnostics_allowed` per host. Group resolution deduplicates hosts and preserves the existing alphabetical result ordering.
+`mcp_read_allowed: false` also denies diagnostics, regardless of the opt-in. Every resolved host must be eligible and authorized; a mixed-permission group fails before any commands are dispatched. `eos_list_inventory` and `validate-inventory --json` report `diagnostics_allowed` per host. Group resolution deduplicates hosts and preserves the existing alphabetical result ordering.
+
+Packet capture needs a further opt-in, `mcp_packet_capture_allowed`. It defaults to `false`, must resolve to boolean `true`, and is inherited like `mcp_diagnostics_allowed`. Permissions form a ladder, read ⊂ diagnostics ⊂ packet capture: a host is capture-allowed only when it is read-allowed, has `mcp_diagnostics_allowed: true`, and has `mcp_packet_capture_allowed: true`, so `mcp_read_allowed: false` or a missing diagnostic opt-in also denies capture. `eos_list_inventory` and `validate-inventory --json` report `packet_capture_allowed` per host. No capture tool exists yet.
+
+```yaml
+groups:
+  capture_ok:
+    hosts: [leaf1]
+    vars:
+      mcp_diagnostics_allowed: true
+      mcp_packet_capture_allowed: true
+```
+
+Grant capture deliberately. A capture returns tcpdump's decoded summary of each packet, which can reveal cleartext secrets in the protocols it decodes, for example SNMPv1/v2c community strings. Anyone who can read the MCP results can see them.
 
 Use EOS AAA to restrict the credential to the intended operational commands. Ping requires enable mode on the tested EOS version. There is no SSH, device-shell, or MCP-host-shell fallback. Explicit diagnostic opt-in authorizes probes to arbitrary supported destinations reachable from the selected routing context; it is not a destination allowlist. Use network policy/ACLs if additional destination restrictions are required.
 
