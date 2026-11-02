@@ -2,9 +2,9 @@ import { isIP } from "node:net";
 import type { DiagnosticsConfig } from "../config/diagnostics.js";
 import { pingExecutionBoundMs } from "../config/diagnostics.js";
 import { AppError } from "../core/errors.js";
-import type { DiagnosticDefinition, PingExecutionRequest, PingFinding, PingRequest, PreparedPing } from "./types.js";
+import type { DiagnosticDefinition, DiagnosticOutputObservation, PingExecutionRequest, PingFinding, PingRequest, PreparedPing } from "./types.js";
 
-export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing> = {
+export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing, DiagnosticOutputObservation> = {
   permission: {
     allows: (host) => host.diagnosticsAllowed,
     deniedCode: "diagnostic_policy_denied",
@@ -33,7 +33,7 @@ export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing> = {
   overallOperationTimeoutMs: (config) => config.overallOperationTimeoutMs,
   uncertainHoldMs: (_execution, config) => config.commandTimeoutMs,
   resultIdentity: (execution) => ({ destination: execution.destination }),
-  interpret: (output, execution) => parsePingOutput(output, execution.count)
+  interpret: (observation, execution) => parsePingOutput(observation.output, execution.count)
 };
 
 export function preparePing(request: PingExecutionRequest, config: DiagnosticsConfig): PreparedPing {

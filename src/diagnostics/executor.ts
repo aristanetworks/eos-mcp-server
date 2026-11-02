@@ -125,15 +125,17 @@ export class DiagnosticExecutor {
     includeRaw: boolean
   ): Promise<DiagnosticDeviceResult> {
     const observation = await this.executeOnDevice(host, execution, definition.uncertainHoldMs(execution, this.config.diagnostics), signal);
+    // An observation without output, such as a capture ended by the device timer, has no raw evidence.
+    const rawOutput = "output" in observation ? observation.output : undefined;
     try {
       return buildReadDeviceSuccess(host, {
         ...definition.resultIdentity(execution),
-        finding: definition.interpret(observation.output, execution),
-        ...(includeRaw ? { raw_output: observation.output } : {})
+        finding: definition.interpret(observation, execution),
+        ...(includeRaw && rawOutput !== undefined ? { raw_output: rawOutput } : {})
       });
     } catch (error) {
-      if (error instanceof AppError && includeRaw) {
-        throw new AppError(error.code, error.message, { raw_output: observation.output });
+      if (error instanceof AppError && includeRaw && rawOutput !== undefined) {
+        throw new AppError(error.code, error.message, { raw_output: rawOutput });
       }
       throw error;
     }

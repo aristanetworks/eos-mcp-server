@@ -94,6 +94,25 @@ describe("packet capture execution", () => {
     expect((await executor.execute(leaf1Capture)).summary.success_count).toBe(1);
   });
 
+  it("reports a capture ended by the device timer as a successful unfilled finding and frees its slot at once", async () => {
+    const device = { execute: vi.fn<DiagnosticDeviceRunner["execute"]>()
+      .mockResolvedValueOnce({ kind: "packet_capture", deviceTimeLimitReached: true })
+      .mockResolvedValue(observation) };
+    const config = buildConfig();
+    config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
+    const executor = new DiagnosticExecutor(await captureModel(), config, device);
+    const leaf1Capture = { ...call, target: "leaf1", request: { ...call.request, window_seconds: 5 } };
+    const unfilled = await executor.execute({ ...leaf1Capture, includeRaw: true });
+    expect(unfilled.summary).toEqual({ total_count: 1, success_count: 1, failed_count: 0 });
+    expect(unfilled.results).toEqual([{
+      inventory_hostname: "leaf1", resolved_endpoint: "leaf1", status: "success",
+      finding: { kind: "packet_capture", capture: "unfilled", requested_packet_count: 2, window_seconds: 5, packets: [] }
+    }]);
+    expect(executor.getCapacity()).toMatchObject({ available_count: 1, active_count: 0, uncertain_count: 0, reservations: [] });
+    expect((await executor.execute(leaf1Capture)).results[0]).toMatchObject({ status: "success", finding: { capture: "complete" } });
+  });
+
   it("bounds the whole call by captureOverallOperationTimeoutMs rather than ping's deadline", async () => {
     vi.useFakeTimers();
     const device = { execute: vi.fn((_host, _execution, { signal }: DiagnosticExecutionContext) => new Promise<DiagnosticObservation>((_resolve, reject) => {

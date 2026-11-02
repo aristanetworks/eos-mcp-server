@@ -50,16 +50,17 @@ describe.runIf(process.env.INTEGRATION === "1")("integration: bounded EOS packet
     expect(result.results[1]).toMatchObject({ inventory_hostname: "peer1", status: "failed", error_code: "eapi_json_rpc_error" });
   }, 20_000);
 
-  it("is stopped by the device timer at its window and holds the slot uncertain for window + 2 s", async () => {
+  it("is stopped by the device timer at its window and reports an unfilled finding, freeing the slot at once", async () => {
     const execute = await executor();
     const startedAt = Date.now();
     const result = await execute.execute({ target: "capture1", request: { kind: "packet_capture", interface: "Ethernet1", filter: "udp port 9", packet_count: 1, window_seconds: 2 } });
     const elapsedMs = Date.now() - startedAt;
     expect(elapsedMs).toBeGreaterThanOrEqual(2000);
     expect(elapsedMs).toBeLessThan(5000);
-    expect(result.results[0]).toMatchObject({ status: "failed", error_code: "eapi_json_rpc_error" });
-    const reservation = execute.getCapacity().reservations[0];
-    expect(reservation).toMatchObject({ diagnostic: "packet_capture", state: "uncertain" });
-    expect(Date.parse(reservation?.releases_at ?? "") - Date.parse(reservation?.uncertain_since ?? "")).toBe(4000);
+    expect(result.results[0]).toEqual({
+      inventory_hostname: "capture1", resolved_endpoint: captureHostAddress, status: "success",
+      finding: { kind: "packet_capture", capture: "unfilled", requested_packet_count: 1, window_seconds: 2, packets: [] }
+    });
+    expect(execute.getCapacity()).toMatchObject({ active_count: 0, uncertain_count: 0, reservations: [] });
   }, 20_000);
 });

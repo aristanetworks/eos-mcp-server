@@ -34,7 +34,10 @@ export const packetCaptureDiagnostic: DiagnosticDefinition<PacketCaptureRequest,
   // The device timer ends the capture at its window, so an uncertain one need not wait out commandTimeoutMs.
   uncertainHoldMs: (execution) => execution.window_seconds * 1000 + UNCERTAIN_HOLD_MARGIN_MS,
   resultIdentity: () => ({}),
-  interpret: interpretPacketCaptureOutput
+  // The device timer is the expected end of a capture that does not fill, so it is a finding, not a failure (ADR 0010).
+  interpret: (observation, execution) => "output" in observation
+    ? interpretPacketCaptureOutput(observation.output, execution)
+    : { kind: "packet_capture", capture: "unfilled", requested_packet_count: execution.packet_count, window_seconds: execution.window_seconds, packets: [] }
 };
 
 export function preparePacketCapture(request: PacketCaptureRequest, config: DiagnosticsConfig): PreparedPacketCapture {

@@ -41,7 +41,17 @@ export interface PreparedPacketCapture extends PacketCaptureRequest {
 }
 
 export type PreparedDiagnostic = PreparedPing | PreparedPacketCapture;
-export type DiagnosticObservation = { kind: DiagnosticRequest["kind"]; output: string };
+/** A command that ran to its end, with EOS's text output. */
+export interface DiagnosticOutputObservation {
+  kind: DiagnosticRequest["kind"];
+  output: string;
+}
+/** EOS's request timer stopped a capture short of its packet count; EOS returns none of the packets. */
+export interface CaptureTimeLimitObservation {
+  kind: "packet_capture";
+  deviceTimeLimitReached: true;
+}
+export type DiagnosticObservation = DiagnosticOutputObservation | CaptureTimeLimitObservation;
 
 export interface PingFinding {
   kind: "ping";
@@ -52,10 +62,13 @@ export interface PingFinding {
   rtt_ms: { min: number; avg: number; max: number } | null;
 }
 
-/** `packets` are tcpdump's lines verbatim, one per packet; protocols are not parsed. */
+/** `packets` are tcpdump's lines verbatim, one per packet; protocols are not parsed. An unfilled
+ * capture got fewer than `requested_packet_count` packets within the window, not necessarily none,
+ * and carries none because the device discards them.
+ */
 export interface PacketCaptureFinding {
   kind: "packet_capture";
-  capture: "complete";
+  capture: "complete" | "unfilled";
   requested_packet_count: number;
   window_seconds: number;
   packets: string[];
@@ -70,7 +83,11 @@ export type ResolvedDiagnosticRequest = (PingRequest & { count: number }) | Prep
  * uncertain hold, and interpretation after. The executor runs every prepared execution on every
  * resolved host; device I/O stays in the runner.
  */
-export interface DiagnosticDefinition<TRequest extends DiagnosticRequest = DiagnosticRequest, TExecution extends PreparedDiagnostic = PreparedDiagnostic> {
+export interface DiagnosticDefinition<
+  TRequest extends DiagnosticRequest = DiagnosticRequest,
+  TExecution extends PreparedDiagnostic = PreparedDiagnostic,
+  TObservation extends DiagnosticObservation = DiagnosticObservation
+> {
   /** Every resolved host must have this permission, or the whole request is rejected. */
   permission: { allows(host: InventoryHostModel): boolean; deniedCode: string; deniedMessage: string };
   prepare(request: TRequest, config: DiagnosticsConfig): { request: ResolvedDiagnosticRequest; executions: TExecution[] };
@@ -81,7 +98,8 @@ export interface DiagnosticDefinition<TRequest extends DiagnosticRequest = Diagn
   uncertainHoldMs(execution: TExecution, config: DiagnosticsConfig): number;
   /** Fields that tell a host's results apart, such as ping's destination; empty for one execution per host. */
   resultIdentity(execution: TExecution): Record<string, string>;
-  interpret(output: string, execution: TExecution): DiagnosticFinding;
+  /** Receives only observations the runner can produce for this kind. */
+  interpret(observation: TObservation, execution: TExecution): DiagnosticFinding;
 }
 
 /** `reservation_id` doubles as the execution's JSON-RPC request ID. */

@@ -35,6 +35,9 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
       }
       return { kind: request.kind, output };
     } catch (error) {
+      if (request.kind === "packet_capture" && isDeviceTimeLimitError(error)) {
+        return { kind: request.kind, deviceTimeLimitReached: true };
+      }
       // After dispatch, an error is never proof that remote work has stopped.
       const code = toErrorCode(error, "diagnostic_execution_failed");
       if (!["eapi_json_rpc_error", "json_output_unavailable", "eapi_http_error", "eapi_response_invalid_json"].includes(code)) throw error;
@@ -49,6 +52,18 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
       });
     }
   }
+}
+
+const DEVICE_TIME_LIMIT_ERROR = "Command exceeded its allowed time limit";
+
+/** EOS's answer when runCmds.requestTimeout stops the last command: RPC error 1001 whose final
+ * data entry, that command's result, carries the time-limit error (error 408). Measured on cEOS 4.34.3M.
+ */
+function isDeviceTimeLimitError(error: unknown): boolean {
+  if (!(error instanceof AppError) || error.details?.jsonRpcCode !== 1001) return false;
+  const data = error.details.data;
+  const commandResult = Array.isArray(data) ? data.at(-1) : undefined;
+  return isObject(commandResult) && Array.isArray(commandResult.errors) && commandResult.errors.includes(DEVICE_TIME_LIMIT_ERROR);
 }
 
 /** The EOS command for one execution, its HTTP timeout, and the EOS request timer, if any. */

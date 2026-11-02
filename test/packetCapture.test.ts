@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { diagnosticsConfigSchema } from "../src/config/diagnostics.js";
-import { buildPacketCaptureCommand, interpretPacketCaptureOutput, preparePacketCapture } from "../src/diagnostics/packetCapture.js";
+import { buildPacketCaptureCommand, interpretPacketCaptureOutput, packetCaptureDiagnostic, preparePacketCapture } from "../src/diagnostics/packetCapture.js";
 
 const settings = diagnosticsConfigSchema.parse({});
 
@@ -111,5 +111,20 @@ describe("packet capture output interpretation", () => {
 
   it.each(["", "\n", " \n"])("fails empty output as unrecognized rather than inventing a finding (%j)", (output) => {
     expect(() => interpretPacketCaptureOutput(output, capture)).toThrow(expect.objectContaining({ code: "diagnostic_output_unrecognized" }));
+  });
+
+  it("reports an unfilled capture carrying no packets when the device time limit ended it", () => {
+    expect(packetCaptureDiagnostic.interpret({ kind: "packet_capture", deviceTimeLimitReached: true }, capture)).toEqual({
+      kind: "packet_capture",
+      capture: "unfilled",
+      requested_packet_count: 2,
+      window_seconds: 5,
+      packets: []
+    });
+  });
+
+  it("interprets packets in a successful response as a complete capture", () => {
+    expect(packetCaptureDiagnostic.interpret({ kind: "packet_capture", output: `${capturedPackets.join("\n")}\n` }, capture))
+      .toMatchObject({ capture: "complete", packets: capturedPackets });
   });
 });

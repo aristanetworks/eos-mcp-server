@@ -647,7 +647,7 @@ Captures packets on one interface of an inventory host or group for a bounded wi
 }
 ```
 
-`interface` is a full EOS Ethernet, Management, Loopback, Port-Channel, Vlan, Tunnel or Vxlan name, or `any`; `vrf` is accepted only with `any`. `filter` is an optional pcap-filter expression. `packet_count` defaults to 10 (at most 1000) and `window_seconds` to 10 (at most 60). Use a small `packet_count` to check whether traffic is arriving. An unfiltered capture on `Management0` or `any` includes the server's own eAPI traffic. Results contain one entry per host, each with a `complete` finding carrying tcpdump's one-line summary of each packet. If fewer packets arrive within the window, that host's entry currently fails. See [Network diagnostics](docs/DIAGNOSTICS.md#packet-capture).
+`interface` is a full EOS Ethernet, Management, Loopback, Port-Channel, Vlan, Tunnel or Vxlan name, or `any`; `vrf` is accepted only with `any`. `filter` is an optional pcap-filter expression. `packet_count` defaults to 10 (at most 1000) and `window_seconds` to 10 (at most 60). Use a small `packet_count` to check whether traffic is arriving. An unfiltered capture on `Management0` or `any` includes the server's own eAPI traffic. Results contain one entry per host, each with a `complete` finding carrying tcpdump's one-line summary of each packet. If fewer packets arrive within the window, that host's finding is `unfilled` with no packets: fewer matching packets than requested arrived, not necessarily none, because the device discards a partial capture. See [Network diagnostics](docs/DIAGNOSTICS.md#packet-capture).
 
 ### `eos_run_show`
 
