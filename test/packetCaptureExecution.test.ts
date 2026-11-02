@@ -113,6 +113,23 @@ describe("packet capture execution", () => {
     expect((await executor.execute(leaf1Capture)).results[0]).toMatchObject({ status: "success", finding: { capture: "complete" } });
   });
 
+  it("fails only the entry of a host whose tcpdump exited without capturing, and frees its slot at once", async () => {
+    const device = { execute: vi.fn<DiagnosticDeviceRunner["execute"]>(async (host) =>
+      host.inventoryHostname === "leaf2" ? { kind: "packet_capture", output: "" } : observation) };
+    const config = buildConfig();
+    config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
+    const executor = new DiagnosticExecutor(await captureModel(), config, device);
+    const result = await executor.execute({ ...call, request: { ...call.request, filter: "notaproto foo" } });
+    expect(result.summary).toEqual({ total_count: 2, success_count: 1, failed_count: 1 });
+    expect(result.results[0]).toMatchObject({ inventory_hostname: "leaf1", status: "success", finding: { capture: "complete" } });
+    expect(result.results[1]).toEqual({
+      inventory_hostname: "leaf2", resolved_endpoint: "leaf2", status: "failed", error_code: "packet_capture_filter_rejected",
+      message: "tcpdump exited without capturing: the filter is probably not valid pcap-filter syntax, or interface Ethernet1 cannot be captured on"
+    });
+    expect(executor.getCapacity()).toMatchObject({ available_count: 1, active_count: 0, uncertain_count: 0, reservations: [] });
+  });
+
   it("bounds the whole call by captureOverallOperationTimeoutMs rather than ping's deadline", async () => {
     vi.useFakeTimers();
     const device = { execute: vi.fn((_host, _execution, { signal }: DiagnosticExecutionContext) => new Promise<DiagnosticObservation>((_resolve, reject) => {

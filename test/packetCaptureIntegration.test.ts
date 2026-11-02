@@ -63,4 +63,13 @@ describe.runIf(process.env.INTEGRATION === "1")("integration: bounded EOS packet
     });
     expect(execute.getCapacity()).toMatchObject({ active_count: 0, uncertain_count: 0, reservations: [] });
   }, 20_000);
+
+  it("fails at once with packet_capture_filter_rejected when tcpdump rejects the filter, freeing the slot", async () => {
+    const execute = await executor();
+    const startedAt = Date.now();
+    const result = await execute.execute({ target: "capture1", request: { kind: "packet_capture", interface: "Ethernet1", filter: "notaproto foo", packet_count: 1, window_seconds: 10 } });
+    expect(Date.now() - startedAt).toBeLessThan(1500);
+    expect(result.results[0]).toMatchObject({ inventory_hostname: "capture1", status: "failed", error_code: "packet_capture_filter_rejected" });
+    expect(execute.getCapacity()).toMatchObject({ active_count: 0, uncertain_count: 0, reservations: [] });
+  }, 20_000);
 });

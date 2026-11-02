@@ -181,7 +181,7 @@ A capture sees only traffic sent or received by the device's control plane: rout
 - `target` and `interface` are required. Every resolved host must have **Packet Capture Permission** (`packet_capture_allowed`); otherwise the whole request fails with `packet_capture_policy_denied` before anything is dispatched.
 - `interface` is a full EOS name of type Ethernet, Management, Loopback, Port-Channel, Vlan, Tunnel or Vxlan, such as `Ethernet1`, `Ethernet1/1`, `Ethernet1/1/1`, `Ethernet1.100`, `Port-Channel10.100`, `Management0` or `Management1/1`, or the literal `any`. Abbreviations, `fabric` (EOS's default, whose view differs between cEOS and hardware) and `Cpu` are rejected with `packet_capture_interface_invalid`.
 - `vrf` is optional and accepted only with `interface: "any"` (`packet_capture_vrf_requires_any`); it follows ping's VRF identifier rules (`diagnostic_vrf_invalid`).
-- `filter` is an optional pcap-filter **Capture Filter** of up to 4096 characters without control characters (newline, carriage return, tab, NUL, DEL and the rest are rejected with `packet_capture_filter_invalid`). EOS hands it to tcpdump as one argument without a shell.
+- `filter` is an optional pcap-filter **Capture Filter** of up to 4096 characters without control characters (newline, carriage return, tab, NUL, DEL and the rest are rejected with `packet_capture_filter_invalid`). EOS hands it to tcpdump as one argument without a shell. EOS does not check pcap-filter syntax; see `packet_capture_filter_rejected` below.
 - `packet_count` defaults to `defaultCapturePacketCount` and may not exceed `maxCapturePacketCount` (`packet_capture_count_invalid`); `window_seconds` defaults to `defaultCaptureWindowSeconds` and may not exceed `maxCaptureWindowSeconds` (`packet_capture_window_invalid`). Resolved hosts × `packet_count` may not exceed `maxCapturePacketsPerRequest` (`packet_capture_packet_limit_exceeded`). `maxProbesPerRequest` does not apply.
 - There is no `include_raw`: the packets are the raw output.
 
@@ -229,12 +229,14 @@ When the window ends first, the entry is still `status: "success"` and the findi
 }
 ```
 
-Unfilled means fewer matching packets than requested arrived within the window, not that none arrived: the device discards a partial capture, so the packets that did arrive are lost. That is why a small `packet_count` suits "is X arriving?". An unfilled finding is not an execution failure; an invalid filter or a missing interface fails the entry instead. There are no automatic retries. A host where the interface does not exist fails on its own entry (EOS returns an RPC error) without failing the others.
+Unfilled means fewer matching packets than requested arrived within the window, not that none arrived: the device discards a partial capture, so the packets that did arrive are lost. That is why a small `packet_count` suits "is X arriving?". An unfilled finding is not an execution failure; an invalid filter or a missing interface fails the entry instead.
+
+EOS does not check pcap-filter syntax. When tcpdump rejects the filter, or cannot capture on the interface, it exits at once and its error goes to stderr, which eAPI drops, so EOS answers success with empty output. Because a capture that reaches its count always prints packets, and one that does not ends with the time-limit error, a successful response with empty or whitespace-only output can only mean tcpdump exited before capturing. That host's entry fails with `packet_capture_filter_rejected`, whose message names both likely causes; it is never reported as a complete or unfilled finding, so a malformed filter does not look like "no traffic". The command ran and exited, so its completion is confirmed and the slot is freed at once. (`packet_capture_filter_invalid` is the server's own check before dispatch.) There are no automatic retries. A host where the interface does not exist fails on its own entry (EOS returns an RPC error) without failing the others.
 
 ### Limitations
 
 - An unfilled capture discards the packets that did arrive; EOS offers no way to keep them without writing a file. On hardware, it can also mean the traffic was forwarded in hardware rather than absent.
-- A successful response with no output, which happens when tcpdump rejects the filter, currently fails as `diagnostic_output_unrecognized`. EOS does not check BPF syntax itself.
+- tcpdump's own error text is lost with stderr, so `packet_capture_filter_rejected` cannot say whether the filter or the interface was at fault.
 - Several captures on one device can run at once within `diagnostics.deviceConcurrency`; each holds an eAPI slot for up to its window.
 - Default tcpdump decode can print cleartext secrets such as SNMPv1/v2c community strings; see the permission section above.
 - Measured on cEOS 4.34.3M only.
@@ -260,7 +262,7 @@ Validated against the repository's cEOS 4.34.3M lab over HTTPS eAPI:
 - Invalid VRF and unavailable source fail without fallback.
 - Overall HTTP cancellation can leave a short-lived device ping; observed processes exited after their finite probe sequence.
 - MCP stdio execution loads configured defaults and returns real measurements.
-- Packet capture: an `icmp` capture of 4 packets on node1-1 Ethernet1 while node2-1 pinged it returned exactly 4 echo lines (4.2 s for both calls, bounded by the 5-probe ping); a group capture on Ethernet6 succeeded on node1-1 (BFD traffic) and failed only node2-1's entry, which has no Ethernet6; an unfilled capture with a 2 s window was stopped by the device timer after about 2.04 s, returned an unfilled finding, and left no reservation behind.
+- Packet capture: an `icmp` capture of 4 packets on node1-1 Ethernet1 while node2-1 pinged it returned exactly 4 echo lines (4.2 s for both calls, bounded by the 5-probe ping); a group capture on Ethernet6 succeeded on node1-1 (BFD traffic) and failed only node2-1's entry, which has no Ethernet6; an unfilled capture with a 2 s window was stopped by the device timer after about 2.04 s, returned an unfilled finding, and left no reservation behind; a capture with filter `notaproto foo` failed with `packet_capture_filter_rejected` after about 60 ms and left no reservation behind.
 
 Older EOS versions and physical platforms have not been qualified for these tools; the existing read-path minimum does not establish ping or capture compatibility.
 

@@ -109,8 +109,12 @@ describe("packet capture output interpretation", () => {
     expect(interpretPacketCaptureOutput(`\r\n${capturedPackets.join("\r\n")}\r\n\r\n`, capture).packets).toEqual(capturedPackets);
   });
 
-  it.each(["", "\n", " \n"])("fails empty output as unrecognized rather than inventing a finding (%j)", (output) => {
-    expect(() => interpretPacketCaptureOutput(output, capture)).toThrow(expect.objectContaining({ code: "diagnostic_output_unrecognized" }));
+  // Measured on cEOS 4.34.3M: tcpdump rejects `notaproto foo bar` on stderr, which eAPI drops, and eAPI answers success with "".
+  it.each(["", "\n", " \r\n\t"])("fails empty output as a filter the device rejected, naming both likely causes (%j)", (output) => {
+    expect(() => interpretPacketCaptureOutput(output, capture)).toThrow(expect.objectContaining({
+      code: "packet_capture_filter_rejected",
+      message: expect.stringMatching(/pcap-filter.*interface Ethernet1|interface Ethernet1.*pcap-filter/s)
+    }));
   });
 
   it("reports an unfilled capture carrying no packets when the device time limit ended it", () => {

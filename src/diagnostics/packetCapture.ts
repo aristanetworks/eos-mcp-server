@@ -83,8 +83,11 @@ export function buildPacketCaptureCommand(request: PreparedPacketCapture): strin
 /** Packets in a successful response mean the count was reached; the device timer ends an unfilled capture with an error instead. */
 export function interpretPacketCaptureOutput(output: string, request: PreparedPacketCapture): PacketCaptureFinding {
   const packets = output.split(/\r?\n/).filter((line) => line.trim() !== "");
+  // EOS does not check pcap-filter syntax, and eAPI drops tcpdump's stderr, so a successful response
+  // without packets means tcpdump exited before capturing. It is never an unfilled finding (ADR 0010).
   if (packets.length === 0) {
-    throw new AppError("diagnostic_output_unrecognized", "EOS returned no captured packets");
+    throw new AppError("packet_capture_filter_rejected",
+      `tcpdump exited without capturing: the filter is probably not valid pcap-filter syntax, or interface ${request.interface} cannot be captured on`);
   }
   return {
     kind: "packet_capture",
