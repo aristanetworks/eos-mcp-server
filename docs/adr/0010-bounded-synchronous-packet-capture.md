@@ -1,6 +1,6 @@
 # Capture control-plane packets in one bounded, synchronous call
 
-**Status: accepted; not yet implemented.**
+**Status: accepted; implemented and verified on cEOS 4.34.3M. Hardware qualification is tracked in #30.**
 
 Makes the packet-capture decision that [ADR 0001](0001-non-configuring-diagnostics.md) deferred (privilege, transport, lifecycle and data handling), gives capture its own lifecycle as [ADR 0006](0006-in-memory-timed-diagnostic-capacity.md) required, and makes the annotation decision [ADR 0008](0008-read-only-tool-annotations.md) withheld from it. Admission builds on [ADR 0009](0009-shared-per-device-eapi-slots.md). Tracks issue #17.
 
