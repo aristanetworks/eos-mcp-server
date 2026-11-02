@@ -52,6 +52,7 @@ export function buildServerInfo(context: ServerRuntimeContext, diagnosticCapacit
         default_capture_window_seconds: context.config.diagnostics.defaultCaptureWindowSeconds,
         max_capture_window_seconds: context.config.diagnostics.maxCaptureWindowSeconds,
         max_capture_packets_per_request: context.config.diagnostics.maxCapturePacketsPerRequest,
+        capture_device_concurrency: context.config.diagnostics.captureDeviceConcurrency,
         capture_overall_operation_timeout_ms: context.config.diagnostics.captureOverallOperationTimeoutMs
       }
     },

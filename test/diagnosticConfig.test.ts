@@ -20,7 +20,7 @@ describe("diagnostic settings", () => {
       defaultPingCount: 3, maxPingCount: 10, maxProbesPerRequest: 100, maxDestinationsPerRequest: 16, deviceConcurrency: 2, maxConcurrentDiagnostics: 32,
       pingReplyTimeoutMs: 1000, commandTimeoutMs: 30_000, httpTimeoutMs: 35_000, overallOperationTimeoutMs: 60_000, nativeRequestTimeout: true,
       defaultCapturePacketCount: 10, maxCapturePacketCount: 1000, defaultCaptureWindowSeconds: 10, maxCaptureWindowSeconds: 60,
-      maxCapturePacketsPerRequest: 2000, captureOverallOperationTimeoutMs: 90_000
+      maxCapturePacketsPerRequest: 2000, captureDeviceConcurrency: 1, captureOverallOperationTimeoutMs: 90_000
     });
     expect(config).toMatchObject({ deviceConcurrency: 3, readFanOut: 10 });
   });
@@ -47,12 +47,13 @@ describe("diagnostic settings", () => {
       "  maxConcurrentDiagnostics: 12",
       "  pingReplyTimeoutMs: 2000", "  commandTimeoutMs: 65000", "  httpTimeoutMs: 70000", "  overallOperationTimeoutMs: 90000",
       "  nativeRequestTimeout: false", "  defaultCapturePacketCount: 5", "  maxCapturePacketCount: 500", "  defaultCaptureWindowSeconds: 5",
-      "  maxCaptureWindowSeconds: 30", "  maxCapturePacketsPerRequest: 1500", "  captureOverallOperationTimeoutMs: 45000"
+      "  maxCaptureWindowSeconds: 30", "  maxCapturePacketsPerRequest: 1500", "  captureDeviceConcurrency: 2",
+      "  captureOverallOperationTimeoutMs: 45000"
     ]);
     expect(config.diagnostics).toEqual({ defaultPingCount: 4, maxPingCount: 20, maxProbesPerRequest: 200, maxDestinationsPerRequest: 8, deviceConcurrency: 2,
       maxConcurrentDiagnostics: 12, pingReplyTimeoutMs: 2000, commandTimeoutMs: 65000, httpTimeoutMs: 70000, overallOperationTimeoutMs: 90000, nativeRequestTimeout: false,
       defaultCapturePacketCount: 5, maxCapturePacketCount: 500, defaultCaptureWindowSeconds: 5, maxCaptureWindowSeconds: 30,
-      maxCapturePacketsPerRequest: 1500, captureOverallOperationTimeoutMs: 45000 });
+      maxCapturePacketsPerRequest: 1500, captureDeviceConcurrency: 2, captureOverallOperationTimeoutMs: 45000 });
   });
 
   it("validates HTTP timeouts independently rather than inventing a combined release timer", async () => {
@@ -71,7 +72,8 @@ describe("diagnostic settings", () => {
 
   it.each([
     "defaultCapturePacketCount: 1001", "maxCapturePacketCount: 10001", "maxCapturePacketCount: 2001", "defaultCaptureWindowSeconds: 61",
-    "captureOverallOperationTimeoutMs: 60000", "maxCaptureWindowSeconds: 0", "maxCapturePacketsPerRequest: 1.5"
+    "captureOverallOperationTimeoutMs: 60000", "maxCaptureWindowSeconds: 0", "maxCapturePacketsPerRequest: 1.5",
+    "captureDeviceConcurrency: 0", "captureDeviceConcurrency: 3"
   ])("rejects unsafe or contradictory packet capture settings: %s", async (line) => {
     await expect(load(["diagnostics:", `  ${line}`])).rejects.toMatchObject({ code: "config_schema_invalid" });
   });

@@ -35,6 +35,7 @@ describe("buildServerInfo", () => {
       default_capture_window_seconds: 10,
       max_capture_window_seconds: 60,
       max_capture_packets_per_request: 2000,
+      capture_device_concurrency: 1,
       capture_overall_operation_timeout_ms: 90_000
     });
   });

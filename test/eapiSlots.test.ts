@@ -4,11 +4,15 @@ import type { EosCommandResult, EosCommandRunner } from "../src/eapi/types.js";
 import { EapiSlots } from "../src/operations/eapiSlots.js";
 import { buildConfig, buildHost, setTestPasswordEnv } from "./helpers.js";
 
-const limits = { deviceLimit: 3, diagnosticDeviceLimit: 2, diagnosticServerLimit: 32 };
+const limits = { deviceLimit: 3, diagnosticDeviceLimit: 2, diagnosticServerLimit: 32, captureDeviceLimit: 1 };
 const showVersion: EosCommandResult = { command: "show version", output_format: "json", output: {} };
 
 function ping(inventoryHostname = "leaf1") {
   return { inventoryHostname, diagnostic: "ping" as const, uncertainHoldMs: 30_000 };
+}
+
+function capture(inventoryHostname = "leaf1") {
+  return { inventoryHostname, diagnostic: "packet_capture" as const, uncertainHoldMs: 12_000 };
 }
 
 /** Runner whose requests stay pending until the test settles them, in dispatch order. */
@@ -38,7 +42,7 @@ describe("shared per-device eAPI slots", () => {
     expect(thirdPingGranted).toBe(false);
     expect(slots.snapshot().devices).toEqual([{
       inventory_hostname: "leaf1", available_count: 0, active_count: 2, uncertain_count: 0, queued_count: 1,
-      read_active_count: 1, read_queued_count: 0
+      read_active_count: 1, read_queued_count: 0, capture_active_count: 0, capture_uncertain_count: 0, capture_queued_count: 0
     }]);
     releaseRead();
     await flush();
@@ -67,7 +71,7 @@ describe("shared per-device eAPI slots", () => {
   });
 
   it("does not limit reads on one device by diagnostics on another", async () => {
-    const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1 });
+    const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1, captureDeviceLimit: 1 });
     await slots.acquireDiagnostic(undefined, ping("leaf1"));
     const releaseRead = await slots.acquireRead(undefined, "leaf2");
     expect(slots.snapshot()).toMatchObject({ available_count: 0, devices: [{ inventory_hostname: "leaf1" }, { inventory_hostname: "leaf2", read_active_count: 1 }] });
@@ -75,7 +79,7 @@ describe("shared per-device eAPI slots", () => {
   });
 
   it("removes a cancelled read waiter", async () => {
-    const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1 });
+    const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1, captureDeviceLimit: 1 });
     await slots.acquireRead(undefined, "leaf1");
     const controller = new AbortController();
     const waiting = slots.acquireRead(controller.signal, "leaf1");
@@ -87,7 +91,7 @@ describe("shared per-device eAPI slots", () => {
 
   it("holds a read slot per request in EapiDeviceReader and frees it when the request settles", async () => {
     setTestPasswordEnv();
-    const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1 });
+    const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1, captureDeviceLimit: 1 });
     const { runner, dispatched } = controlledRunner();
     const reader = new EapiDeviceReader(buildConfig({ defaultConnection: { ansibleUser: "admin", mcpPasswordEnv: "EOS_MCP_PASSWORD" } }), runner, slots);
     const host = buildHost({ inventoryHostname: "leaf1", resolvedEndpoint: "10.0.0.11" });
@@ -103,5 +107,35 @@ describe("shared per-device eAPI slots", () => {
     dispatched[1]?.settle();
     await second;
     expect(slots.snapshot().devices).toEqual([]);
+  });
+
+  it("queues a second capture on a device without holding up a later ping or read to it", async () => {
+    const slots = new EapiSlots(limits);
+    const firstCapture = await slots.acquireDiagnostic(undefined, capture());
+    const granted: string[] = [];
+    void slots.acquireDiagnostic(undefined, capture()).then(() => granted.push("second capture"));
+    void slots.acquireDiagnostic(undefined, ping()).then(() => granted.push("ping"));
+    void slots.acquireRead(undefined, "leaf1").then(() => granted.push("read"));
+    await flush();
+    expect(granted).toEqual(["ping", "read"]);
+    firstCapture.complete();
+    await flush();
+    expect(granted).toEqual(["ping", "read", "second capture"]);
+  });
+
+  it("shows the capture limit and each host's capture slots, counting an uncertain capture against the limit", async () => {
+    const slots = new EapiSlots(limits);
+    const lostCapture = await slots.acquireDiagnostic(undefined, capture());
+    lostCapture.markUncertain("eapi_transport_error");
+    await slots.acquireDiagnostic(undefined, ping());
+    const queuedCapture = slots.acquireDiagnostic(undefined, capture());
+    await flush();
+    expect(slots.snapshot()).toMatchObject({ capture_device_limit: 1, active_count: 1, uncertain_count: 1, queued_count: 1 });
+    expect(slots.snapshot().devices).toEqual([{
+      inventory_hostname: "leaf1", available_count: 0, active_count: 1, uncertain_count: 1, queued_count: 1,
+      read_active_count: 0, read_queued_count: 0, capture_active_count: 0, capture_uncertain_count: 1, capture_queued_count: 1
+    }]);
+    slots.close();
+    await expect(queuedCapture).rejects.toMatchObject({ code: "diagnostic_server_stopping" });
   });
 });

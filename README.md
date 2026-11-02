@@ -167,6 +167,7 @@ diagnostics:
   defaultCaptureWindowSeconds: 10
   maxCaptureWindowSeconds: 60
   maxCapturePacketsPerRequest: 2000
+  captureDeviceConcurrency: 1
   captureOverallOperationTimeoutMs: 90000
 secretEnvPrefixes:
   - EOS_MCP_

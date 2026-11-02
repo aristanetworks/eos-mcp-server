@@ -56,6 +56,7 @@ export interface ServerInfo {
       default_capture_window_seconds: number;
       max_capture_window_seconds: number;
       max_capture_packets_per_request: number;
+      capture_device_concurrency: number;
       capture_overall_operation_timeout_ms: number;
     };
   };

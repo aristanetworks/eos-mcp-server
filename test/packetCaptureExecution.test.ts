@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { EapiDeviceReader } from "../src/connection/eosDeviceReader.js";
 import { AppError } from "../src/core/errors.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
 import type { DiagnosticDeviceRunner, DiagnosticExecutionContext, DiagnosticObservation } from "../src/diagnostics/types.js";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import { buildPacketCaptureToolResult, packetCaptureInputSchema } from "../src/mcp/tools/packetCapture.js";
-import { buildConfig, writeTempInventory } from "./helpers.js";
+import type { EosCommandRunner } from "../src/eapi/types.js";
+import { buildConfig, buildEapiSlots, buildHost, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
 
 const packets = ["22:06:07.386059 IP 10.255.255.1 > 10.255.255.0: ICMP echo request", "22:06:07.386088 IP 10.255.255.0 > 10.255.255.1: ICMP echo reply"];
 const observation: DiagnosticObservation = { kind: "packet_capture", output: `${packets.join("\n")}\n` };
@@ -173,6 +175,75 @@ describe("packet capture execution", () => {
     await expect(new DiagnosticExecutor(await captureModel(), buildConfig(), device).execute({ ...call, request: { ...call.request, ...change } }))
       .rejects.toMatchObject({ code });
     expect(device.execute).not.toHaveBeenCalled();
+  });
+});
+
+/** Device whose captures, pings and reads stay pending until the test settles them, in dispatch order. */
+function controlledDevice() {
+  const dispatched: Array<{ hostname: string; kind: string; settle: () => void }> = [];
+  const diagnosticRunner: DiagnosticDeviceRunner = {
+    execute: (host, execution) => new Promise<DiagnosticObservation>((resolve) => {
+      const settled: DiagnosticObservation = execution.kind === "ping"
+        ? { kind: "ping", output: "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n" }
+        : observation;
+      dispatched.push({ hostname: host.inventoryHostname, kind: execution.kind, settle: () => resolve(settled) });
+    })
+  };
+  const readRunner: EosCommandRunner = {
+    runShowCommands: (connection) => new Promise((resolve) => {
+      dispatched.push({
+        hostname: connection.inventoryHostname, kind: "read",
+        settle: () => resolve([{ command: "show version", output_format: "json", output: {} }])
+      });
+    })
+  };
+  return { diagnosticRunner, readRunner, dispatched };
+}
+
+describe("one packet capture per device", () => {
+  it("queues a second capture to a device until the first finishes, while a ping and a read to it run at once", async () => {
+    vi.useFakeTimers();
+    setTestPasswordEnv();
+    const config = buildConfig({ defaultConnection: { ansibleUser: "admin", mcpPasswordEnv: "EOS_MCP_PASSWORD" } });
+    const slots = buildEapiSlots(config);
+    const { diagnosticRunner, readRunner, dispatched } = controlledDevice();
+    const executor = new DiagnosticExecutor(await captureModel(), config, diagnosticRunner, slots);
+    const reader = new EapiDeviceReader(config, readRunner, slots);
+    const leaf1Capture = { ...call, target: "leaf1" };
+    const firstCapture = executor.execute(leaf1Capture);
+    await vi.advanceTimersByTimeAsync(0);
+    const secondCapture = executor.execute(leaf1Capture);
+    const pingRun = executor.execute({ target: "leaf1", request: { kind: "ping", destinations: ["10.0.0.2"] } });
+    const read = reader.runShowCommands(buildHost({ inventoryHostname: "leaf1" }), ["show version"], "json");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(dispatched.map((request) => request.kind)).toEqual(["packet_capture", "ping", "read"]);
+    expect(executor.getCapacity()).toMatchObject({
+      capture_device_limit: 1,
+      devices: [{ inventory_hostname: "leaf1", active_count: 2, queued_count: 1, read_active_count: 1, capture_active_count: 1, capture_queued_count: 1 }]
+    });
+    dispatched[1]?.settle();
+    dispatched[2]?.settle();
+    expect((await pingRun).summary.success_count).toBe(1);
+    await read;
+    dispatched[0]?.settle();
+    expect((await firstCapture).summary.success_count).toBe(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(dispatched.map((request) => request.kind)).toEqual(["packet_capture", "ping", "read", "packet_capture"]);
+    dispatched[3]?.settle();
+    expect((await secondCapture).summary.success_count).toBe(1);
+  });
+
+  it("runs captures to different devices at once", async () => {
+    vi.useFakeTimers();
+    const { diagnosticRunner, dispatched } = controlledDevice();
+    const executor = new DiagnosticExecutor(await captureModel(), buildConfig(), diagnosticRunner);
+    const leaf1Capture = executor.execute({ ...call, target: "leaf1" });
+    const leaf2Capture = executor.execute({ ...call, target: "leaf2" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(dispatched.map((request) => request.hostname)).toEqual(["leaf1", "leaf2"]);
+    for (const request of dispatched) request.settle();
+    expect((await leaf1Capture).summary.success_count).toBe(1);
+    expect((await leaf2Capture).summary.success_count).toBe(1);
   });
 });
 

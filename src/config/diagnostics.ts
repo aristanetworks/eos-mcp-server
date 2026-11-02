@@ -24,6 +24,7 @@ export const diagnosticsConfigSchema = z.object({
   defaultCaptureWindowSeconds: positiveInteger.default(10),
   maxCaptureWindowSeconds: positiveInteger.default(60),
   maxCapturePacketsPerRequest: positiveInteger.default(2000),
+  captureDeviceConcurrency: positiveInteger.default(1),
   captureOverallOperationTimeoutMs: positiveInteger.default(90_000)
 }).strict().superRefine((config, context) => {
   const invalid = (path: string, message: string): void => {
@@ -52,6 +53,9 @@ export const diagnosticsConfigSchema = z.object({
   }
   if (config.defaultCaptureWindowSeconds > config.maxCaptureWindowSeconds) {
     invalid("defaultCaptureWindowSeconds", "Must not exceed maxCaptureWindowSeconds");
+  }
+  if (config.captureDeviceConcurrency > config.deviceConcurrency) {
+    invalid("captureDeviceConcurrency", "Must not exceed deviceConcurrency");
   }
   if (config.captureOverallOperationTimeoutMs <= config.maxCaptureWindowSeconds * 1000) {
     invalid("captureOverallOperationTimeoutMs", "Must exceed maxCaptureWindowSeconds");

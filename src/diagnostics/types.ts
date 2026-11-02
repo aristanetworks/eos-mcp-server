@@ -123,12 +123,16 @@ interface DiagnosticSlotCounts {
 
 /** Slot usage of one inventory host; only hosts holding or awaiting a slot are listed.
  * The four shared counts are diagnostic slots; `available_count` is the diagnostic headroom,
- * capped by the host's shared eAPI headroom and server-wide availability.
+ * capped by the host's shared eAPI headroom and server-wide availability. The `capture_*` counts
+ * are the packet captures among the diagnostic slots.
  */
 export interface DiagnosticDeviceCapacity extends DiagnosticSlotCounts {
   inventory_hostname: string;
   read_active_count: number;
   read_queued_count: number;
+  capture_active_count: number;
+  capture_uncertain_count: number;
+  capture_queued_count: number;
 }
 
 /** Top-level counts are server-wide diagnostics; `devices` breaks them down per host, with reads. */
@@ -137,6 +141,8 @@ export interface DiagnosticCapacitySnapshot extends DiagnosticSlotCounts {
   device_limit: number;
   /** eAPI slots one host may hold across reads and diagnostics. */
   eapi_device_limit: number;
+  /** Of a host's diagnostic slots, those packet captures may hold. */
+  capture_device_limit: number;
   devices: DiagnosticDeviceCapacity[];
   reservations: DiagnosticReservationInfo[];
 }
