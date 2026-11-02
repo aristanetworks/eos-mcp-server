@@ -45,6 +45,7 @@ Implemented MCP tools:
 - `eos_list_inventory`
 - `eos_probe_devices`
 - `eos_ping`
+- `eos_packet_capture`
 - `eos_run_show`
 - `eos_show_logging`
 - `eos_get_facts`
@@ -61,7 +62,7 @@ Implemented local CLI commands:
 
 - Node.js 24+
 - Arista EOS devices reachable via eAPI over HTTPS
-- EOS 4.20 or later for existing read operations; `eos_ping` is qualified on cEOS 4.34.3M
+- EOS 4.20 or later for existing read operations; `eos_ping` and `eos_packet_capture` are qualified on cEOS 4.34.3M
 - Inventory in one of the supported YAML formats
 
 ## Install and get started
@@ -161,6 +162,12 @@ diagnostics:
   httpTimeoutMs: 35000
   overallOperationTimeoutMs: 60000
   nativeRequestTimeout: true
+  defaultCapturePacketCount: 10
+  maxCapturePacketCount: 1000
+  defaultCaptureWindowSeconds: 10
+  maxCaptureWindowSeconds: 60
+  maxCapturePacketsPerRequest: 2000
+  captureOverallOperationTimeoutMs: 90000
 secretEnvPrefixes:
   - EOS_MCP_
 defaultConnection:
@@ -193,7 +200,7 @@ Supported config fields:
 
 For read tools, `readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole read-tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized result of device read operations. `eapiVersion` selects the eAPI JSON output schema sent as the `runCmds` `version` parameter: `latest` (the default) returns the current schema for each command, and `1` pins the original schema for consumers that depend on it. It only affects JSON output, so `eos_get_running_config` and `eos_show_logging` are unchanged.
 
-`eos_ping` uses its own configurable `diagnostics` timeouts and concurrency (per device, under a per-server ceiling), while sharing `maxReadTargets` and `maxResponseSizeBytes`. Omitted diagnostic settings retain the defaults shown above; invalid or contradictory settings fail validation. Ping requires explicit inventory permission and has no automatic retries. Response IDs and protocol envelopes are validated before output is accepted. When a ping's remote completion is unknown (timeout, cancellation, lost connection), its slot is held for `commandTimeoutMs` and then freed automatically; inspect the running server's `eos_get_server_info.diagnostics.capacity`. Capacity lives in memory, so several MCP servers can use the same inventory at once. See [Network diagnostics](docs/DIAGNOSTICS.md), including the distinction between a reply timeout, command budget, and remote process termination.
+`eos_ping` and `eos_packet_capture` use their own configurable `diagnostics` timeouts and concurrency (per device, under a per-server ceiling), while sharing `maxReadTargets` and `maxResponseSizeBytes`. Omitted diagnostic settings retain the defaults shown above; invalid or contradictory settings fail validation. Ping requires explicit inventory permission and has no automatic retries. Response IDs and protocol envelopes are validated before output is accepted. When a ping's remote completion is unknown (timeout, cancellation, lost connection), its slot is held for `commandTimeoutMs` and then freed automatically; inspect the running server's `eos_get_server_info.diagnostics.capacity`. Capacity lives in memory, so several MCP servers can use the same inventory at once. An uncertain packet capture is held for its own window plus 2 s instead. See [Network diagnostics](docs/DIAGNOSTICS.md), including the distinction between a reply timeout, command budget, and remote process termination.
 
 `actor` and `logFile` remain sanitized runtime metadata and do not enable a general tool-call audit log.
 
@@ -288,7 +295,7 @@ args = ["-y", "@aristanetworks/eos-mcp-server", "serve", "--config", "/absolute/
 env_vars = ["EOS_MCP_PASSWORD"]
 ```
 
-Every EOS tool, including `eos_ping`, advertises the MCP `readOnlyHint`
+Every EOS tool, including `eos_ping` and `eos_packet_capture`, advertises the MCP `readOnlyHint`
 annotation, so Codex and Claude Code can run independent tool calls
 concurrently without further configuration. With older server versions, which
 omit the annotation, add `supports_parallel_tool_calls = true` under
@@ -436,7 +443,7 @@ still using their individual credentials.
 - `mcp_read_allowed` defaults to `true` for eligible EOS hosts. Set it to `false` — inherited like any other variable — to explicitly deny read access to a host or group.
 - Read operations fail closed if the resolved target contains ineligible or read-denied hosts.
 - `mcp_diagnostics_allowed` defaults to `false`. Set this inherited boolean to `true` to permit `eos_ping`; read denial still vetoes diagnostics. A mixed-permission group fails before any dispatch.
-- `mcp_packet_capture_allowed` defaults to `false`. This inherited boolean is the packet capture opt-in, the top of a permission ladder: a host is capture-allowed only when it is read-allowed, `mcp_diagnostics_allowed: true`, and `mcp_packet_capture_allowed: true`. Captures return decoded packets and can reveal cleartext secrets in those protocols, such as SNMPv1/v2c community strings. No capture tool exists yet. See [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md).
+- `mcp_packet_capture_allowed` defaults to `false`. This inherited boolean is the packet capture opt-in, the top of a permission ladder: a host is capture-allowed only when it is read-allowed, `mcp_diagnostics_allowed: true`, and `mcp_packet_capture_allowed: true`. It permits `eos_packet_capture`. Captures return decoded packets and can reveal cleartext secrets in those protocols, such as SNMPv1/v2c community strings. See [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md).
 - A diagnostic destination is distinct from the inventory target and may be an address outside inventory.
 
 ## Connection and authentication
@@ -624,7 +631,23 @@ Runs bounded ping from an inventory host or group to one or more destinations, r
 }
 ```
 
-`count`, `vrf`, `source`, and `include_raw` are optional. Results contain one entry per host and destination, each naming its `destination`; `summary` counts those entries. Results separate execution status from `reachable`/`partial`/`unreachable` findings and include loss/RTT measurements. Zero replies do not establish a cause. See [Network diagnostics](docs/DIAGNOSTICS.md) for all limits, address restrictions, lifecycle caveats, and result semantics. Traceroute and packet capture are not yet implemented.
+`count`, `vrf`, `source`, and `include_raw` are optional. Results contain one entry per host and destination, each naming its `destination`; `summary` counts those entries. Results separate execution status from `reachable`/`partial`/`unreachable` findings and include loss/RTT measurements. Zero replies do not establish a cause. See [Network diagnostics](docs/DIAGNOSTICS.md) for all limits, address restrictions, lifecycle caveats, and result semantics. Traceroute is not yet implemented.
+
+### `eos_packet_capture`
+
+Captures packets on one interface of an inventory host or group for a bounded window, requiring inherited `mcp_packet_capture_allowed: true` on every resolved host (which in turn requires `mcp_diagnostics_allowed: true`). It runs EOS `tcpdump` without changing configuration or writing files, and returns once `packet_count` packets have arrived. A capture sees only traffic sent or received by the device's control plane, never hardware-forwarded transit traffic.
+
+```json
+{
+  "target": "leaf1",
+  "interface": "Ethernet1",
+  "filter": "tcp port 179 and host 10.0.0.2",
+  "packet_count": 3,
+  "window_seconds": 10
+}
+```
+
+`interface` is a full EOS Ethernet, Management, Loopback, Port-Channel, Vlan, Tunnel or Vxlan name, or `any`; `vrf` is accepted only with `any`. `filter` is an optional pcap-filter expression. `packet_count` defaults to 10 (at most 1000) and `window_seconds` to 10 (at most 60). Use a small `packet_count` to check whether traffic is arriving. An unfiltered capture on `Management0` or `any` includes the server's own eAPI traffic. Results contain one entry per host, each with a `complete` finding carrying tcpdump's one-line summary of each packet. If fewer packets arrive within the window, that host's entry currently fails. See [Network diagnostics](docs/DIAGNOSTICS.md#packet-capture).
 
 ### `eos_run_show`
 
@@ -755,7 +778,7 @@ This means the target resolved to at least one host that is either not marked as
 
 The read-path tools have been validated against EOS 4.34.3M. The minimum supported EOS version for read operations is 4.20, which is when eAPI JSON-RPC became stable and `show` commands reliably produce structured JSON output.
 
-`eos_ping` has separately been validated on cEOS 4.34.3M. Older EOS versions and physical platforms have not been qualified for this new tool.
+`eos_ping` and `eos_packet_capture` have separately been validated on cEOS 4.34.3M. Older EOS versions and physical platforms have not been qualified for these tools.
 
 ## Design notes
 

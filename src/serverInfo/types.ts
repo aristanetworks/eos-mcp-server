@@ -51,6 +51,12 @@ export interface ServerInfo {
       http_timeout_ms: number;
       overall_operation_timeout_ms: number;
       native_request_timeout: boolean;
+      default_capture_packet_count: number;
+      max_capture_packet_count: number;
+      default_capture_window_seconds: number;
+      max_capture_window_seconds: number;
+      max_capture_packets_per_request: number;
+      capture_overall_operation_timeout_ms: number;
     };
   };
   diagnostics: {

@@ -1,3 +1,4 @@
+import type { DiagnosticsConfig } from "../config/diagnostics.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { resolveEapiConnection } from "../connection/resolveConnection.js";
 import { AppError, toErrorCode, toErrorMessage } from "../core/errors.js";
@@ -5,6 +6,7 @@ import type { EapiConnectionConfig, EosTextCommandRunner } from "../eapi/types.j
 import type { InventoryHostModel } from "../inventory/types.js";
 import { isObject } from "../utils/value.js";
 import { DiagnosticExecutionError } from "./executionError.js";
+import { buildPacketCaptureCommand, packetCaptureHttpTimeoutMs } from "./packetCapture.js";
 import { buildPingCommand } from "./ping.js";
 import type { DiagnosticDeviceRunner, DiagnosticExecutionContext, DiagnosticObservation, PreparedDiagnostic } from "./types.js";
 
@@ -12,20 +14,20 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
   constructor(private readonly config: ResolvedServerConfig, private readonly runner: EosTextCommandRunner) {}
 
   async execute(host: InventoryHostModel, request: PreparedDiagnostic, context: DiagnosticExecutionContext): Promise<DiagnosticObservation> {
+    const compiled = compileExecution(request, this.config.diagnostics);
     let connection: EapiConnectionConfig;
     try {
-      connection = { ...resolveEapiConnection(this.config, host), timeoutMs: this.config.diagnostics.httpTimeoutMs };
+      connection = { ...resolveEapiConnection(this.config, host), timeoutMs: compiled.httpTimeoutMs };
     } catch (error) {
       throw new DiagnosticExecutionError(toErrorCode(error, "diagnostic_execution_failed"), toErrorMessage(error), "not_dispatched");
     }
 
     try {
-      const results = await this.runner.runTextCommands(connection, [buildPingCommand(request)], {
+      const results = await this.runner.runTextCommands(connection, [compiled.command], {
         enable: true,
         signal: context.signal,
         requestId: context.requestId,
-        // Lets EOS stop the command itself at the same budget the server holds an uncertain slot for.
-        ...(this.config.diagnostics.nativeRequestTimeout ? { requestTimeoutSeconds: this.config.diagnostics.commandTimeoutMs / 1000 } : {})
+        ...(compiled.requestTimeoutSeconds === undefined ? {} : { requestTimeoutSeconds: compiled.requestTimeoutSeconds })
       });
       const output = results[0]?.output;
       if (results.length !== 1 || typeof output !== "string") {
@@ -47,4 +49,22 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
       });
     }
   }
+}
+
+/** The EOS command for one execution, its HTTP timeout, and the EOS request timer, if any. */
+function compileExecution(request: PreparedDiagnostic, diagnostics: DiagnosticsConfig): {
+  command: string;
+  httpTimeoutMs: number;
+  requestTimeoutSeconds?: number;
+} {
+  if (request.kind === "packet_capture") {
+    // The device timer is what ends a capture short of its count, so it is never optional (ADR 0010).
+    return { command: buildPacketCaptureCommand(request), httpTimeoutMs: packetCaptureHttpTimeoutMs(request), requestTimeoutSeconds: request.window_seconds };
+  }
+  return {
+    command: buildPingCommand(request),
+    httpTimeoutMs: diagnostics.httpTimeoutMs,
+    // Lets EOS stop the command itself at the same budget the server holds an uncertain slot for.
+    ...(diagnostics.nativeRequestTimeout ? { requestTimeoutSeconds: diagnostics.commandTimeoutMs / 1000 } : {})
+  };
 }

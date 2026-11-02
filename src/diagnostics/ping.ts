@@ -2,9 +2,14 @@ import { isIP } from "node:net";
 import type { DiagnosticsConfig } from "../config/diagnostics.js";
 import { pingExecutionBoundMs } from "../config/diagnostics.js";
 import { AppError } from "../core/errors.js";
-import type { DiagnosticDefinition, PingExecutionRequest, PingFinding, PreparedPing } from "./types.js";
+import type { DiagnosticDefinition, PingExecutionRequest, PingFinding, PingRequest, PreparedPing } from "./types.js";
 
-export const pingDiagnostic: DiagnosticDefinition = {
+export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing> = {
+  permission: {
+    allows: (host) => host.diagnosticsAllowed,
+    deniedCode: "diagnostic_policy_denied",
+    deniedMessage: "Diagnostic permission denied for"
+  },
   prepare(request, config) {
     const { destinations, ...shared } = request;
     if (destinations.length === 0 || destinations.length > config.maxDestinationsPerRequest) {
@@ -19,7 +24,15 @@ export const pingDiagnostic: DiagnosticDefinition = {
     const count = executions[0]?.count ?? config.defaultPingCount;
     return { request: { ...request, count }, executions };
   },
-  probeCount: (execution) => execution.count,
+  enforceBudget(hostCount, executions, config) {
+    const probesPerHost = executions.reduce((total, execution) => total + execution.count, 0);
+    if (hostCount * probesPerHost > config.maxProbesPerRequest) {
+      throw new AppError("diagnostic_probe_limit_exceeded", `Request exceeds maxProbesPerRequest ${config.maxProbesPerRequest}`);
+    }
+  },
+  overallOperationTimeoutMs: (config) => config.overallOperationTimeoutMs,
+  uncertainHoldMs: (_execution, config) => config.commandTimeoutMs,
+  resultIdentity: (execution) => ({ destination: execution.destination }),
   interpret: (output, execution) => parsePingOutput(output, execution.count)
 };
 
@@ -32,13 +45,18 @@ export function preparePing(request: PingExecutionRequest, config: DiagnosticsCo
   if (pingExecutionBoundMs(count, config.pingReplyTimeoutMs) > config.commandTimeoutMs) {
     throw new AppError("diagnostic_command_budget_exceeded", "Ping exceeds the configured device command budget");
   }
-  if (request.vrf !== undefined && !/^[A-Za-z0-9_][A-Za-z0-9_.:-]{0,63}$/.test(request.vrf)) {
-    throw new AppError("diagnostic_vrf_invalid", "VRF must be a single safe identifier (1-64 characters)");
-  }
+  if (request.vrf !== undefined) validateVrf(request.vrf);
   if (request.source !== undefined && validateAddress(request.source) !== addressFamily) {
     throw new AppError("diagnostic_source_invalid", "Source and destination must use the same IP address family");
   }
   return { ...request, count, addressFamily, replyTimeoutSeconds: config.pingReplyTimeoutMs / 1000 };
+}
+
+/** Shared by every diagnostic that accepts a VRF. */
+export function validateVrf(vrf: string): void {
+  if (!/^[A-Za-z0-9_][A-Za-z0-9_.:-]{0,63}$/.test(vrf)) {
+    throw new AppError("diagnostic_vrf_invalid", "VRF must be a single safe identifier (1-64 characters)");
+  }
 }
 
 function validateAddress(address: string): 4 | 6 {

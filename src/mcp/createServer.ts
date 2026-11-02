@@ -11,6 +11,7 @@ import { EapiClient } from "../eapi/client.js";
 import { EapiDiagnosticRunner } from "../diagnostics/eapiRunner.js";
 import { DiagnosticExecutor } from "../diagnostics/executor.js";
 import { EapiSlots, eapiSlotLimits } from "../operations/eapiSlots.js";
+import { buildPacketCaptureToolResult, packetCaptureInputSchema } from "./tools/packetCapture.js";
 import { buildPingToolResult, pingInputSchema } from "./tools/ping.js";
 import type { InventoryModel } from "../inventory/types.js";
 import type { ServerRuntimeContext } from "../serverInfo/types.js";
@@ -24,7 +25,7 @@ import { buildShowLoggingToolResult, showLoggingInputSchema } from "./tools/show
 
 // Every tool leaves device state unchanged, which lets clients run independent
 // calls concurrently; server-side limits still bound diagnostics (ADR 0008).
-// Most tools reach only inventory devices.
+// Most tools, packet capture included, reach only inventory devices.
 const closedWorldReadOnly: ToolAnnotations = { readOnlyHint: true, openWorldHint: false };
 // Ping destinations need not be in inventory.
 const openWorldReadOnly: ToolAnnotations = { readOnlyHint: true, openWorldHint: true };
@@ -68,6 +69,14 @@ function buildToolDefinitions(deps: McpRuntimeDependencies) {
       handler: async (args: z.infer<typeof pingInputSchema>, extra: { signal: AbortSignal }) => buildPingToolResult(args, deps.diagnostics, extra.signal)
     },
     {
+      name: "eos_packet_capture",
+      description: "Capture packets on an inventory host or group interface for a bounded window and return tcpdump's one-line summary of each packet. Requires explicit packet capture permission. Sees only traffic sent or received by the device's control plane, never hardware-forwarded transit traffic. The call returns once packet_count packets arrive; if fewer arrive within window_seconds, that host's entry fails. Use a small packet_count (1-5) to check whether traffic is arriving, and a larger one only for busy flows. Use filter (pcap-filter syntax) to select traffic: an unfiltered capture on Management or any includes this server's own eAPI traffic. Returns one result per host.",
+      inputSchema: packetCaptureInputSchema,
+      annotations: closedWorldReadOnly,
+      handler: async (args: z.infer<typeof packetCaptureInputSchema>, extra: { signal: AbortSignal }) =>
+        buildPacketCaptureToolResult(args, deps.diagnostics, extra.signal)
+    },
+    {
       name: "eos_run_show",
       description: "Run one or more EOS show commands against a host or group target. Supports auto/json/text output modes with strict show-only validation.",
       inputSchema: runShowInputSchema,
@@ -107,7 +116,7 @@ export async function startMcpServer(config: ResolvedServerConfig, inventoryMode
   };
 
   const client = new EapiClient();
-  const slots = new EapiSlots(eapiSlotLimits(config), config.diagnostics.commandTimeoutMs);
+  const slots = new EapiSlots(eapiSlotLimits(config));
   const deviceReader = new EapiDeviceReader(config, client, slots);
   const diagnostics = new DiagnosticExecutor(inventoryModel, config, new EapiDiagnosticRunner(config, client), slots);
 

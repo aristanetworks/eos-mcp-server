@@ -2,6 +2,8 @@ import { z } from "zod";
 
 // Node timers must not overflow into an effectively immediate timeout.
 const MAX_TIMER_MS = 2_147_483_647;
+// EOS accepts tcpdump packet-count values from 1 to 10000.
+const EOS_MAX_CAPTURE_PACKET_COUNT = 10_000;
 const positiveInteger = z.number().int().positive().max(MAX_TIMER_MS);
 
 export const diagnosticsConfigSchema = z.object({
@@ -16,7 +18,13 @@ export const diagnosticsConfigSchema = z.object({
   commandTimeoutMs: positiveInteger.default(30_000),
   httpTimeoutMs: positiveInteger.default(35_000),
   overallOperationTimeoutMs: positiveInteger.default(60_000),
-  nativeRequestTimeout: z.boolean().default(true)
+  nativeRequestTimeout: z.boolean().default(true),
+  defaultCapturePacketCount: positiveInteger.default(10),
+  maxCapturePacketCount: positiveInteger.max(EOS_MAX_CAPTURE_PACKET_COUNT).default(1000),
+  defaultCaptureWindowSeconds: positiveInteger.default(10),
+  maxCaptureWindowSeconds: positiveInteger.default(60),
+  maxCapturePacketsPerRequest: positiveInteger.default(2000),
+  captureOverallOperationTimeoutMs: positiveInteger.default(90_000)
 }).strict().superRefine((config, context) => {
   const invalid = (path: string, message: string): void => {
     context.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
@@ -35,6 +43,18 @@ export const diagnosticsConfigSchema = z.object({
   }
   if (config.httpTimeoutMs < config.commandTimeoutMs + 1000) {
     invalid("httpTimeoutMs", "Must exceed commandTimeoutMs by at least 1000 ms");
+  }
+  if (config.defaultCapturePacketCount > config.maxCapturePacketCount) {
+    invalid("defaultCapturePacketCount", "Must not exceed maxCapturePacketCount");
+  }
+  if (config.maxCapturePacketCount > config.maxCapturePacketsPerRequest) {
+    invalid("maxCapturePacketCount", "Must not exceed maxCapturePacketsPerRequest");
+  }
+  if (config.defaultCaptureWindowSeconds > config.maxCaptureWindowSeconds) {
+    invalid("defaultCaptureWindowSeconds", "Must not exceed maxCaptureWindowSeconds");
+  }
+  if (config.captureOverallOperationTimeoutMs <= config.maxCaptureWindowSeconds * 1000) {
+    invalid("captureOverallOperationTimeoutMs", "Must exceed maxCaptureWindowSeconds");
   }
 });
 

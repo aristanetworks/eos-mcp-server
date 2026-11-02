@@ -8,7 +8,7 @@ const limits = { deviceLimit: 3, diagnosticDeviceLimit: 2, diagnosticServerLimit
 const showVersion: EosCommandResult = { command: "show version", output_format: "json", output: {} };
 
 function ping(inventoryHostname = "leaf1") {
-  return { inventoryHostname, diagnostic: "ping" as const };
+  return { inventoryHostname, diagnostic: "ping" as const, uncertainHoldMs: 30_000 };
 }
 
 /** Runner whose requests stay pending until the test settles them, in dispatch order. */
@@ -28,7 +28,7 @@ async function flush(): Promise<void> {
 
 describe("shared per-device eAPI slots", () => {
   it("keeps a slot free for reads when diagnostics reach their per-device share", async () => {
-    const slots = new EapiSlots(limits, 30_000);
+    const slots = new EapiSlots(limits);
     await slots.acquireDiagnostic(undefined, ping());
     await slots.acquireDiagnostic(undefined, ping());
     let thirdPingGranted = false;
@@ -46,7 +46,7 @@ describe("shared per-device eAPI slots", () => {
   });
 
   it("makes reads and diagnostics share the device limit, serving waiters oldest first", async () => {
-    const slots = new EapiSlots(limits, 30_000);
+    const slots = new EapiSlots(limits);
     const releaseFirstRead = await slots.acquireRead(undefined, "leaf1");
     await slots.acquireRead(undefined, "leaf1");
     await slots.acquireRead(undefined, "leaf1");
@@ -67,7 +67,7 @@ describe("shared per-device eAPI slots", () => {
   });
 
   it("does not limit reads on one device by diagnostics on another", async () => {
-    const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1 }, 30_000);
+    const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1 });
     await slots.acquireDiagnostic(undefined, ping("leaf1"));
     const releaseRead = await slots.acquireRead(undefined, "leaf2");
     expect(slots.snapshot()).toMatchObject({ available_count: 0, devices: [{ inventory_hostname: "leaf1" }, { inventory_hostname: "leaf2", read_active_count: 1 }] });
@@ -75,7 +75,7 @@ describe("shared per-device eAPI slots", () => {
   });
 
   it("removes a cancelled read waiter", async () => {
-    const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1 }, 30_000);
+    const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1 });
     await slots.acquireRead(undefined, "leaf1");
     const controller = new AbortController();
     const waiting = slots.acquireRead(controller.signal, "leaf1");
@@ -87,7 +87,7 @@ describe("shared per-device eAPI slots", () => {
 
   it("holds a read slot per request in EapiDeviceReader and frees it when the request settles", async () => {
     setTestPasswordEnv();
-    const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1 }, 30_000);
+    const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1 });
     const { runner, dispatched } = controlledRunner();
     const reader = new EapiDeviceReader(buildConfig({ defaultConnection: { ansibleUser: "admin", mcpPasswordEnv: "EOS_MCP_PASSWORD" } }), runner, slots);
     const host = buildHost({ inventoryHostname: "leaf1", resolvedEndpoint: "10.0.0.11" });

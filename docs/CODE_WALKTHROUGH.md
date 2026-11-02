@@ -74,20 +74,21 @@ Shared type-narrowing utilities (`isObject`, `readString`, `readBoolean`, `readN
 
 ## Diagnostic Execution
 
-- `src/diagnostics/executor.ts`: typed diagnostic orchestration, inventory opt-in and probe-budget checks, existing result envelopes, and cancellation. One executor is created per server instance.
-- `src/operations/eapiSlots.ts`: in-memory admission shared by every eAPI request in one server process. Reads and diagnostics share each device's slots; diagnostics also have a per-device share and a server-wide ceiling. `EapiDeviceReader` holds a read slot per request. Waiters are served oldest first, skipping those that cannot run yet. Unknown completion holds a slot for `commandTimeoutMs`, then a timer frees it; a late confirmed response frees it sooner. Shutdown rejects queued work; cancelled waiters are removed.
-- `src/diagnostics/eapiRunner.ts`: connection resolution followed by one text eAPI attempt in enable mode. Separate error paths distinguish local rejection before dispatch from uncertain RPC, transport, or malformed-result failures after dispatch; there is no mutable dispatch flag or retry.
+- `src/diagnostics/executor.ts`: typed diagnostic orchestration, the per-kind inventory permission and aggregate budget checks, existing result envelopes, and cancellation. One executor is created per server instance.
+- `src/operations/eapiSlots.ts`: in-memory admission shared by every eAPI request in one server process. Reads and diagnostics share each device's slots; diagnostics also have a per-device share and a server-wide ceiling. `EapiDeviceReader` holds a read slot per request. Waiters are served oldest first, skipping those that cannot run yet. Unknown completion holds a slot for that execution's own budget (`commandTimeoutMs` for ping, window plus 2 s for a packet capture), then a timer frees it; a late confirmed response frees it sooner. Shutdown rejects queued work; cancelled waiters are removed.
+- `src/diagnostics/eapiRunner.ts`: connection resolution followed by one text eAPI attempt in enable mode, with each kind's command, HTTP timeout, and EOS request timer (always the window for a capture). Separate error paths distinguish local rejection before dispatch from uncertain RPC, transport, or malformed-result failures after dispatch; there is no mutable dispatch flag or retry.
 - `src/diagnostics/executionError.ts`: typed `AppError` classification (`not_dispatched`, `completed`, or `unknown`). Only explicitly settled errors permit capacity reuse; ordinary errors remain uncertain.
 - `src/diagnostics/ping.ts`: literal-address/VRF/source/count validation, finite ping command construction, and loss/RTT interpretation. A no-reply finding is not an execution failure.
-- `src/diagnostics/types.ts`: request, prepared intent, observation, and finding types discriminated by diagnostic kind, plus the `DiagnosticDeviceRunner` seam. Only ping is implemented; capture sessions are not pre-modeled.
+- `src/diagnostics/packetCapture.ts`: interface/VRF/filter/count/window validation, `tcpdump` command construction with the filter last, the packet budget, the window-based uncertain hold, and the complete **Capture Finding** carrying tcpdump's lines verbatim.
+- `src/diagnostics/types.ts`: request, prepared intent, observation, and finding types discriminated by diagnostic kind (`ping`, `packet_capture`), the `DiagnosticDefinition` seam, and the `DiagnosticDeviceRunner` seam. There are no capture sessions.
 
-Diagnostic execution reuses read-operation orchestration with independent settings and per-device admission under a server-wide ceiling. Unknown completion holds capacity for the command budget; HTTP abort is not a remote kill signal. Each server-info call reads `DiagnosticExecutor.getCapacity()` afresh; the standalone CLI reports no live snapshot.
+Diagnostic execution reuses read-operation orchestration with independent settings and per-device admission under a server-wide ceiling. Unknown completion holds capacity for the execution's own budget; HTTP abort is not a remote kill signal. Each server-info call reads `DiagnosticExecutor.getCapacity()` afresh; the standalone CLI reports no live snapshot.
 
 Capacity lives in memory per server process, so several servers can run against one inventory. See [DIAGNOSTICS.md](DIAGNOSTICS.md) [ADR 0006](adr/0006-in-memory-timed-diagnostic-capacity.md), and [ADR 0007](adr/0007-per-device-diagnostic-concurrency.md).
 
 ## MCP Layer
 
-The MCP server is assembled in `src/mcp/createServer.ts`. It creates the official SDK `McpServer`, registers eight non-configuring tools, and connects over stdio. Ping forwards the MCP cancellation signal into diagnostic execution.
+The MCP server is assembled in `src/mcp/createServer.ts`. It creates the official SDK `McpServer`, registers nine non-configuring tools, and connects over stdio. Ping and packet capture forward the MCP cancellation signal into diagnostic execution.
 
 Tool adapters live under `src/mcp/tools/`:
 
@@ -95,6 +96,7 @@ Tool adapters live under `src/mcp/tools/`:
 - `listInventory.ts`
 - `probeDevices.ts`
 - `ping.ts`
+- `packetCapture.ts`
 - `runShow.ts`
 - `showLogging.ts`
 - `getFacts.ts`
@@ -122,10 +124,10 @@ Tests mirror the source layout:
 - Inventory and target behavior: `inventory.test.ts`, `targetResolution.test.ts`
 - eAPI and connection behavior: `eapiClient.test.ts`, `eosDeviceReader.test.ts`, `startupValidation.test.ts`, `responseSize.test.ts`
 - Read services and orchestration: `probeDevices.test.ts`, `runShow.test.ts`, `loggingQuery.test.ts`, `showLogging.test.ts`, `getFacts.test.ts`, `getRunningConfig.test.ts`, `readExecution.test.ts`
-- Diagnostics: `ping.test.ts`, `diagnosticConfig.test.ts`, `diagnostics.test.ts`, `diagnosticEapi.test.ts`, `diagnosticReservations.test.ts` (timed release, cancellation, late responses and visibility)
+- Diagnostics: `ping.test.ts`, `diagnosticConfig.test.ts`, `diagnostics.test.ts`, `diagnosticEapi.test.ts`, `diagnosticReservations.test.ts` (timed release, cancellation, late responses and visibility), `packetCapture.test.ts` (capture validation, command, finding), `packetCaptureExecution.test.ts` (capture permission, fan-out, budget, uncertain hold, tool schema)
 - Response correlation: `eapiCorrelation.test.ts`
 - Server info and errors: `buildServerInfo.test.ts`, `errors.test.ts`, `errorTaxonomy.test.ts`
 - MCP adapters and stdio: `readToolsMcp.test.ts`, `probeDevicesTool.test.ts`, `listInventoryTool.test.ts`, `mcpStdioSmoke.test.ts`
 - Package/static policy: `packagePolicy.test.ts`, `packageSmoke.test.ts`
-- Optional cEOS integration (requires a configured lab): `integration.test.ts`, `pingIntegration.test.ts`, `pingMcpIntegration.test.ts`
+- Optional cEOS integration (requires a configured lab): `integration.test.ts`, `pingIntegration.test.ts`, `pingMcpIntegration.test.ts`, `packetCaptureIntegration.test.ts`
 - Shared test helpers: `test/helpers.ts`

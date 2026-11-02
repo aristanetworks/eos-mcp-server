@@ -5,6 +5,7 @@ import type { EosTextCommandRunner } from "../src/eapi/types.js";
 import { EapiDiagnosticRunner } from "../src/diagnostics/eapiRunner.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
 import { DiagnosticExecutionError } from "../src/diagnostics/executionError.js";
+import { preparePacketCapture } from "../src/diagnostics/packetCapture.js";
 import { preparePing } from "../src/diagnostics/ping.js";
 import { buildConfig, buildHost, buildInventoryModel, echoRpcTransport } from "./helpers.js";
 
@@ -130,5 +131,25 @@ describe("diagnostic eAPI adapter", () => {
     await expect(runner.execute(host, preparePing({ kind: "ping", destination: "::1" }, config.diagnostics), context()))
       .rejects.toMatchObject({ code: "eapi_transport_error" });
     expect(postJson).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("packet capture eAPI adapter", () => {
+  const packets = "22:06:07.386059 IP 10.255.255.1 > 10.255.255.0: ICMP echo request\n";
+
+  it.each([true, false])("always sends the window as the EOS request timeout and outlasts it over HTTP (nativeRequestTimeout %s)", async (nativeRequestTimeout) => {
+    const postJson = vi.fn<EapiTransport["postJson"]>(async () => ({ ok: true, status: 200, json: async () => ({ result: [{ output: "" }, { output: packets }] }), text: async () => "" }));
+    const config = buildConfig();
+    config.diagnostics.nativeRequestTimeout = nativeRequestTimeout;
+    const runner = new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson })));
+    const request = preparePacketCapture({ kind: "packet_capture", interface: "any", vrf: "MGMT", filter: "icmp", packet_count: 2, window_seconds: 7 }, config.diagnostics);
+    expect(await runner.execute(host, request, context())).toEqual({ kind: "packet_capture", output: packets });
+    expect(postJson).toHaveBeenCalledTimes(1);
+    const [connection, body] = postJson.mock.calls[0] ?? [];
+    expect(connection?.timeoutMs).toBeGreaterThan(7000);
+    expect(JSON.parse(String(body)).id).toBe("unit-rpc-id");
+    expect(JSON.parse(String(body)).params).toEqual({
+      version: "latest", format: "text", cmds: ["enable", "tcpdump interface any vrf MGMT packet-count 2 filter icmp"], requestTimeout: 7
+    });
   });
 });

@@ -63,7 +63,7 @@ export function buildConfig(overrides: Partial<ResolvedServerConfig> = {}): Reso
 
 /** The shared eAPI slots a server would build from `config`. */
 export function buildEapiSlots(config: ResolvedServerConfig = buildConfig()): EapiSlots {
-  return new EapiSlots(eapiSlotLimits(config), config.diagnostics.commandTimeoutMs);
+  return new EapiSlots(eapiSlotLimits(config));
 }
 
 export function setTestPasswordEnv(value = "secret", name = "EOS_MCP_PASSWORD"): void {

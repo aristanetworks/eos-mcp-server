@@ -17,7 +17,7 @@ export async function runProbe(config: ResolvedServerConfig, target: string, asJ
     model,
     config,
     { target, include_raw: false },
-    new EapiDeviceReader(config, new EapiClient(), new EapiSlots(eapiSlotLimits(config), config.diagnostics.commandTimeoutMs))
+    new EapiDeviceReader(config, new EapiClient(), new EapiSlots(eapiSlotLimits(config)))
   );
 
   if (asJson) {

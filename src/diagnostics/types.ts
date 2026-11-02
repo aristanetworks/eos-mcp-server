@@ -11,7 +11,17 @@ export interface PingRequest {
   source?: string;
 }
 
-export type DiagnosticRequest = PingRequest;
+/** Field names follow the tool input, because the resolved request is echoed in results. */
+export interface PacketCaptureRequest {
+  kind: "packet_capture";
+  interface: string;
+  vrf?: string;
+  filter?: string;
+  packet_count?: number;
+  window_seconds?: number;
+}
+
+export type DiagnosticRequest = PingRequest | PacketCaptureRequest;
 
 /** One ping execution: a single destination with the request's shared options. */
 export interface PingExecutionRequest extends Omit<PingRequest, "destinations"> {
@@ -24,8 +34,14 @@ export interface PreparedPing extends Omit<PingExecutionRequest, "count"> {
   replyTimeoutSeconds: number;
 }
 
-export type PreparedDiagnostic = PreparedPing;
-export type DiagnosticObservation = { kind: "ping"; output: string };
+/** A capture is one execution per host, so the prepared execution is the resolved request. */
+export interface PreparedPacketCapture extends PacketCaptureRequest {
+  packet_count: number;
+  window_seconds: number;
+}
+
+export type PreparedDiagnostic = PreparedPing | PreparedPacketCapture;
+export type DiagnosticObservation = { kind: DiagnosticRequest["kind"]; output: string };
 
 export interface PingFinding {
   kind: "ping";
@@ -36,18 +52,36 @@ export interface PingFinding {
   rtt_ms: { min: number; avg: number; max: number } | null;
 }
 
-export type DiagnosticFinding = PingFinding;
+/** `packets` are tcpdump's lines verbatim, one per packet; protocols are not parsed. */
+export interface PacketCaptureFinding {
+  kind: "packet_capture";
+  capture: "complete";
+  requested_packet_count: number;
+  window_seconds: number;
+  packets: string[];
+}
+
+export type DiagnosticFinding = PingFinding | PacketCaptureFinding;
 
 /** The request echoed in results, with server defaults applied. */
-export type ResolvedDiagnosticRequest = DiagnosticRequest & { count: number };
+export type ResolvedDiagnosticRequest = (PingRequest & { count: number }) | PreparedPacketCapture;
 
-/** Per-kind seam: validation and probe cost before dispatch, interpretation after.
- * The executor runs every prepared execution on every resolved host; device I/O stays in the runner.
+/** Per-kind seam: permission, validation, and budgets before dispatch, the per-execution
+ * uncertain hold, and interpretation after. The executor runs every prepared execution on every
+ * resolved host; device I/O stays in the runner.
  */
-export interface DiagnosticDefinition {
-  prepare(request: DiagnosticRequest, config: DiagnosticsConfig): { request: ResolvedDiagnosticRequest; executions: PreparedDiagnostic[] };
-  probeCount(execution: PreparedDiagnostic): number;
-  interpret(output: string, execution: PreparedDiagnostic): DiagnosticFinding;
+export interface DiagnosticDefinition<TRequest extends DiagnosticRequest = DiagnosticRequest, TExecution extends PreparedDiagnostic = PreparedDiagnostic> {
+  /** Every resolved host must have this permission, or the whole request is rejected. */
+  permission: { allows(host: InventoryHostModel): boolean; deniedCode: string; deniedMessage: string };
+  prepare(request: TRequest, config: DiagnosticsConfig): { request: ResolvedDiagnosticRequest; executions: TExecution[] };
+  /** Rejects a request whose executions, run on `hostCount` hosts, exceed the kind's aggregate budget. */
+  enforceBudget(hostCount: number, executions: TExecution[], config: DiagnosticsConfig): void;
+  overallOperationTimeoutMs(config: DiagnosticsConfig): number;
+  /** How long a slot stays held once the execution's remote completion is unknown. */
+  uncertainHoldMs(execution: TExecution, config: DiagnosticsConfig): number;
+  /** Fields that tell a host's results apart, such as ping's destination; empty for one execution per host. */
+  resultIdentity(execution: TExecution): Record<string, string>;
+  interpret(output: string, execution: TExecution): DiagnosticFinding;
 }
 
 /** `reservation_id` doubles as the execution's JSON-RPC request ID. */

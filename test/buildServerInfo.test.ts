@@ -25,4 +25,17 @@ describe("buildServerInfo", () => {
 
     expect(info.capabilities.eapi_version).toBe(1);
   });
+
+  it("reports packet capture limits under limits.diagnostics", () => {
+    const info = buildServerInfo({ instanceId: "instance-1", startedAt: "2026-04-23T00:00:00.000Z", config: buildConfig() });
+
+    expect(info.limits.diagnostics).toMatchObject({
+      default_capture_packet_count: 10,
+      max_capture_packet_count: 1000,
+      default_capture_window_seconds: 10,
+      max_capture_window_seconds: 60,
+      max_capture_packets_per_request: 2000,
+      capture_overall_operation_timeout_ms: 90_000
+    });
+  });
 });
