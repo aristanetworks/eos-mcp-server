@@ -3,9 +3,9 @@ import type { DiagnosticsConfig } from "../config/diagnostics.js";
 import { pingExecutionBoundMs } from "../config/diagnostics.js";
 import { AppError } from "../core/errors.js";
 import { resolveBoundedInteger, validateVrf } from "./validation.js";
-import type { DiagnosticDefinition, DiagnosticOutputObservation, PingExecutionRequest, PingFinding, PingRequest, PreparedPing } from "./types.js";
+import type { DiagnosticDefinition, PingExecutionRequest, PingFinding, PingRequest, PreparedPing } from "./types.js";
 
-export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing, DiagnosticOutputObservation> = {
+export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing> = {
   permission: {
     allows: (host) => host.diagnosticsAllowed,
     deniedCode: "diagnostic_policy_denied",
@@ -40,7 +40,15 @@ export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing, Dia
   }),
   uncertainHoldMs: (_execution, config) => config.commandTimeoutMs,
   resultIdentity: (execution) => ({ destination: execution.destination }),
-  interpret: (observation, execution) => parsePingOutput(observation.output, execution.count)
+  interpret: (observation, execution) => {
+    // EOS stopped the ping and returned none of its output, so there is no reachability to report.
+    // The device's reply confirms the ping has ended, so its slot is freed (measured on cEOS 4.34.3M).
+    if (observation.end === "device_time_limit") {
+      throw new AppError("ping_device_time_limit_reached",
+        "EOS stopped the ping at its request timer (commandTimeoutMs) before it finished; no reachability was observed");
+    }
+    return parsePingOutput(observation.output, execution.count);
+  }
 };
 
 export function preparePing(request: PingExecutionRequest, config: DiagnosticsConfig): PreparedPing {

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { APP_NAME, APP_VERSION } from "../core/version.js";
-import type { DiagnosticCapacitySnapshot } from "../diagnostics/types.js";
+import type { DiagnosticCapacitySnapshot } from "../operations/eapiSlots.js";
 import type { ServerInfo, ServerRuntimeContext } from "./types.js";
 
 export function buildServerInfo(context: ServerRuntimeContext, diagnosticCapacity?: DiagnosticCapacitySnapshot): ServerInfo {

@@ -1,22 +1,73 @@
 import { randomUUID } from "node:crypto";
 import { AppError } from "../core/errors.js";
-import type { DiagnosticCapacitySnapshot, DiagnosticDeviceCapacity, DiagnosticRequest, DiagnosticReservationInfo } from "../diagnostics/types.js";
 
-/** What a waiter asks for; a diagnostic names its kind, because captures have their own per-device limit. */
+/** `reservation_id` doubles as the execution's JSON-RPC request ID. `diagnostic` is the kind the
+ * caller named; these slots attach no meaning to it beyond counting and an optional per-kind limit.
+ */
+export interface DiagnosticReservationInfo {
+  reservation_id: string;
+  inventory_hostname: string;
+  diagnostic: string;
+  state: "active" | "uncertain";
+  reserved_at: string;
+  uncertain_since?: string;
+  releases_at?: string;
+  reason_code?: string;
+}
+
+interface DiagnosticSlotCounts {
+  available_count: number;
+  active_count: number;
+  uncertain_count: number;
+  queued_count: number;
+}
+
+/** One diagnostic kind's share of a host's diagnostic slots. */
+export interface DiagnosticKindSlotCounts {
+  active_count: number;
+  uncertain_count: number;
+  queued_count: number;
+}
+
+/** Slot usage of one inventory host; only hosts holding or awaiting a slot are listed.
+ * The four shared counts are diagnostic slots; `available_count` is the diagnostic headroom,
+ * capped by the host's shared eAPI headroom and server-wide availability. `kinds` splits the
+ * diagnostic slots by kind, listing only kinds that hold or await one on this host.
+ */
+export interface DiagnosticDeviceCapacity extends DiagnosticSlotCounts {
+  inventory_hostname: string;
+  read_active_count: number;
+  read_queued_count: number;
+  kinds: Record<string, DiagnosticKindSlotCounts>;
+}
+
+/** Top-level counts are server-wide diagnostics; `devices` breaks them down per host, with reads. */
+export interface DiagnosticCapacitySnapshot extends DiagnosticSlotCounts {
+  limit: number;
+  device_limit: number;
+  /** eAPI slots one host may hold across reads and diagnostics. */
+  eapi_device_limit: number;
+  devices: DiagnosticDeviceCapacity[];
+  reservations: DiagnosticReservationInfo[];
+}
+
+/** What a waiter asks for; a diagnostic names its kind, and any per-device limit that kind has. */
 type SlotRequest =
   | { inventoryHostname: string; kind: "read" }
-  | { inventoryHostname: string; kind: "diagnostic"; diagnostic: DiagnosticRequest["kind"] };
+  | { inventoryHostname: string; kind: "diagnostic"; diagnostic: string; kindDeviceLimit?: number };
 
 type Waiter = SlotRequest & {
   grant: () => void;
   reject: (error: AppError) => void;
 };
 
-interface DiagnosticReservationIntent {
+export interface DiagnosticReservationIntent {
   inventoryHostname: string;
-  diagnostic: DiagnosticRequest["kind"];
+  diagnostic: string;
   /** How long the slot stays held once the execution's remote completion is unknown. */
   uncertainHoldMs: number;
+  /** Of the host's diagnostic slots, at most this many may hold this kind at once; absent means only the shared limits apply. */
+  kindDeviceLimit?: number;
 }
 
 export interface DiagnosticReservation {
@@ -32,13 +83,11 @@ export interface EapiSlotLimits {
   diagnosticDeviceLimit: number;
   /** Diagnostic slots shared by every device in the server process. Reads have no server-wide limit. */
   diagnosticServerLimit: number;
-  /** Of a host's diagnostic share, the slots packet captures may hold, so a capture never blocks every ping. */
-  captureDeviceLimit: number;
 }
 
 /** One instance per server process, shared by every eAPI request (ADR 0009). A slot is granted only
  * while its device has room and, for a diagnostic, its device's diagnostic share and the server-wide
- * diagnostic ceiling have room, and for a packet capture, its device's capture limit too (ADR 0010);
+ * diagnostic ceiling have room, and the kind's own per-device limit too when it names one (ADR 0010);
  * waiters are served oldest first, skipping those that cannot run yet (ADR 0007). A read frees its
  * slot when its request settles. A diagnostic slot with unknown remote completion stays held for its
  * own execution's budget, then frees itself; a late confirmed response frees it sooner (ADR 0006).
@@ -70,7 +119,6 @@ export class EapiSlots {
       limit: this.limits.diagnosticServerLimit,
       device_limit: this.limits.diagnosticDeviceLimit,
       eapi_device_limit: this.limits.deviceLimit,
-      capture_device_limit: this.limits.captureDeviceLimit,
       available_count: serverAvailable,
       active_count: reservations.length - uncertain,
       uncertain_count: uncertain,
@@ -90,21 +138,28 @@ export class EapiSlots {
           inventory_hostname: inventoryHostname,
           available_count: 0, active_count: 0, uncertain_count: 0, queued_count: 0,
           read_active_count: 0, read_queued_count: 0,
-          capture_active_count: 0, capture_uncertain_count: 0, capture_queued_count: 0
+          kinds: {}
         };
         devices.set(inventoryHostname, entry);
       }
       return entry;
     };
+    const kindEntry = (device: DiagnosticDeviceCapacity, diagnostic: string): DiagnosticKindSlotCounts => {
+      const existingCounts = device.kinds[diagnostic];
+      if (existingCounts !== undefined) return existingCounts;
+      const newCounts = { active_count: 0, uncertain_count: 0, queued_count: 0 };
+      device.kinds[diagnostic] = newCounts;
+      return newCounts;
+    };
     for (const reservation of reservations) {
       const entry = deviceEntry(reservation.inventory_hostname);
-      const isCapture = reservation.diagnostic === "packet_capture";
+      const kindCounts = kindEntry(entry, reservation.diagnostic);
       if (reservation.state === "uncertain") {
         entry.uncertain_count += 1;
-        if (isCapture) entry.capture_uncertain_count += 1;
+        kindCounts.uncertain_count += 1;
       } else {
         entry.active_count += 1;
-        if (isCapture) entry.capture_active_count += 1;
+        kindCounts.active_count += 1;
       }
     }
     for (const [inventoryHostname, readsHeld] of this.readsHeldByDevice) deviceEntry(inventoryHostname).read_active_count = readsHeld;
@@ -114,7 +169,7 @@ export class EapiSlots {
         entry.read_queued_count += 1;
       } else {
         entry.queued_count += 1;
-        if (waiter.diagnostic === "packet_capture") entry.capture_queued_count += 1;
+        kindEntry(entry, waiter.diagnostic).queued_count += 1;
       }
     }
     for (const entry of devices.values()) {
@@ -129,7 +184,12 @@ export class EapiSlots {
   }
 
   acquireDiagnostic(signal: AbortSignal | undefined, intent: DiagnosticReservationIntent): Promise<DiagnosticReservation> {
-    const slot: SlotRequest = { inventoryHostname: intent.inventoryHostname, kind: "diagnostic", diagnostic: intent.diagnostic };
+    const slot: SlotRequest = {
+      inventoryHostname: intent.inventoryHostname,
+      kind: "diagnostic",
+      diagnostic: intent.diagnostic,
+      ...(intent.kindDeviceLimit === undefined ? {} : { kindDeviceLimit: intent.kindDeviceLimit })
+    };
     return this.enqueue(signal, slot, () => this.reserveDiagnostic(intent));
   }
 
@@ -173,7 +233,7 @@ export class EapiSlots {
     const diagnosticsHeld = this.diagnosticSlotsHeldBy(waiter.inventoryHostname);
     const readsHeld = this.readsHeldByDevice.get(waiter.inventoryHostname) ?? 0;
     if (waiter.kind === "read") return diagnosticsHeld + readsHeld < this.limits.deviceLimit;
-    if (waiter.diagnostic === "packet_capture" && this.diagnosticSlotsHeldBy(waiter.inventoryHostname, "packet_capture") >= this.limits.captureDeviceLimit) {
+    if (waiter.kindDeviceLimit !== undefined && this.diagnosticSlotsHeldBy(waiter.inventoryHostname, waiter.diagnostic) >= waiter.kindDeviceLimit) {
       return false;
     }
     return this.diagnosticHeadroom(diagnosticsHeld, readsHeld, this.limits.diagnosticServerLimit - this.reservations.size) > 0;
@@ -191,7 +251,7 @@ export class EapiSlots {
   /** Counted from the held reservations, which never exceed the server-wide diagnostic limit; `diagnostic`
    * narrows the count to one kind.
    */
-  private diagnosticSlotsHeldBy(inventoryHostname: string, diagnostic?: DiagnosticRequest["kind"]): number {
+  private diagnosticSlotsHeldBy(inventoryHostname: string, diagnostic?: string): number {
     let held = 0;
     for (const reservation of this.reservations.keys()) {
       if (reservation.inventory_hostname === inventoryHostname && (diagnostic === undefined || reservation.diagnostic === diagnostic)) held += 1;
@@ -267,16 +327,17 @@ export class EapiSlots {
   }
 }
 
-/** Limits from config: top-level `deviceConcurrency` per device, `diagnostics.*` for the diagnostic share. */
+/** Limits from config: top-level `deviceConcurrency` per device, `diagnostics.*` for the diagnostic share.
+ * A kind's own per-device limit arrives with each request, from its diagnostic definition.
+ */
 export function eapiSlotLimits(config: {
   deviceConcurrency: number;
-  diagnostics: { deviceConcurrency: number; maxConcurrentDiagnostics: number; captureDeviceConcurrency: number };
+  diagnostics: { deviceConcurrency: number; maxConcurrentDiagnostics: number };
 }): EapiSlotLimits {
   return {
     deviceLimit: config.deviceConcurrency,
     diagnosticDeviceLimit: config.diagnostics.deviceConcurrency,
-    diagnosticServerLimit: config.diagnostics.maxConcurrentDiagnostics,
-    captureDeviceLimit: config.diagnostics.captureDeviceConcurrency
+    diagnosticServerLimit: config.diagnostics.maxConcurrentDiagnostics
   };
 }
 

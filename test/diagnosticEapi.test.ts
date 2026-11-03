@@ -35,7 +35,7 @@ describe("diagnostic eAPI adapter", () => {
     const config = buildConfig({ readTimeoutMs: 7, eapiVersion: 1 });
     const runner = new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson })));
     const request = preparePing({ kind: "ping", destination: "::1", source: "::1", vrf: "default", count: 1 }, config.diagnostics);
-    expect(await runner.execute(host, request, context())).toEqual({ kind: "ping", output });
+    expect(await runner.execute(host, request, context())).toEqual({ end: "output", output });
     expect(postJson).toHaveBeenCalledTimes(1);
     const [connection, body] = postJson.mock.calls[0] ?? [];
     expect(connection).toMatchObject({ timeoutMs: 35_000, validateCerts: true });
@@ -123,14 +123,33 @@ describe("diagnostic eAPI adapter", () => {
 
   it.each([
     { code: 1000, message: "request timed out" },
-    { code: 1001, message: "CLI command failed: unexpected error 408", data: [{ errors: ["Command exceeded its allowed time limit"] }] },
-    // The same error ends an unfilled capture, but for ping it is not proof the process has exited.
-    { ...deviceTimeLimitError, message: "CLI command 2 of 2 'ping ::1 repeat 1' failed: unexpected error 408" }
+    // The time limit hit during `enable`, so the ping never ran and this is not the device timer ending it.
+    { code: 1001, message: "CLI command failed: unexpected error 408", data: [{ errors: ["Command exceeded its allowed time limit"] }] }
   ])("does not equate an EOS RPC interruption error with confirmed process exit ($code)", async (rpcError) => {
     const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ error: rpcError }), text: async () => "" }));
     const executor = createSingleSlotExecutor(new EapiClient(echoRpcTransport({ postJson })));
     await executor.execute(call);
     expect(executor.getCapacity()).toMatchObject({ uncertain_count: 1, available_count: 0 });
+  });
+
+  // Measured on cEOS 4.34.3M: a ping stopped by runCmds.requestTimeout returns this reply, and its process is gone at once.
+  const pingTimeLimitError = { ...deviceTimeLimitError, message: "CLI command 2 of 2 'ping ip ::1 repeat 1' failed: unexpected error 408" };
+
+  it("observes that the device time limit stopped a ping", async () => {
+    const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ error: pingTimeLimitError }), text: async () => "" }));
+    const config = buildConfig();
+    const runner = new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson })));
+    expect(await runner.execute(host, preparePing({ kind: "ping", destination: "::1" }, config.diagnostics), context()))
+      .toEqual({ end: "device_time_limit" });
+  });
+
+  it("fails a ping the device time limit stopped, reporting no reachability, and frees its slot at once", async () => {
+    const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ error: pingTimeLimitError }), text: async () => "" }));
+    const executor = createSingleSlotExecutor(new EapiClient(echoRpcTransport({ postJson })));
+    const result = await executor.execute(call);
+    expect(result.results[0]).toMatchObject({ status: "failed", error_code: "ping_device_time_limit_reached" });
+    expect(result.results[0]).not.toHaveProperty("finding");
+    expect(executor.getCapacity()).toMatchObject({ uncertain_count: 0, available_count: 1, reservations: [] });
   });
 
   it("does not claim command completion after a transport loss", async () => {
@@ -151,7 +170,7 @@ describe("packet capture eAPI adapter", () => {
   it("observes that the device time limit ended a capture rather than failing it", async () => {
     const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ error: deviceTimeLimitError }), text: async () => "" }));
     const runner = new EapiDiagnosticRunner(buildConfig(), new EapiClient(echoRpcTransport({ postJson })));
-    expect(await runner.execute(host, capture(), context())).toEqual({ kind: "packet_capture", deviceTimeLimitReached: true });
+    expect(await runner.execute(host, capture(), context())).toEqual({ end: "device_time_limit" });
     expect(postJson).toHaveBeenCalledTimes(1);
   });
 
@@ -176,7 +195,7 @@ describe("packet capture eAPI adapter", () => {
     config.diagnostics.nativeRequestTimeout = nativeRequestTimeout;
     const runner = new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson })));
     const request = preparePacketCapture({ kind: "packet_capture", interface: "any", vrf: "MGMT", filter: "icmp", packet_count: 2, window_seconds: 7 }, config.diagnostics);
-    expect(await runner.execute(host, request, context())).toEqual({ kind: "packet_capture", output: packets });
+    expect(await runner.execute(host, request, context())).toEqual({ end: "output", output: packets });
     expect(postJson).toHaveBeenCalledTimes(1);
     const [connection, body] = postJson.mock.calls[0] ?? [];
     expect(connection?.timeoutMs).toBeGreaterThan(7000);

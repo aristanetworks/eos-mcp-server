@@ -10,7 +10,7 @@ import {
 } from "./helpers.js";
 
 const packets = ["22:06:07.386059 IP 10.255.255.1 > 10.255.255.0: ICMP echo request", "22:06:07.386088 IP 10.255.255.0 > 10.255.255.1: ICMP echo reply"];
-const observation: DiagnosticObservation = { kind: "packet_capture", output: `${packets.join("\n")}\n` };
+const observation: DiagnosticObservation = { end: "output", output: `${packets.join("\n")}\n` };
 const call = { target: "switches", request: { kind: "packet_capture" as const, interface: "Ethernet1", filter: "icmp", packet_count: 2 } };
 
 const runner = () => stubDiagnosticRunner(observation);
@@ -93,7 +93,7 @@ describe("packet capture execution", () => {
 
   it("reports a capture ended by the device timer as a successful unfilled finding and frees its slot at once", async () => {
     const device = { execute: vi.fn<DiagnosticDeviceRunner["execute"]>()
-      .mockResolvedValueOnce({ kind: "packet_capture", deviceTimeLimitReached: true })
+      .mockResolvedValueOnce({ end: "device_time_limit" })
       .mockResolvedValue(observation) };
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
@@ -112,7 +112,7 @@ describe("packet capture execution", () => {
 
   it("fails only the entry of a host whose tcpdump exited without capturing, and frees its slot at once", async () => {
     const device = { execute: vi.fn<DiagnosticDeviceRunner["execute"]>(async (host) =>
-      host.inventoryHostname === "leaf2" ? { kind: "packet_capture", output: "" } : observation) };
+      host.inventoryHostname === "leaf2" ? { end: "output", output: "" } : observation) };
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
@@ -198,8 +198,13 @@ describe("one packet capture per device", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(dispatched.map((request) => request.kind)).toEqual(["packet_capture", "ping", "read"]);
     expect(executor.getCapacity()).toMatchObject({
-      capture_device_limit: 1,
-      devices: [{ inventory_hostname: "leaf1", active_count: 2, queued_count: 1, read_active_count: 1, capture_active_count: 1, capture_queued_count: 1 }]
+      devices: [{
+        inventory_hostname: "leaf1", active_count: 2, queued_count: 1, read_active_count: 1,
+        kinds: {
+          packet_capture: { active_count: 1, uncertain_count: 0, queued_count: 1 },
+          ping: { active_count: 1, uncertain_count: 0, queued_count: 0 }
+        }
+      }]
     });
     dispatched[1]?.settle();
     dispatched[2]?.settle();

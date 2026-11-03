@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { buildServerInfo } from "../../serverInfo/buildServerInfo.js";
-import type { DiagnosticCapacitySnapshot } from "../../diagnostics/types.js";
+import type { DiagnosticCapacitySnapshot } from "../../operations/eapiSlots.js";
 import type { ServerRuntimeContext } from "../../serverInfo/types.js";
 import { buildJsonToolResult } from "../toolResult.js";
 

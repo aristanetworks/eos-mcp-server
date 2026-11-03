@@ -133,7 +133,7 @@ export function buildInventoryModel(hostOverrides: Partial<InventoryHostModel> =
 
 /** A ping whose three probes were all answered. */
 export const pingObservation: DiagnosticObservation = {
-  kind: "ping",
+  end: "output",
   output: "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n"
 };
 

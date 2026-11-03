@@ -118,7 +118,7 @@ describe("packet capture output interpretation", () => {
   });
 
   it("reports an unfilled capture carrying no packets when the device time limit ended it", () => {
-    expect(packetCaptureDiagnostic.interpret({ kind: "packet_capture", deviceTimeLimitReached: true }, capture)).toEqual({
+    expect(packetCaptureDiagnostic.interpret({ end: "device_time_limit" }, capture)).toEqual({
       kind: "packet_capture",
       capture: "unfilled",
       requested_packet_count: 2,
@@ -128,7 +128,7 @@ describe("packet capture output interpretation", () => {
   });
 
   it("interprets packets in a successful response as a complete capture", () => {
-    expect(packetCaptureDiagnostic.interpret({ kind: "packet_capture", output: `${capturedPackets.join("\n")}\n` }, capture))
+    expect(packetCaptureDiagnostic.interpret({ end: "output", output: `${capturedPackets.join("\n")}\n` }, capture))
       .toMatchObject({ capture: "complete", packets: capturedPackets });
   });
 });

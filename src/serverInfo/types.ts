@@ -1,5 +1,5 @@
 import type { ResolvedServerConfig } from "../config/schema.js";
-import type { DiagnosticCapacitySnapshot } from "../diagnostics/types.js";
+import type { DiagnosticCapacitySnapshot } from "../operations/eapiSlots.js";
 import type { EapiVersion } from "../eapi/types.js";
 import type { InventorySummary } from "../inventory/types.js";
 
