@@ -41,17 +41,12 @@ export interface PreparedPacketCapture extends PacketCaptureRequest {
 }
 
 export type PreparedDiagnostic = PreparedPing | PreparedPacketCapture;
-/** A command that ran to its end, with EOS's text output. */
-export interface DiagnosticOutputObservation {
-  kind: DiagnosticRequest["kind"];
-  output: string;
-}
-/** EOS's request timer stopped a capture short of its packet count; EOS returns none of the packets. */
-export interface CaptureTimeLimitObservation {
-  kind: "packet_capture";
-  deviceTimeLimitReached: true;
-}
-export type DiagnosticObservation = DiagnosticOutputObservation | CaptureTimeLimitObservation;
+
+/** How a dispatched execution ended on the device: it ran to its end with EOS's text output, or EOS's
+ * own request timer stopped it (the Device Time Limit). EOS returns no output in that case, but its
+ * reply confirms the execution has ended.
+ */
+export type DiagnosticObservation = { end: "output"; output: string } | { end: "device_time_limit" };
 
 export interface PingFinding {
   kind: "ping";
@@ -86,14 +81,13 @@ export interface EapiExecutionPlan {
   requestTimeoutSeconds?: number;
 }
 
-/** Per-kind seam: permission, validation, and budgets before dispatch, the execution's eAPI plan and
- * uncertain hold, and interpretation after. The executor runs every prepared execution on every
- * resolved host; device I/O stays in the runner.
+/** Per-kind seam: permission, validation, budgets and admission before dispatch, the execution's eAPI
+ * plan and uncertain hold, and interpretation after. The executor runs every prepared execution on every
+ * resolved host; device I/O stays in the runner. Nothing outside a definition names its kind's rules.
  */
 export interface DiagnosticDefinition<
   TRequest extends DiagnosticRequest = DiagnosticRequest,
-  TExecution extends PreparedDiagnostic = PreparedDiagnostic,
-  TObservation extends DiagnosticObservation = DiagnosticObservation
+  TExecution extends PreparedDiagnostic = PreparedDiagnostic
 > {
   /** Every resolved host must have this permission, or the whole request is rejected. */
   permission: { allows(host: InventoryHostModel): boolean; deniedCode: string; deniedMessage: string };
@@ -101,58 +95,15 @@ export interface DiagnosticDefinition<
   /** A request is rejected when its executions' total cost, times the resolved host count, exceeds `limit`. */
   budget: { cost(execution: TExecution): number; limit(config: DiagnosticsConfig): number; limitName: string; exceededCode: string };
   overallOperationTimeoutMs(config: DiagnosticsConfig): number;
+  /** Of one host's diagnostic slots, at most this many may run this kind at once; absent means only the shared limits apply. */
+  perDeviceLimit?(config: DiagnosticsConfig): number;
   eapiExecution(execution: TExecution, config: DiagnosticsConfig): EapiExecutionPlan;
   /** How long a slot stays held once the execution's remote completion is unknown. */
   uncertainHoldMs(execution: TExecution, config: DiagnosticsConfig): number;
   /** Tells a host's results apart: ping's destination; nothing for one execution per host. */
   resultIdentity(execution: TExecution): { destination?: string };
-  /** Receives only observations the runner can produce for this kind. */
-  interpret(observation: TObservation, execution: TExecution): DiagnosticFinding;
-}
-
-/** `reservation_id` doubles as the execution's JSON-RPC request ID. */
-export interface DiagnosticReservationInfo {
-  reservation_id: string;
-  inventory_hostname: string;
-  diagnostic: DiagnosticRequest["kind"];
-  state: "active" | "uncertain";
-  reserved_at: string;
-  uncertain_since?: string;
-  releases_at?: string;
-  reason_code?: string;
-}
-
-interface DiagnosticSlotCounts {
-  available_count: number;
-  active_count: number;
-  uncertain_count: number;
-  queued_count: number;
-}
-
-/** Slot usage of one inventory host; only hosts holding or awaiting a slot are listed.
- * The four shared counts are diagnostic slots; `available_count` is the diagnostic headroom,
- * capped by the host's shared eAPI headroom and server-wide availability. The `capture_*` counts
- * are the packet captures among the diagnostic slots.
- */
-export interface DiagnosticDeviceCapacity extends DiagnosticSlotCounts {
-  inventory_hostname: string;
-  read_active_count: number;
-  read_queued_count: number;
-  capture_active_count: number;
-  capture_uncertain_count: number;
-  capture_queued_count: number;
-}
-
-/** Top-level counts are server-wide diagnostics; `devices` breaks them down per host, with reads. */
-export interface DiagnosticCapacitySnapshot extends DiagnosticSlotCounts {
-  limit: number;
-  device_limit: number;
-  /** eAPI slots one host may hold across reads and diagnostics. */
-  eapi_device_limit: number;
-  /** Of a host's diagnostic slots, those packet captures may hold. */
-  capture_device_limit: number;
-  devices: DiagnosticDeviceCapacity[];
-  reservations: DiagnosticReservationInfo[];
+  /** Turns how the execution ended into its finding, or throws an AppError for an execution failure. */
+  interpret(observation: DiagnosticObservation, execution: TExecution): DiagnosticFinding;
 }
 
 export interface DiagnosticExecutionContext {

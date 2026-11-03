@@ -31,10 +31,11 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
       if (results.length !== 1 || typeof output !== "string") {
         throw new DiagnosticExecutionError("diagnostic_output_unrecognized", "Expected one text result from EOS", "unknown");
       }
-      return { kind: request.kind, output };
+      return { end: "output", output };
     } catch (error) {
-      if (request.kind === "packet_capture" && isCaptureTimeLimitError(error)) {
-        return { kind: request.kind, deviceTimeLimitReached: true };
+      // Each definition decides what the device timer means for its kind (a capture's expected end, a ping's failure).
+      if (isDeviceTimeLimitError(error)) {
+        return { end: "device_time_limit" };
       }
       // After dispatch, an error is never proof that remote work has stopped.
       const code = toErrorCode(error, "diagnostic_execution_failed");
@@ -54,15 +55,16 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
 
 const DEVICE_TIME_LIMIT_ERROR = "Command exceeded its allowed time limit";
 
-/** EOS's answer when runCmds.requestTimeout stops tcpdump: RPC error 1001 whose data holds a successful
- * `enable` result, then tcpdump's result carrying the time-limit error (error 408). Measured on cEOS 4.34.3M.
- * A time limit hit during `enable` leaves one entry and means tcpdump never ran, so it is not a capture's end.
+/** EOS's answer when runCmds.requestTimeout stops the diagnostic command: RPC error 1001 whose data holds
+ * a successful `enable` result, then the command's result carrying the time-limit error (error 408).
+ * Measured on cEOS 4.34.3M. A time limit hit during `enable` leaves one entry and means the command
+ * never ran, so it is not the device timer ending the command.
  */
-function isCaptureTimeLimitError(error: unknown): boolean {
+function isDeviceTimeLimitError(error: unknown): boolean {
   if (!(error instanceof AppError) || error.details?.jsonRpcCode !== 1001) return false;
   const data = error.details.data;
   if (!Array.isArray(data) || data.length !== 2) return false;
-  const [enableResult, captureResult] = data;
+  const [enableResult, commandResult] = data;
   return isObject(enableResult) && enableResult.errors === undefined &&
-    isObject(captureResult) && Array.isArray(captureResult.errors) && captureResult.errors.includes(DEVICE_TIME_LIMIT_ERROR);
+    isObject(commandResult) && Array.isArray(commandResult.errors) && commandResult.errors.includes(DEVICE_TIME_LIMIT_ERROR);
 }

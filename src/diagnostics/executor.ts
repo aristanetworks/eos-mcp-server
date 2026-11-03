@@ -12,11 +12,10 @@ import {
   type ReadDeviceResultBase,
   type ReadOperationResultEnvelope
 } from "../operations/readExecution.js";
-import { EapiSlots, eapiSlotLimits } from "../operations/eapiSlots.js";
+import { EapiSlots, eapiSlotLimits, type DiagnosticCapacitySnapshot, type DiagnosticReservationIntent } from "../operations/eapiSlots.js";
 import { DiagnosticExecutionError } from "./executionError.js";
 import { diagnosticDefinitions } from "./definitions.js";
 import type {
-  DiagnosticCapacitySnapshot,
   DiagnosticDefinition,
   DiagnosticDeviceRunner,
   DiagnosticFinding,
@@ -118,9 +117,15 @@ export class DiagnosticExecutor {
     signal: AbortSignal,
     includeRaw: boolean
   ): Promise<DiagnosticDeviceResult> {
-    const observation = await this.executeOnDevice(host, execution, definition.uncertainHoldMs(execution, this.config.diagnostics), signal);
-    // An observation without output, such as a capture ended by the device timer, has no raw evidence.
-    const rawOutput = "output" in observation ? observation.output : undefined;
+    const kindDeviceLimit = definition.perDeviceLimit?.(this.config.diagnostics);
+    const observation = await this.executeOnDevice(host, execution, {
+      inventoryHostname: host.inventoryHostname,
+      diagnostic: execution.kind,
+      uncertainHoldMs: definition.uncertainHoldMs(execution, this.config.diagnostics),
+      ...(kindDeviceLimit === undefined ? {} : { kindDeviceLimit })
+    }, signal);
+    // An execution the device timer stopped returns no output, so it has no raw evidence.
+    const rawOutput = observation.end === "output" ? observation.output : undefined;
     try {
       return buildReadDeviceSuccess(host, {
         ...definition.resultIdentity(execution),
@@ -138,10 +143,10 @@ export class DiagnosticExecutor {
   private async executeOnDevice(
     host: InventoryHostModel,
     request: PreparedDiagnostic,
-    uncertainHoldMs: number,
+    intent: DiagnosticReservationIntent,
     signal: AbortSignal
   ): Promise<DiagnosticObservation> {
-    const reservation = await this.slots.acquireDiagnostic(signal, { inventoryHostname: host.inventoryHostname, diagnostic: request.kind, uncertainHoldMs });
+    const reservation = await this.slots.acquireDiagnostic(signal, intent);
     if (signal.aborted) {
       reservation.complete();
       throw new AppError("operation_aborted", "Diagnostic was cancelled before dispatch");

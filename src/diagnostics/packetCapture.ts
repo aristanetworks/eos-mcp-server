@@ -28,6 +28,8 @@ export const packetCaptureDiagnostic: DiagnosticDefinition<PacketCaptureRequest,
     exceededCode: "packet_capture_packet_limit_exceeded"
   },
   overallOperationTimeoutMs: (config) => config.captureOverallOperationTimeoutMs,
+  // A capture holds its slot for its whole window, so a capture limit below the diagnostic share keeps pings running (ADR 0010).
+  perDeviceLimit: (config) => config.captureDeviceConcurrency,
   // The device timer is what ends a capture short of its count, so it is never optional (ADR 0010).
   eapiExecution: (execution) => ({
     command: buildPacketCaptureCommand(execution),
@@ -37,7 +39,7 @@ export const packetCaptureDiagnostic: DiagnosticDefinition<PacketCaptureRequest,
   uncertainHoldMs: (execution) => captureUncertainHoldMs(execution.window_seconds),
   resultIdentity: () => ({}),
   // The device timer is the expected end of a capture that does not fill, so it is a finding, not a failure (ADR 0010).
-  interpret: (observation, execution) => "output" in observation
+  interpret: (observation, execution) => observation.end === "output"
     ? interpretPacketCaptureOutput(observation.output, execution)
     : { kind: "packet_capture", capture: "unfilled", requested_packet_count: execution.packet_count, window_seconds: execution.window_seconds, packets: [] }
 };
