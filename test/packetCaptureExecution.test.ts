@@ -28,7 +28,7 @@ afterEach(() => {
 describe("packet capture execution", () => {
   it("returns one complete capture finding per resolved host, without a destination", async () => {
     const device = runner();
-    const result = await new DiagnosticExecutor(await captureModel(), buildConfig(), device).execute(call);
+    const result = await new DiagnosticExecutor(await captureModel(), buildConfig(), device, buildEapiSlots()).execute(call);
     expect(result.request).toEqual({ kind: "packet_capture", interface: "Ethernet1", filter: "icmp", packet_count: 2, window_seconds: 10 });
     expect(result.summary).toEqual({ total_count: 2, success_count: 2, failed_count: 0 });
     expect(result.results).toEqual([
@@ -48,7 +48,7 @@ describe("packet capture execution", () => {
     "mcp_diagnostics_allowed: false"
   ])("rejects the whole group before dispatch when one host lacks capture permission (%s)", async (leaf2Permission) => {
     const device = runner();
-    await expect(new DiagnosticExecutor(await captureModel([leaf2Permission]), buildConfig(), device).execute(call))
+    await expect(new DiagnosticExecutor(await captureModel([leaf2Permission]), buildConfig(), device, buildEapiSlots()).execute(call))
       .rejects.toMatchObject({ code: "packet_capture_policy_denied", message: "Packet capture permission denied for: leaf2" });
     expect(device.execute).not.toHaveBeenCalled();
   });
@@ -58,7 +58,7 @@ describe("packet capture execution", () => {
     const config = buildConfig();
     config.diagnostics.maxCapturePacketsPerRequest = 2000;
     config.diagnostics.maxProbesPerRequest = 1;
-    const executor = new DiagnosticExecutor(await captureModel(), config, device);
+    const executor = new DiagnosticExecutor(await captureModel(), config, device, buildEapiSlots(config));
     expect((await executor.execute({ ...call, request: { ...call.request, packet_count: 1000 } })).summary.success_count).toBe(2);
     config.diagnostics.maxCapturePacketsPerRequest = 1999;
     await expect(executor.execute({ ...call, request: { ...call.request, packet_count: 1000 } }))
@@ -74,7 +74,7 @@ describe("packet capture execution", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
-    const executor = new DiagnosticExecutor(await captureModel(), config, device);
+    const executor = new DiagnosticExecutor(await captureModel(), config, device, buildEapiSlots(config));
     const leaf1Capture = { ...call, target: "leaf1", request: { ...call.request, window_seconds: 5 } };
     expect((await executor.execute(leaf1Capture)).results[0]).toMatchObject({ status: "failed", error_code: "eapi_transport_error" });
     const capacity = executor.getCapacity();
@@ -98,7 +98,7 @@ describe("packet capture execution", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
-    const executor = new DiagnosticExecutor(await captureModel(), config, device);
+    const executor = new DiagnosticExecutor(await captureModel(), config, device, buildEapiSlots(config));
     const leaf1Capture = { ...call, target: "leaf1", request: { ...call.request, window_seconds: 5 } };
     const unfilled = await executor.execute({ ...leaf1Capture, includeRaw: true });
     expect(unfilled.summary).toEqual({ total_count: 1, success_count: 1, failed_count: 0 });
@@ -116,7 +116,7 @@ describe("packet capture execution", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
-    const executor = new DiagnosticExecutor(await captureModel(), config, device);
+    const executor = new DiagnosticExecutor(await captureModel(), config, device, buildEapiSlots(config));
     const result = await executor.execute({ ...call, request: { ...call.request, filter: "notaproto foo" } });
     expect(result.summary).toEqual({ total_count: 2, success_count: 1, failed_count: 1 });
     expect(result.results[0]).toMatchObject({ inventory_hostname: "leaf1", status: "success", finding: { capture: "complete" } });
@@ -134,7 +134,7 @@ describe("packet capture execution", () => {
     config.diagnostics.overallOperationTimeoutMs = 50;
     config.diagnostics.captureOverallOperationTimeoutMs = 20_000;
     let settled = false;
-    const pending = new DiagnosticExecutor(await captureModel(), config, device).execute(call).finally(() => { settled = true; });
+    const pending = new DiagnosticExecutor(await captureModel(), config, device, buildEapiSlots(config)).execute(call).finally(() => { settled = true; });
     const rejected = expect(pending).rejects.toMatchObject({ code: "operation_timeout" });
     await vi.advanceTimersByTimeAsync(19_999);
     expect(settled).toBe(false);
@@ -148,7 +148,7 @@ describe("packet capture execution", () => {
       if (host.inventoryHostname === "leaf2") throw new AppError("eapi_json_rpc_error", "EOS diagnostic request failed (eapi_json_rpc_error)");
       return observation;
     }) };
-    const result = await new DiagnosticExecutor(await captureModel(), buildConfig(), device).execute(call);
+    const result = await new DiagnosticExecutor(await captureModel(), buildConfig(), device, buildEapiSlots()).execute(call);
     expect(result.summary).toEqual({ total_count: 2, success_count: 1, failed_count: 1 });
     expect(result.results[0]).toMatchObject({ inventory_hostname: "leaf1", status: "success", finding: { capture: "complete" } });
     expect(result.results[1]).toEqual({
@@ -165,7 +165,7 @@ describe("packet capture execution", () => {
     { change: { window_seconds: 61 }, code: "packet_capture_window_invalid" }
   ])("rejects $code before dispatch", async ({ change, code }) => {
     const device = runner();
-    await expect(new DiagnosticExecutor(await captureModel(), buildConfig(), device).execute({ ...call, request: { ...call.request, ...change } }))
+    await expect(new DiagnosticExecutor(await captureModel(), buildConfig(), device, buildEapiSlots()).execute({ ...call, request: { ...call.request, ...change } }))
       .rejects.toMatchObject({ code });
     expect(device.execute).not.toHaveBeenCalled();
   });
@@ -219,7 +219,7 @@ describe("one packet capture per device", () => {
   it("runs captures to different devices at once", async () => {
     vi.useFakeTimers();
     const { diagnosticRunner, dispatched } = controlledDevice();
-    const executor = new DiagnosticExecutor(await captureModel(), buildConfig(), diagnosticRunner);
+    const executor = new DiagnosticExecutor(await captureModel(), buildConfig(), diagnosticRunner, buildEapiSlots());
     const leaf1Capture = executor.execute({ ...call, target: "leaf1" });
     const leaf2Capture = executor.execute({ ...call, target: "leaf2" });
     await vi.advanceTimersByTimeAsync(0);
@@ -233,7 +233,7 @@ describe("one packet capture per device", () => {
 describe("eos_packet_capture tool", () => {
   it("passes every input through to the capture and returns structured results", async () => {
     const device = runner();
-    const executor = new DiagnosticExecutor(await captureModel(), buildConfig(), device);
+    const executor = new DiagnosticExecutor(await captureModel(), buildConfig(), device, buildEapiSlots());
     const args = packetCaptureInputSchema.parse({ target: "leaf1", interface: "any", vrf: "MGMT", filter: "icmp", packet_count: 2, window_seconds: 5 });
     const result = await buildPacketCaptureToolResult(args, executor);
     expect(result.structuredContent).toMatchObject({

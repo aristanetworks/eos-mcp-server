@@ -3,7 +3,7 @@ import { AppError } from "../src/core/errors.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
 import type { DiagnosticDeviceRunner, DiagnosticObservation, DiagnosticOutcome } from "../src/diagnostics/types.js";
 import { buildGetServerInfoToolResult } from "../src/mcp/tools/getServerInfo.js";
-import { buildConfig, buildInventoryModel, pingObservation as observation } from "./helpers.js";
+import { buildConfig, buildEapiSlots, buildInventoryModel, pingObservation as observation } from "./helpers.js";
 const call = { target: "leaf1", request: { kind: "ping" as const, destinations: ["127.0.0.1"] } };
 
 afterEach(() => {
@@ -19,7 +19,7 @@ describe("time-bounded diagnostic reservations", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
-    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, { execute: () => response });
+    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, { execute: () => response }, buildEapiSlots(config));
     const pending = executor.execute(call);
     await vi.advanceTimersByTimeAsync(0);
     expect(executor.getCapacity()).toMatchObject({
@@ -48,7 +48,7 @@ describe("time-bounded diagnostic reservations", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
-    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, { execute: () => response });
+    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, { execute: () => response }, buildEapiSlots(config));
     const context = { instanceId: "instance-1", startedAt: new Date().toISOString(), config };
     const info = () => buildGetServerInfoToolResult(context, executor.getCapacity()).structuredContent;
     expect(info()).toHaveProperty("diagnostics.capacity.available_count", 1);
@@ -70,7 +70,7 @@ describe("time-bounded diagnostic reservations", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
-    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, { execute: () => response });
+    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, { execute: () => response }, buildEapiSlots(config));
     const controller = new AbortController();
     const active = executor.execute({ ...call, signal: controller.signal });
     const rejected = expect(active).rejects.toMatchObject({ code: "operation_aborted" });
@@ -95,7 +95,7 @@ describe("time-bounded diagnostic reservations", () => {
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
     const runner = { execute: vi.fn<DiagnosticDeviceRunner["execute"]>().mockReturnValueOnce(lateAnswer).mockReturnValue(new Promise(() => undefined)) };
-    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, runner);
+    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, runner, buildEapiSlots(config));
     const controller = new AbortController();
     const cancelled = executor.execute({ ...call, signal: controller.signal });
     const rejected = expect(cancelled).rejects.toMatchObject({ code: "operation_aborted" });
@@ -117,7 +117,7 @@ describe("time-bounded diagnostic reservations", () => {
     config.diagnostics.deviceConcurrency = 2;
     config.diagnostics.maxConcurrentDiagnostics = 2;
     const runner = { execute: vi.fn().mockRejectedValueOnce(new AppError("eapi_transport_error", "lost")).mockResolvedValue(observation) };
-    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, runner);
+    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, runner, buildEapiSlots(config));
     await executor.execute(call);
     const healthy = await Promise.all([executor.execute(call), executor.execute(call), executor.execute(call)]);
     expect(healthy.every((result) => result.summary.success_count === 1)).toBe(true);
@@ -159,7 +159,7 @@ describe("time-bounded diagnostic reservations", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
-    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, runner);
+    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, runner, buildEapiSlots(config));
     const first = executor.execute(call);
     await vi.advanceTimersByTimeAsync(35_000);
     expect((await first).results[0]?.error_code).toBe("eapi_request_timeout");

@@ -155,6 +155,7 @@ export async function startMcpServer(config: ResolvedServerConfig, inventoryMode
     process.off("SIGTERM", stop);
     process.stdin.off("end", stop);
     diagnostics.close();
+    slots.close();
   };
   server.server.onclose = cleanup;
   process.once("SIGINT", stop);

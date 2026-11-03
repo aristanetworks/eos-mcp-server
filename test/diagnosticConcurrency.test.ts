@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "../src/core/errors.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
-import { buildConfig, controlledDiagnosticRunner, loadSwitchesModel } from "./helpers.js";
+import { buildConfig, buildEapiSlots, controlledDiagnosticRunner, loadSwitchesModel } from "./helpers.js";
 
 function ping(target: string, destinations = ["127.0.0.1"]) {
   return { target, request: { kind: "ping" as const, destinations } };
@@ -16,7 +16,7 @@ describe("per-device diagnostic concurrency", () => {
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 4;
     const { runner, dispatched } = controlledDiagnosticRunner();
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner);
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner, buildEapiSlots(config));
     const running = executor.execute(ping("switches", ["127.0.0.1", "127.0.0.2"]));
     await vi.advanceTimersByTimeAsync(0);
     expect(dispatched.map((execution) => execution.hostname)).toEqual(["leaf1", "leaf2"]);
@@ -42,7 +42,7 @@ describe("per-device diagnostic concurrency", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     const { runner, dispatched } = controlledDiagnosticRunner();
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner);
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner, buildEapiSlots(config));
     const lost = executor.execute(ping("leaf1"));
     await vi.advanceTimersByTimeAsync(0);
     dispatched[0]?.fail(new AppError("eapi_transport_error", "lost"));
@@ -69,7 +69,7 @@ describe("per-device diagnostic concurrency", () => {
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
     const { runner, dispatched } = controlledDiagnosticRunner();
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner);
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner, buildEapiSlots(config));
     const first = executor.execute(ping("leaf1"));
     const second = executor.execute(ping("leaf2"));
     await vi.advanceTimersByTimeAsync(0);
@@ -95,7 +95,7 @@ describe("per-device diagnostic concurrency", () => {
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 2;
     const { runner, dispatched } = controlledDiagnosticRunner();
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner);
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner, buildEapiSlots(config));
     const holdingLeaf1 = executor.execute(ping("leaf1"));
     const holdingLeaf2 = executor.execute(ping("leaf2"));
     await vi.advanceTimersByTimeAsync(0);
@@ -120,7 +120,7 @@ describe("per-device diagnostic concurrency", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     const { runner, dispatched } = controlledDiagnosticRunner();
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner);
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner, buildEapiSlots(config));
     const holdingLeaf1 = executor.execute(ping("leaf1"));
     await vi.advanceTimersByTimeAsync(0);
     const controller = new AbortController();
@@ -149,7 +149,7 @@ describe("per-device diagnostic concurrency", () => {
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
     const { runner, dispatched } = controlledDiagnosticRunner();
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner);
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner, buildEapiSlots(config));
     const lost = executor.execute(ping("leaf1"));
     await vi.advanceTimersByTimeAsync(0);
     dispatched[0]?.fail(new AppError("eapi_transport_error", "lost"));

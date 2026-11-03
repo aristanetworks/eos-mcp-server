@@ -7,7 +7,7 @@ import type { DiagnosticObservation } from "../src/diagnostics/types.js";
 import { validateInventory } from "../src/inventory/loadInventory.js";
 import { buildListInventoryView } from "../src/inventory/listInventoryView.js";
 import { buildPingToolResult, pingInputSchema } from "../src/mcp/tools/ping.js";
-import { buildConfig, buildInventoryModel, loadSwitchesModel, stubDiagnosticRunner, unansweredDiagnosticRunner, writeTempInventory } from "./helpers.js";
+import { buildConfig, buildEapiSlots, buildInventoryModel, loadSwitchesModel, stubDiagnosticRunner, unansweredDiagnosticRunner, writeTempInventory } from "./helpers.js";
 
 const output = "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\nrtt min/avg/max/mdev = 0.020/0.025/0.030/0.001 ms\n";
 const observation: DiagnosticObservation = { end: "output", output };
@@ -27,7 +27,7 @@ afterEach(() => vi.useRealTimers());
 describe("diagnostic policy and fan-out", () => {
   it("denies diagnostics by default, even when read is permitted", async () => {
     const device = runner();
-    await expect(new DiagnosticExecutor(buildInventoryModel(), buildConfig(), device).execute(call))
+    await expect(new DiagnosticExecutor(buildInventoryModel(), buildConfig(), device, buildEapiSlots()).execute(call))
       .rejects.toMatchObject({ code: "diagnostic_policy_denied" });
     expect(device.execute).not.toHaveBeenCalled();
   });
@@ -37,14 +37,14 @@ describe("diagnostic policy and fan-out", () => {
     expect(model.hostMap.get("leaf1")?.diagnosticsAllowed).toBe(true);
     expect(model.hostMap.get("leaf2")?.diagnosticsAllowed).toBe(false);
     const device = runner();
-    await expect(new DiagnosticExecutor(model, buildConfig(), device).execute({ ...call, target: "switches" }))
+    await expect(new DiagnosticExecutor(model, buildConfig(), device, buildEapiSlots()).execute({ ...call, target: "switches" }))
       .rejects.toMatchObject({ code: "policy_denied" });
     expect(device.execute).not.toHaveBeenCalled();
   });
 
   it("rejects an entire mixed-permission group before any dispatch", async () => {
     const device = runner();
-    await expect(new DiagnosticExecutor(await loadSwitchesModel({ leaf2Vars: ["mcp_diagnostics_allowed: false"] }), buildConfig(), device)
+    await expect(new DiagnosticExecutor(await loadSwitchesModel({ leaf2Vars: ["mcp_diagnostics_allowed: false"] }), buildConfig(), device, buildEapiSlots())
       .execute({ ...call, target: "switches" })).rejects.toMatchObject({ code: "diagnostic_policy_denied" });
     expect(device.execute).not.toHaveBeenCalled();
   });
@@ -67,16 +67,16 @@ describe("diagnostic policy and fan-out", () => {
     config.diagnostics.maxProbesPerRequest = 5;
     config.diagnostics.maxPingCount = 5;
     const model = await loadSwitchesModel();
-    await expect(new DiagnosticExecutor(model, config, device).execute({ ...call, target: "switches" }))
+    await expect(new DiagnosticExecutor(model, config, device, buildEapiSlots(config)).execute({ ...call, target: "switches" }))
       .rejects.toMatchObject({ code: "diagnostic_probe_limit_exceeded" });
-    await expect(new DiagnosticExecutor(model, buildConfig({ maxReadTargets: 1 }), device).execute({ ...call, target: "switches" }))
+    await expect(new DiagnosticExecutor(model, buildConfig({ maxReadTargets: 1 }), device, buildEapiSlots(buildConfig({ maxReadTargets: 1 }))).execute({ ...call, target: "switches" }))
       .rejects.toMatchObject({ code: "read_target_limit_exceeded" });
     expect(device.execute).not.toHaveBeenCalled();
   });
 
   it("rejects invalid input and noninventory targets before dispatch", async () => {
     const device = runner();
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device);
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device, buildEapiSlots());
     await expect(executor.execute({ ...call, request: { ...call.request, destinations: ["127.0.0.1;reload"] } }))
       .rejects.toMatchObject({ code: "diagnostic_address_invalid" });
     await expect(executor.execute({ ...call, target: "192.0.2.50" })).rejects.toMatchObject({ code: "target_not_found" });
@@ -84,7 +84,7 @@ describe("diagnostic policy and fan-out", () => {
   });
 
   it("returns ordered per-device findings and execution counts, with raw output opt-in", async () => {
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), runner());
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), runner(), buildEapiSlots());
     const result = await executor.execute({ ...call, target: "switches" });
     expect(result.resolved_devices).toEqual(["leaf1", "leaf2"]);
     expect(result.summary).toEqual({ total_count: 2, success_count: 2, failed_count: 0 });
@@ -95,14 +95,14 @@ describe("diagnostic policy and fan-out", () => {
 
   it("treats zero replies as a finding, not an execution error", async () => {
     const device = { execute: vi.fn(async () => ({ end: "output" as const, output: "3 packets transmitted, 0 received, 100% packet loss, time 2000ms\n" })) };
-    const result = await new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device).execute(call);
+    const result = await new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device, buildEapiSlots()).execute(call);
     expect(result.summary.success_count).toBe(1);
     expect(result.results[0]?.finding).toMatchObject({ reachability: "unreachable" });
   });
 
   it("returns malformed output as a device failure, exposing evidence only when requested", async () => {
     const device = { execute: vi.fn(async () => ({ end: "output" as const, output: "unexpected" })) };
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device);
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device, buildEapiSlots());
     const result = await executor.execute(call);
     expect(result.results[0]).toMatchObject({ status: "failed", error_code: "diagnostic_output_unrecognized" });
     expect(result.results[0]).not.toHaveProperty("finding");
@@ -111,12 +111,12 @@ describe("diagnostic policy and fan-out", () => {
   });
 
   it("enforces the existing serialized response size limit", async () => {
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), buildConfig({ maxResponseSizeBytes: 10 }), runner());
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), buildConfig({ maxResponseSizeBytes: 10 }), runner(), buildEapiSlots(buildConfig({ maxResponseSizeBytes: 10 })));
     await expect(executor.execute(call)).rejects.toMatchObject({ code: "response_size_exceeded" });
   });
 
   it("publishes structured MCP output and a strict non-empty input schema", async () => {
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), runner());
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), runner(), buildEapiSlots());
     const args = pingInputSchema.parse({ target: "leaf1", destinations: ["::1"] });
     const result = await buildPingToolResult(args, executor);
     expect(result.structuredContent).toHaveProperty("results.0.finding.reachability", "reachable");
@@ -134,7 +134,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
-    const executor = new DiagnosticExecutor(model, config, device);
+    const executor = new DiagnosticExecutor(model, config, device, buildEapiSlots(config));
     const one = executor.execute(call);
     const two = executor.execute({ ...call, target: "leaf2" });
     await vi.advanceTimersByTimeAsync(0);
@@ -151,7 +151,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
-    const executor = new DiagnosticExecutor(model, config, device);
+    const executor = new DiagnosticExecutor(model, config, device, buildEapiSlots(config));
     const failed = await executor.execute(call);
     expect(failed.results[0]?.error_code).toBe("eapi_transport_error");
     expect(executor.getCapacity()).toMatchObject({ active_count: 0, uncertain_count: 1, available_count: 0 });
@@ -170,7 +170,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
-    const executor = new DiagnosticExecutor(model, config, device);
+    const executor = new DiagnosticExecutor(model, config, device, buildEapiSlots(config));
     expect((await executor.execute(call)).results[0]?.error_code).toBe("diagnostic_test_failure");
     expect((await executor.execute(call)).summary.success_count).toBe(1);
   });
@@ -186,7 +186,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
-    const executor = new DiagnosticExecutor(model, config, device);
+    const executor = new DiagnosticExecutor(model, config, device, buildEapiSlots(config));
     expect((await executor.execute(call)).results[0]?.error_code).toBe("diagnostic_test_failure");
     expect(executor.getCapacity()).toMatchObject({
       available_count: 0, uncertain_count: 1, reservations: [{ reason_code: "diagnostic_test_failure" }]
@@ -201,7 +201,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
     config.diagnostics.overallOperationTimeoutMs = 50;
-    const pending = new DiagnosticExecutor(model, config, device).execute({ ...call, target: "switches" });
+    const pending = new DiagnosticExecutor(model, config, device, buildEapiSlots(config)).execute({ ...call, target: "switches" });
     const rejected = expect(pending).rejects.toMatchObject({ code: "operation_timeout" });
     await vi.advanceTimersByTimeAsync(50);
     await rejected;
@@ -219,7 +219,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
     config.diagnostics.overallOperationTimeoutMs = 120_000;
-    const executor = new DiagnosticExecutor(model, config, device);
+    const executor = new DiagnosticExecutor(model, config, device, buildEapiSlots(config));
     const controller = new AbortController();
     const active = executor.execute({ ...call, signal: controller.signal });
     const rejected = expect(active).rejects.toMatchObject({ code: "operation_aborted" });
@@ -244,7 +244,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
-    const executor = new DiagnosticExecutor(model, config, device);
+    const executor = new DiagnosticExecutor(model, config, device, buildEapiSlots(config));
     const active = executor.execute(call);
     const controller = new AbortController();
     const waiting = executor.execute({ ...call, signal: controller.signal });
@@ -262,7 +262,7 @@ describe("server-wide diagnostic admission and deadlines", () => {
     const device = runner();
     const controller = new AbortController();
     controller.abort();
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device);
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device, buildEapiSlots());
     await expect(executor.execute({ ...call, signal: controller.signal })).rejects.toMatchObject({ code: "operation_aborted" });
     expect(device.execute).not.toHaveBeenCalled();
   });
@@ -275,7 +275,7 @@ describe("multi-destination ping", () => {
 
   it("returns one result per host and destination in host-then-destination order", async () => {
     const device = runner();
-    const result = await new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device).execute(sweep(["127.0.0.1", "::1"]));
+    const result = await new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device, buildEapiSlots()).execute(sweep(["127.0.0.1", "::1"]));
     expect(result.resolved_devices).toEqual(["leaf1", "leaf2"]);
     expect(result.summary).toEqual({ total_count: 4, success_count: 4, failed_count: 0 });
     expect(result.results.map((entry) => `${entry.inventory_hostname}>${entry.destination}`))
@@ -295,7 +295,7 @@ describe("multi-destination ping", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 2;
     config.diagnostics.maxConcurrentDiagnostics = 2;
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, device);
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, device, buildEapiSlots(config));
     const running = executor.execute({ ...call, request: { kind: "ping", destinations: ["127.0.0.1", "127.0.0.2", "127.0.0.3"] } });
     await vi.advanceTimersByTimeAsync(0);
     expect(device.execute).toHaveBeenCalledTimes(2);
@@ -315,7 +315,7 @@ describe("multi-destination ping", () => {
       }
       return observation;
     }) };
-    const result = await new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device)
+    const result = await new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device, buildEapiSlots())
       .execute({ ...call, request: { kind: "ping", destinations: ["127.0.0.1", "127.0.0.2", "127.0.0.3"] } });
     expect(result.summary).toEqual({ total_count: 3, success_count: 2, failed_count: 1 });
     expect(result.results[1]).toMatchObject({ destination: "127.0.0.2", status: "failed", error_code: "diagnostic_test_failure" });
@@ -334,14 +334,14 @@ describe("multi-destination ping", () => {
     const device = runner();
     const config = buildConfig();
     config.diagnostics.maxDestinationsPerRequest = 2;
-    await expect(new DiagnosticExecutor(await loadSwitchesModel(), config, device).execute(sweep(destinations)))
+    await expect(new DiagnosticExecutor(await loadSwitchesModel(), config, device, buildEapiSlots(config)).execute(sweep(destinations)))
       .rejects.toMatchObject({ code });
     expect(device.execute).not.toHaveBeenCalled();
   });
 
   it("keeps the caller's spelling and treats an IPv4 address and its IPv4-mapped IPv6 form as distinct", async () => {
     const device = runner();
-    const result = await new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device)
+    const result = await new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device, buildEapiSlots())
       .execute({ ...call, request: { kind: "ping", destinations: ["192.0.2.1", "::ffff:192.0.2.1", "2001:DB8::1"] } });
     expect(result.results.map((entry) => entry.destination)).toEqual(["192.0.2.1", "::ffff:192.0.2.1", "2001:DB8::1"]);
     expect(device.execute).toHaveBeenCalledTimes(3);
@@ -349,7 +349,7 @@ describe("multi-destination ping", () => {
 
   it("requires the source address family to match every destination", async () => {
     const device = runner();
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device);
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device, buildEapiSlots());
     await expect(executor.execute({ ...call, request: { kind: "ping", destinations: ["127.0.0.1", "::1"], source: "127.0.0.1" } }))
       .rejects.toMatchObject({ code: "diagnostic_source_invalid" });
     expect(device.execute).not.toHaveBeenCalled();
@@ -359,7 +359,7 @@ describe("multi-destination ping", () => {
     const device = runner();
     const config = buildConfig();
     config.diagnostics.maxProbesPerRequest = 5;
-    await expect(new DiagnosticExecutor(await loadSwitchesModel(), config, device)
+    await expect(new DiagnosticExecutor(await loadSwitchesModel(), config, device, buildEapiSlots(config))
       .execute({ ...call, request: { kind: "ping", destinations: ["127.0.0.1", "::1"] } }))
       .rejects.toMatchObject({ code: "diagnostic_probe_limit_exceeded" });
     expect(device.execute).not.toHaveBeenCalled();
@@ -371,7 +371,7 @@ describe("multi-destination ping", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 2;
     config.diagnostics.maxConcurrentDiagnostics = 2;
-    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, device);
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, device, buildEapiSlots(config));
     const controller = new AbortController();
     const running = executor.execute({ ...call, request: { kind: "ping", destinations: ["127.0.0.1", "127.0.0.2", "127.0.0.3"] }, signal: controller.signal });
     const rejected = expect(running).rejects.toMatchObject({ code: "operation_aborted" });

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { EapiDeviceReader } from "../src/connection/eosDeviceReader.js";
+import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
 import { EapiSlots } from "../src/operations/eapiSlots.js";
-import { buildConfig, buildHost, controlledReadRunner, setTestPasswordEnv } from "./helpers.js";
+import { buildConfig, buildHost, buildInventoryModel, controlledReadRunner, setTestPasswordEnv, stubDiagnosticRunner } from "./helpers.js";
 
 const limits = { deviceLimit: 3, diagnosticDeviceLimit: 2, diagnosticServerLimit: 32 };
 
@@ -129,5 +130,21 @@ describe("shared per-device eAPI slots", () => {
     }]);
     slots.close();
     await expect(queuedLimited).rejects.toMatchObject({ code: "diagnostic_server_stopping" });
+  });
+
+  it("stays open for reads when a diagnostic executor sharing it closes, and rejects waiters only when the slots close", async () => {
+    const slots = new EapiSlots({ ...limits, deviceLimit: 1 });
+    const executor = new DiagnosticExecutor(
+      buildInventoryModel({ diagnosticsAllowed: true }), buildConfig(), stubDiagnosticRunner({ end: "output", output: "" }), slots
+    );
+    executor.close();
+    const releaseHeldRead = await slots.acquireRead(undefined, "leaf1");
+    const queuedRead = slots.acquireRead(undefined, "leaf1");
+    const queuedReadOutcome = expect(queuedRead).rejects.toMatchObject({ code: "diagnostic_server_stopping" });
+    await flush();
+    expect(slots.snapshot().devices).toMatchObject([{ inventory_hostname: "leaf1", read_active_count: 1, read_queued_count: 1 }]);
+    slots.close();
+    await queuedReadOutcome;
+    releaseHeldRead();
   });
 });

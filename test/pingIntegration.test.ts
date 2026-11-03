@@ -3,7 +3,7 @@ import { EapiClient } from "../src/eapi/client.js";
 import { EapiDiagnosticRunner } from "../src/diagnostics/eapiRunner.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
-import { buildConfig, writeTempInventory } from "./helpers.js";
+import { buildConfig, buildEapiSlots, writeTempInventory } from "./helpers.js";
 
 // Read-only tests against clab/testlab.clab.yaml; never change device configuration.
 // Addresses can be overridden for an equivalent isolated lab.
@@ -17,7 +17,7 @@ async function executor(overallOperationTimeoutMs = 60_000) {
   ]));
   const config = buildConfig();
   config.diagnostics.overallOperationTimeoutMs = overallOperationTimeoutMs;
-  return new DiagnosticExecutor(model, config, new EapiDiagnosticRunner(config, new EapiClient()));
+  return new DiagnosticExecutor(model, config, new EapiDiagnosticRunner(config, new EapiClient()), buildEapiSlots(config));
 }
 
 describe.runIf(process.env.INTEGRATION === "1")("integration: bounded EOS ping (cEOS 4.34.3M)", () => {

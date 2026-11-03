@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { EapiClient } from "../src/eapi/client.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
 import { EapiDiagnosticRunner } from "../src/diagnostics/eapiRunner.js";
-import { buildConfig, buildInventoryModel, buildConnection } from "./helpers.js";
+import { buildConfig, buildEapiSlots, buildInventoryModel, buildConnection } from "./helpers.js";
 
 const result = [{ output: "" }, { output: "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n" }];
 const call = { target: "leaf1", request: { kind: "ping" as const, destinations: ["127.0.0.1"] } };
@@ -18,7 +18,7 @@ describe("diagnostic completion response correlation", () => {
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
     const model = buildInventoryModel({ diagnosticsAllowed: true, effectiveVars: { ansible_user: "admin", ansible_password: "test-password" } });
-    const executor = new DiagnosticExecutor(model, config, new EapiDiagnosticRunner(config, new EapiClient({ postJson })));
+    const executor = new DiagnosticExecutor(model, config, new EapiDiagnosticRunner(config, new EapiClient({ postJson })), buildEapiSlots(config));
     expect((await executor.execute(call)).results[0]?.error_code).toBe("eapi_response_uncorrelated");
     expect(executor.getCapacity()).toMatchObject({ uncertain_count: 1, reservations: [{ reservation_id: sentId }] });
   });
@@ -34,7 +34,7 @@ describe("diagnostic completion response correlation", () => {
     config.diagnostics.maxConcurrentDiagnostics = 1;
     const executor = new DiagnosticExecutor(buildInventoryModel({
       diagnosticsAllowed: true, effectiveVars: { ansible_user: "admin", ansible_password: "test-password" }
-    }), config, new EapiDiagnosticRunner(config, new EapiClient({ postJson })));
+    }), config, new EapiDiagnosticRunner(config, new EapiClient({ postJson })), buildEapiSlots(config));
     expect((await executor.execute(call)).results[0]?.error_code).toBe("eapi_payload_invalid");
     expect(executor.getCapacity()).toMatchObject({ available_count: 0, uncertain_count: 1 });
   });
@@ -66,7 +66,7 @@ describe("diagnostic completion response correlation", () => {
     config.diagnostics.maxConcurrentDiagnostics = 1;
     const executor = new DiagnosticExecutor(buildInventoryModel({
       diagnosticsAllowed: true, effectiveVars: { ansible_user: "admin", ansible_password: "test-password" }
-    }), config, new EapiDiagnosticRunner(config, new EapiClient({ postJson })));
+    }), config, new EapiDiagnosticRunner(config, new EapiClient({ postJson })), buildEapiSlots(config));
     const response = await executor.execute(call);
     expect(response.results[0]).toMatchObject({ status: "failed", error_code: "eapi_response_uncorrelated" });
     expect(executor.getCapacity()).toMatchObject({ available_count: 0, uncertain_count: 1 });
