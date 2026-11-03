@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "../src/core/errors.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
-import type { DiagnosticDeviceRunner, DiagnosticObservation } from "../src/diagnostics/types.js";
+import type { DiagnosticDeviceRunner, DiagnosticObservation, DiagnosticOutcome } from "../src/diagnostics/types.js";
 import { buildGetServerInfoToolResult } from "../src/mcp/tools/getServerInfo.js";
 import { buildConfig, buildInventoryModel, pingObservation as observation } from "./helpers.js";
 const call = { target: "leaf1", request: { kind: "ping" as const, destinations: ["127.0.0.1"] } };
@@ -85,6 +85,31 @@ describe("time-bounded diagnostic reservations", () => {
     finish(observation);
     expect((await waiting).summary.success_count).toBe(1);
     expect(executor.getCapacity()).toMatchObject({ available_count: 1, active_count: 0, uncertain_count: 0 });
+  });
+
+  it("ignores a late answer that arrives after the hold has already freed the slot", async () => {
+    vi.useFakeTimers();
+    let answer!: (outcome: DiagnosticOutcome) => void;
+    const lateAnswer = new Promise<DiagnosticOutcome>((resolve) => { answer = resolve; });
+    const config = buildConfig();
+    config.diagnostics.deviceConcurrency = 1;
+    config.diagnostics.maxConcurrentDiagnostics = 1;
+    const runner = { execute: vi.fn<DiagnosticDeviceRunner["execute"]>().mockReturnValueOnce(lateAnswer).mockReturnValue(new Promise(() => undefined)) };
+    const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true }), config, runner);
+    const controller = new AbortController();
+    const cancelled = executor.execute({ ...call, signal: controller.signal });
+    const rejected = expect(cancelled).rejects.toMatchObject({ code: "operation_aborted" });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    await rejected;
+    await vi.advanceTimersByTimeAsync(config.diagnostics.commandTimeoutMs);
+    void executor.execute(call).catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runner.execute).toHaveBeenCalledTimes(2);
+    answer(observation);
+    await vi.advanceTimersByTimeAsync(0);
+    // The replacement still holds the only slot; the first execution's answer frees nothing.
+    expect(executor.getCapacity()).toMatchObject({ active_count: 1, uncertain_count: 0, available_count: 0 });
   });
 
   it("continues using healthy capacity without freeing an uncertain reservation", async () => {

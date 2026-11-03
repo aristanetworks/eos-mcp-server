@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.11.0-beta
+
+0.10.0-beta was not published to npm, so upgrading from 0.9.0-beta picks up both this section and the 0.10.0-beta section below.
+
+- Cancelling a diagnostic call, or reaching its overall deadline, no longer closes its in-flight eAPI requests. The call still returns `operation_aborted` or `operation_timeout` at once, and each in-flight slot still turns uncertain, but the request keeps running until the device answers, its HTTP timeout, or server shutdown. A confirmed answer now frees the slot early, as ADR 0006 always described. Before, every cancelled ping held its slot for the full `commandTimeoutMs` (30 s by default), even when the device finished in a few seconds. Closing the request never stopped the command on EOS.
+- Internal: the diagnostic runner returns one closed outcome (output, device time limit, or a failure that says whether the request was ever dispatched) instead of throwing. `DiagnosticExecutionError` is removed, and raw EOS evidence travels as a typed field rather than in error details.
+
 ## 0.10.0-beta
 
 - Adds `eos_packet_capture`, a bounded **Packet Capture** of control-plane traffic on one interface of an inventory host or group. It requires `mcp_packet_capture_allowed` on every resolved host and runs one text-mode `tcpdump interface <INTF> [vrf <VRF>] packet-count <N> [filter <FILTER>]` per host, filter last, always sending EOS `requestTimeout` equal to the window. `interface` must be a full Ethernet, Management, Loopback, Port-Channel, Vlan, Tunnel or Vxlan name, or `any`; `vrf` is accepted only with `any`; `filter` is a pcap-filter expression of up to 4096 characters without control characters. Each host's finding is `complete` with tcpdump's lines verbatim in `packets`. Captures see only traffic sent or received by the device's control plane. New `diagnostics` settings, reported under `limits.diagnostics`: `defaultCapturePacketCount` (10), `maxCapturePacketCount` (1000), `defaultCaptureWindowSeconds` (10), `maxCaptureWindowSeconds` (60), `maxCapturePacketsPerRequest` (2000, hosts × packet count) and `captureOverallOperationTimeoutMs` (90000). The tool advertises `readOnlyHint: true` and `openWorldHint: false`. See [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md#packet-capture) and [ADR 0010](docs/adr/0010-bounded-synchronous-packet-capture.md).

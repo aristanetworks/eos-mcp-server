@@ -137,6 +137,11 @@ export const pingObservation: DiagnosticObservation = {
   output: "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n"
 };
 
+/** Runner whose device never answers. A cancelled call never ends the request, so it stays pending (ADR 0006). */
+export function unansweredDiagnosticRunner() {
+  return { execute: vi.fn<DiagnosticDeviceRunner["execute"]>(() => new Promise(() => undefined)) };
+}
+
 /** Runner that answers every execution with `observation`. */
 export function stubDiagnosticRunner(observation: DiagnosticObservation = pingObservation) {
   return { execute: vi.fn<DiagnosticDeviceRunner["execute"]>(async () => observation) };

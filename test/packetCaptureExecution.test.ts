@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { EapiDeviceReader } from "../src/connection/eosDeviceReader.js";
 import { AppError } from "../src/core/errors.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
-import type { DiagnosticDeviceRunner, DiagnosticExecutionContext, DiagnosticObservation } from "../src/diagnostics/types.js";
+import type { DiagnosticDeviceRunner, DiagnosticObservation } from "../src/diagnostics/types.js";
 import { buildPacketCaptureToolResult, packetCaptureInputSchema } from "../src/mcp/tools/packetCapture.js";
 import {
   buildConfig, buildEapiSlots, buildHost, controlledDiagnosticRunner, controlledReadRunner, loadSwitchesModel, pingObservation,
-  setTestPasswordEnv, stubDiagnosticRunner
+  setTestPasswordEnv, stubDiagnosticRunner, unansweredDiagnosticRunner
 } from "./helpers.js";
 
 const packets = ["22:06:07.386059 IP 10.255.255.1 > 10.255.255.0: ICMP echo request", "22:06:07.386088 IP 10.255.255.0 > 10.255.255.1: ICMP echo reply"];
@@ -129,9 +129,7 @@ describe("packet capture execution", () => {
 
   it("bounds the whole call by captureOverallOperationTimeoutMs rather than ping's deadline", async () => {
     vi.useFakeTimers();
-    const device = { execute: vi.fn((_host, _execution, { signal }: DiagnosticExecutionContext) => new Promise<DiagnosticObservation>((_resolve, reject) => {
-      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-    })) };
+    const device = unansweredDiagnosticRunner();
     const config = buildConfig();
     config.diagnostics.overallOperationTimeoutMs = 50;
     config.diagnostics.captureOverallOperationTimeoutMs = 20_000;
@@ -142,7 +140,7 @@ describe("packet capture execution", () => {
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     await rejected;
-    expect(device.execute.mock.calls.every(([, , context]) => context.signal.aborted)).toBe(true);
+    expect(device.execute.mock.calls.every(([, , context]) => !context.shutdownSignal.aborted)).toBe(true);
   });
 
   it("fails only the entry of a host where the interface does not exist", async () => {

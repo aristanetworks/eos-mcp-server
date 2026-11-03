@@ -4,6 +4,8 @@ Admission limits refined by [ADR 0007](0007-per-device-diagnostic-concurrency.md
 
 Packet capture gets its own lifecycle in [ADR 0010](0010-bounded-synchronous-packet-capture.md): its timeout is confirmed completion, and its uncertain hold is its window plus a margin.
 
+Until 0.11.0-beta, "a late confirmed response frees it sooner" could not happen: cancellation and the call deadline closed the HTTP request, so no answer could arrive. Cancellation now leaves a diagnostic's request running, bounded by its HTTP timeout and server shutdown, so the device's answer frees the slot as this decision intended. Closing the request never stopped the command on EOS.
+
 Supersedes [ADR 0002](0002-fail-closed-diagnostic-reservations.md), [ADR 0003](0003-durable-diagnostic-ledger.md) and [ADR 0004](0004-offline-operator-attested-release.md). [ADR 0001](0001-non-configuring-diagnostics.md) and [ADR 0005](0005-multi-destination-ping.md) stay in force.
 
 ADRs 0002 to 0004 held an execution's slot forever when its completion was unknown, because a delivered eAPI request might in principle sit in an EOS queue and start later. Holding slots forever then required a durable SQLite ledger so restarts could not reset them, an exclusive ownership lock so a second process could not allocate fresh capacity, and an offline operator attestation and audit workflow to recover stuck slots. The exclusive lock was taken at server start whenever any host allowed diagnostics, so only one MCP server per inventory could run. A second chat session, or the desktop app alongside a Code session, failed to start at all, losing every read-only tool as well as `eos_ping`.
