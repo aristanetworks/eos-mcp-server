@@ -4,6 +4,8 @@
 
 ## 0.11.1-beta
 
+- A diagnostic call that reaches its deadline now names the setting that controls it: `eos_ping exceeded diagnostics.overallOperationTimeoutMs 60000`, or `diagnostics.captureOverallOperationTimeoutMs` for a capture. Before, both named the top-level `overallOperationTimeoutMs`, which bounds read tools only. The `operation_timeout` code is unchanged.
+- Internal: read tools and the diagnostic executor now share one `runTargetOperation`, from Target to finished response, in place of the `readExecution` helpers each assembled itself. The executor no longer copies the server config to set its deadline.
 - Internal: server wiring now owns and closes the shared per-device eAPI slots, so the diagnostic executor no longer closes slots that reads share. The executor requires its slots instead of creating a private set when none is passed, and diagnostic connections get their HTTP timeout directly instead of having it overwritten after resolution. There is no user-visible behaviour change.
 
 ## 0.11.0-beta
