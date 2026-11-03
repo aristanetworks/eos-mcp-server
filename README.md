@@ -775,6 +775,13 @@ Policy denied: target clab-testlab-node1-1 includes host(s) not permitted for re
 
 This means the target resolved to at least one host that is either not marked as EOS eligible (`ansible_network_os: eos` or `mcp_platform: arista_eos`) or has `mcp_read_allowed: false` set.
 
+### Packet capture denied, unfilled, or rejected
+
+- `packet_capture_policy_denied`: at least one resolved host lacks `mcp_packet_capture_allowed: true`, or lacks the `mcp_diagnostics_allowed: true` and read access it depends on. The whole request is rejected before any capture starts. Check `packet_capture_allowed` with `eos_list_inventory` or `validate-inventory --json`.
+- `capture: "unfilled"` with no packets: fewer matching packets than `packet_count` arrived within `window_seconds`. EOS discards a partial capture, so this does not mean none arrived. Lower `packet_count`, widen the window, or loosen the filter. On hardware, also remember that captures see only control-plane traffic.
+- `packet_capture_filter_rejected`: tcpdump exited without capturing, usually because the filter is not valid pcap-filter syntax (EOS does not check it, and its error text is lost), or because the interface cannot be captured on.
+- `packet_capture_filter_invalid`: the server rejected the filter before dispatch because it was blank, longer than 4096 characters, or contained control characters.
+
 ## EOS version compatibility
 
 The read-path tools have been validated against EOS 4.34.3M. The minimum supported EOS version for read operations is 4.20, which is when eAPI JSON-RPC became stable and `show` commands reliably produce structured JSON output.
