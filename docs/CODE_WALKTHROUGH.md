@@ -9,7 +9,7 @@ This repository is a single TypeScript/Node package.
 - `dist/` is generated build output from `tsc`.
 - `docs/` contains project documentation (design, checkpoint, implementation plan, etc.).
 - `Makefile` wraps build, lint/static policy checks, test, typecheck, clean, and packaging.
-- `package.json` defines scripts: `npm test`, `npm run typecheck`, `npm run lint`, and `npm run build`. The package `prepack` hook runs `npm run build`.
+- `package.json` defines scripts: `npm test`, `npm run typecheck`, `npm run lint`, and `npm run build`. `typecheck` uses `tsconfig.test.json`, which extends the build config to cover `test/` as well as `src/`, because Vitest does not type-check. The package `prepack` hook runs `npm run build`.
 - `scripts/static-policy.mjs` performs lightweight source policy checks for banned patterns such as plain `throw new Error`, `@ts-ignore`, `eslint-disable`, and `as any`.
 
 ## Runtime Entry
