@@ -104,7 +104,8 @@ export interface DiagnosticDefinition<
   prepare(request: TRequest, config: DiagnosticsConfig): { request: ResolvedDiagnosticRequest; executions: TExecution[] };
   /** A request is rejected when its executions' total cost, times the resolved host count, exceeds `limit`. */
   budget: { cost(execution: TExecution): number; limit(config: DiagnosticsConfig): number; limitName: string; exceededCode: string };
-  overallOperationTimeoutMs(config: DiagnosticsConfig): number;
+  /** Bounds the whole call; `settingName` is the setting named when it fires. */
+  deadline(config: DiagnosticsConfig): { ms: number; settingName: string };
   /** Of one host's diagnostic slots, at most this many may run this kind at once; absent means only the shared limits apply. */
   perDeviceLimit?(config: DiagnosticsConfig): number;
   eapiExecution(execution: TExecution, config: DiagnosticsConfig): EapiExecutionPlan;

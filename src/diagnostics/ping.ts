@@ -31,7 +31,7 @@ export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing> = {
     limitName: "maxProbesPerRequest",
     exceededCode: "diagnostic_probe_limit_exceeded"
   },
-  overallOperationTimeoutMs: (config) => config.overallOperationTimeoutMs,
+  deadline: (config) => ({ ms: config.overallOperationTimeoutMs, settingName: "diagnostics.overallOperationTimeoutMs" }),
   eapiExecution: (execution, config) => ({
     command: buildPingCommand(execution),
     httpTimeoutMs: config.httpTimeoutMs,

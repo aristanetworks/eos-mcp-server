@@ -4,12 +4,11 @@ import type { EosCommandResult } from "../eapi/types.js";
 import type { EosDeviceReader } from "../connection/eosDeviceReader.js";
 import type { InventoryModel } from "../inventory/types.js";
 import {
-  buildReadDeviceFailure,
-  buildReadDeviceSuccess,
-  buildReadOperationResultEnvelope,
-  executeReadOperation,
+  buildDeviceSuccess,
+  readOperationLimits,
+  runTargetOperation,
   type DeviceResultSummary
-} from "../operations/readExecution.js";
+} from "../operations/targetOperation.js";
 import { readNumber, readString } from "../utils/value.js";
 
 export interface GetFactsOptions {
@@ -48,9 +47,10 @@ export async function getFacts(
   reader: EosDeviceReader,
   signal?: AbortSignal
 ): Promise<GetFactsResult> {
-  const operation = await executeReadOperation<GetFactsResult["results"][number]>(model, config, {
+  return runTargetOperation<GetFactsResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_get_facts",
+    ...readOperationLimits(config),
     ...(signal !== undefined ? { signal } : {}),
     run: async (host, signal) => {
       const commandResults = await reader.runShowCommands(host, ["show version"], "json", {
@@ -66,7 +66,7 @@ export async function getFacts(
       const factUptime = readNumber(versionPayload.uptime);
       const factSystemMac = readString(versionPayload.systemMacAddress);
 
-      return buildReadDeviceSuccess(host, {
+      return [buildDeviceSuccess(host, {
         facts: {
           inventory_hostname: host.inventoryHostname,
           ...(factDeviceHostname !== undefined ? { device_hostname: factDeviceHostname } : {}),
@@ -77,17 +77,10 @@ export async function getFacts(
           ...(factSystemMac !== undefined ? { system_mac: factSystemMac } : {})
         },
         ...(options.include_raw ? { command_results: commandResults } : {})
-      });
+      })];
     },
-    onError: (host, error) => buildReadDeviceFailure(host, "facts_collection_failed", error)
-  });
-
-  return buildReadOperationResultEnvelope(options.target, operation, {
-    responseSizeLimit: {
-      config,
-      operationName: "eos_get_facts",
-      narrowingGuidance: "Reduce the number of target devices or set include_raw to false to omit raw per-command eAPI entries."
-    }
+    failureCode: "facts_collection_failed",
+    narrowingGuidance: "Reduce the number of target devices or set include_raw to false to omit raw per-command eAPI entries."
   });
 }
 

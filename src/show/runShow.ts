@@ -5,13 +5,11 @@ import type { EosCommandResult } from "../eapi/types.js";
 import type { EosDeviceReader } from "../connection/eosDeviceReader.js";
 import type { InventoryModel } from "../inventory/types.js";
 import {
-  buildReadDeviceFailure,
-  buildReadDeviceSuccess,
-  buildReadOperationResultEnvelope,
-  enforceShowCommandLimit,
-  executeReadOperation,
+  buildDeviceSuccess,
+  readOperationLimits,
+  runTargetOperation,
   type DeviceResultSummary
-} from "../operations/readExecution.js";
+} from "../operations/targetOperation.js";
 
 export interface RunShowOptions {
   target: string;
@@ -49,9 +47,10 @@ export async function runShow(
   const commands = normalizeShowCommands(options.commands);
   enforceShowCommandLimit(config, commands.length);
 
-  const operation = await executeReadOperation<RunShowResult["results"][number]>(model, config, {
+  return runTargetOperation<RunShowResult["results"][number], { requested_output_format: RunShowOptions["outputFormat"] }>(model, config, {
     target: options.target,
     operationName: "eos_run_show",
+    ...readOperationLimits(config),
     ...(signal !== undefined ? { signal } : {}),
     run: async (host, signal) => {
       const commandResults = await reader.runShowCommands(host, commands, options.outputFormat, {
@@ -60,24 +59,26 @@ export async function runShow(
       });
       const firstResult = commandResults[0];
 
-      return buildReadDeviceSuccess(host, {
+      return [buildDeviceSuccess(host, {
         actual_output_format: firstResult?.output_format ?? "json",
         command_results: commandResults
-      });
+      })];
     },
-    onError: (host, error) => buildReadDeviceFailure(host, "show_command_failed", error)
-  });
-
-  return buildReadOperationResultEnvelope(options.target, operation, {
+    failureCode: "show_command_failed",
     extra: {
       requested_output_format: options.outputFormat
     },
-    responseSizeLimit: {
-      config,
-      operationName: "eos_run_show",
-      narrowingGuidance: "Reduce the number of target devices, use fewer commands per request, or request text format for more concise output."
-    }
+    narrowingGuidance: "Reduce the number of target devices, use fewer commands per request, or request text format for more concise output."
   });
+}
+
+function enforceShowCommandLimit(config: ResolvedServerConfig, commandCount: number): void {
+  if (commandCount > config.maxShowCommandsPerRequest) {
+    throw new AppError(
+      "show_command_limit_exceeded",
+      `Show command count ${commandCount} exceeds configured maxShowCommandsPerRequest ${config.maxShowCommandsPerRequest}`
+    );
+  }
 }
 
 function normalizeShowCommands(commands: string[]): string[] {

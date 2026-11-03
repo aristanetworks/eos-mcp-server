@@ -27,7 +27,7 @@ export const packetCaptureDiagnostic: DiagnosticDefinition<PacketCaptureRequest,
     limitName: "maxCapturePacketsPerRequest",
     exceededCode: "packet_capture_packet_limit_exceeded"
   },
-  overallOperationTimeoutMs: (config) => config.captureOverallOperationTimeoutMs,
+  deadline: (config) => ({ ms: config.captureOverallOperationTimeoutMs, settingName: "diagnostics.captureOverallOperationTimeoutMs" }),
   // A capture holds its slot for its whole window, so a capture limit below the diagnostic share keeps pings running (ADR 0010).
   perDeviceLimit: (config) => config.captureDeviceConcurrency,
   // The device timer is what ends a capture short of its count, so it is never optional (ADR 0010).

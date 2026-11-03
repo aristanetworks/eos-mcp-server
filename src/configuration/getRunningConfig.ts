@@ -5,12 +5,11 @@ import type { EosCommandResult } from "../eapi/types.js";
 import type { EosDeviceReader } from "../connection/eosDeviceReader.js";
 import type { InventoryModel } from "../inventory/types.js";
 import {
-  buildReadDeviceFailure,
-  buildReadDeviceSuccess,
-  buildReadOperationResultEnvelope,
-  executeReadOperation,
+  buildDeviceSuccess,
+  readOperationLimits,
+  runTargetOperation,
   type DeviceResultSummary
-} from "../operations/readExecution.js";
+} from "../operations/targetOperation.js";
 
 export interface GetRunningConfigOptions {
   target: string;
@@ -42,31 +41,26 @@ export async function getRunningConfig(
 ): Promise<GetRunningConfigResult> {
   const section = options.section !== undefined ? normalizeSingleLineEosInput(options.section, "running config section") : undefined;
   const command = section ? `show running-config section ${section}` : "show running-config";
-  const operation = await executeReadOperation<GetRunningConfigResult["results"][number]>(model, config, {
+  return runTargetOperation(model, config, {
     target: options.target,
     operationName: "eos_get_running_config",
+    ...readOperationLimits(config),
     ...(signal !== undefined ? { signal } : {}),
     validateTarget: (resolvedTarget) => {
       if (resolvedTarget.targetType === "group" && !section) {
         throw new AppError("running_config_section_required", "Group targets for eos_get_running_config require a section");
       }
     },
-    run: async (host, signal) =>
-      buildReadDeviceSuccess(host, {
+    run: async (host, signal): Promise<Array<GetRunningConfigResult["results"][number]>> => [
+      buildDeviceSuccess(host, {
         config_text: extractConfigText(await reader.runShowCommands(host, [command], "text", { enable: true, signal }))
-      }),
-    onError: (host, error) => buildReadDeviceFailure(host, "running_config_failed", error)
-  });
-
-  return buildReadOperationResultEnvelope(options.target, operation, {
+      })
+    ],
+    failureCode: "running_config_failed",
     extra: {
       section_requested: section ?? null
     },
-    responseSizeLimit: {
-      config,
-      operationName: "eos_get_running_config",
-      narrowingGuidance: "Use a section filter to retrieve only the relevant portion of the running config (e.g., section \"router bgp\")."
-    }
+    narrowingGuidance: "Use a section filter to retrieve only the relevant portion of the running config (e.g., section \"router bgp\")."
   });
 }
 
