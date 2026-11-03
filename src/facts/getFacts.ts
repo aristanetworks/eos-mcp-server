@@ -45,11 +45,13 @@ export async function getFacts(
   model: InventoryModel,
   config: ResolvedServerConfig,
   options: GetFactsOptions,
-  reader: EosDeviceReader
+  reader: EosDeviceReader,
+  signal?: AbortSignal
 ): Promise<GetFactsResult> {
   const operation = await executeReadOperation<GetFactsResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_get_facts",
+    ...(signal !== undefined ? { signal } : {}),
     run: async (host, signal) => {
       const commandResults = await reader.runShowCommands(host, ["show version"], "json", {
         signal,

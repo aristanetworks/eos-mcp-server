@@ -59,7 +59,7 @@ function buildToolDefinitions(deps: McpRuntimeDependencies) {
       description: "Probe EOS device readiness for a host or group target by validating connectivity, authentication, and harmless command execution.",
       inputSchema: probeDevicesInputSchema,
       annotations: closedWorldReadOnly,
-      handler: async (args: z.infer<typeof probeDevicesInputSchema>) => buildProbeDevicesToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
+      handler: async (args: z.infer<typeof probeDevicesInputSchema>, extra: { signal: AbortSignal }) => buildProbeDevicesToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader, extra.signal)
     },
     {
       name: "eos_ping",
@@ -81,28 +81,28 @@ function buildToolDefinitions(deps: McpRuntimeDependencies) {
       description: "Run one or more EOS show commands against a host or group target. Supports auto/json/text output modes with strict show-only validation.",
       inputSchema: runShowInputSchema,
       annotations: closedWorldReadOnly,
-      handler: async (args: z.infer<typeof runShowInputSchema>) => buildRunShowToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
+      handler: async (args: z.infer<typeof runShowInputSchema>, extra: { signal: AbortSignal }) => buildRunShowToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader, extra.signal)
     },
     {
       name: "eos_show_logging",
       description: "Retrieve bounded EOS logging output for a host or group target using a minimum severity threshold and message-count limit.",
       inputSchema: showLoggingInputSchema,
       annotations: closedWorldReadOnly,
-      handler: async (args: z.infer<typeof showLoggingInputSchema>) => buildShowLoggingToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
+      handler: async (args: z.infer<typeof showLoggingInputSchema>, extra: { signal: AbortSignal }) => buildShowLoggingToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader, extra.signal)
     },
     {
       name: "eos_get_facts",
       description: "Collect a fixed core set of EOS device facts for a host or group target.",
       inputSchema: getFactsInputSchema,
       annotations: closedWorldReadOnly,
-      handler: async (args: z.infer<typeof getFactsInputSchema>) => buildGetFactsToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
+      handler: async (args: z.infer<typeof getFactsInputSchema>, extra: { signal: AbortSignal }) => buildGetFactsToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader, extra.signal)
     },
     {
       name: "eos_get_running_config",
       description: "Retrieve running configuration text for a host target, or for a group target when a raw EOS section selector is provided.",
       inputSchema: getRunningConfigInputSchema,
       annotations: closedWorldReadOnly,
-      handler: async (args: z.infer<typeof getRunningConfigInputSchema>) => buildGetRunningConfigToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader)
+      handler: async (args: z.infer<typeof getRunningConfigInputSchema>, extra: { signal: AbortSignal }) => buildGetRunningConfigToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader, extra.signal)
     }
   ];
 }

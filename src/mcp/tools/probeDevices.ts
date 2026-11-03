@@ -16,13 +16,15 @@ export async function buildProbeDevicesToolResult(
   inventoryModel: InventoryModel,
   config: ResolvedServerConfig,
   args: z.infer<typeof probeDevicesInputSchema>,
-  reader: EosDeviceReader
+  reader: EosDeviceReader,
+  signal?: AbortSignal
 ) {
   const payload = await probeDevices(
     inventoryModel,
     config,
     { target: args.target, include_raw: args.include_raw ?? false },
-    reader
+    reader,
+    signal
   );
 
   return buildJsonToolResult(payload);

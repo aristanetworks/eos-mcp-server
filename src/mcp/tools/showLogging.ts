@@ -18,7 +18,8 @@ export async function buildShowLoggingToolResult(
   inventoryModel: InventoryModel,
   config: ResolvedServerConfig,
   args: z.infer<typeof showLoggingInputSchema>,
-  reader: EosDeviceReader
+  reader: EosDeviceReader,
+  signal?: AbortSignal
 ) {
   const payload = await showLogging(
     inventoryModel,
@@ -28,7 +29,8 @@ export async function buildShowLoggingToolResult(
       minimumSeverity: args.minimum_severity,
       messageCount: args.message_count
     },
-    reader
+    reader,
+    signal
   );
 
   return buildJsonToolResult(payload);

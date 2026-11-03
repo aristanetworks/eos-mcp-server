@@ -16,7 +16,8 @@ export async function buildGetFactsToolResult(
   inventoryModel: InventoryModel,
   config: ResolvedServerConfig,
   args: z.infer<typeof getFactsInputSchema>,
-  reader: EosDeviceReader
+  reader: EosDeviceReader,
+  signal?: AbortSignal
 ) {
   const payload = await getFacts(
     inventoryModel,
@@ -25,7 +26,8 @@ export async function buildGetFactsToolResult(
       target: args.target,
       include_raw: args.include_raw ?? false
     },
-    reader
+    reader,
+    signal
   );
 
   return buildJsonToolResult(payload);

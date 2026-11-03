@@ -43,7 +43,8 @@ export async function runShow(
   model: InventoryModel,
   config: ResolvedServerConfig,
   options: RunShowOptions,
-  reader: EosDeviceReader
+  reader: EosDeviceReader,
+  signal?: AbortSignal
 ): Promise<RunShowResult> {
   const commands = normalizeShowCommands(options.commands);
   enforceShowCommandLimit(config, commands.length);
@@ -51,6 +52,7 @@ export async function runShow(
   const operation = await executeReadOperation<RunShowResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_run_show",
+    ...(signal !== undefined ? { signal } : {}),
     run: async (host, signal) => {
       const commandResults = await reader.runShowCommands(host, commands, options.outputFormat, {
         signal,
