@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.11.0-beta
+
+0.10.0-beta was not published to npm, so upgrading from 0.9.0-beta picks up both this section and the 0.10.0-beta section below.
+
 - Cancelling a diagnostic call, or reaching its overall deadline, no longer closes its in-flight eAPI requests. The call still returns `operation_aborted` or `operation_timeout` at once, and each in-flight slot still turns uncertain, but the request keeps running until the device answers, its HTTP timeout, or server shutdown. A confirmed answer now frees the slot early, as ADR 0006 always described. Before, every cancelled ping held its slot for the full `commandTimeoutMs` (30 s by default), even when the device finished in a few seconds. Closing the request never stopped the command on EOS.
 - Internal: the diagnostic runner returns one closed outcome (output, device time limit, or a failure that says whether the request was ever dispatched) instead of throwing. `DiagnosticExecutionError` is removed, and raw EOS evidence travels as a typed field rather than in error details.
 
