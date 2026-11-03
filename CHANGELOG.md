@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.11.1-beta
+
+- Internal: server wiring now owns and closes the shared per-device eAPI slots, so the diagnostic executor no longer closes slots that reads share. The executor requires its slots instead of creating a private set when none is passed, and diagnostic connections get their HTTP timeout directly instead of having it overwritten after resolution. There is no user-visible behaviour change.
+
 ## 0.11.0-beta
 
 0.10.0-beta was not published to npm, so upgrading from 0.9.0-beta picks up both this section and the 0.10.0-beta section below.
