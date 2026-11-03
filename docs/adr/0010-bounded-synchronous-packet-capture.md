@@ -2,6 +2,8 @@
 
 **Status: accepted; implemented and verified on cEOS 4.34.3M. Hardware qualification is tracked in #30.**
 
+The device time limit now applies to every kind: on 2026-11-03 a ping stopped by `runCmds.requestTimeout` returned the same reply on cEOS 4.34.3M with no ping process left, so it also frees its slot at once, as a `ping_device_time_limit_reached` failure rather than a finding. The per-device capture limit is declared by the capture definition, and the capacity snapshot reports per-kind counts under each host's `kinds` instead of `capture_*` fields.
+
 Makes the packet-capture decision that [ADR 0001](0001-non-configuring-diagnostics.md) deferred (privilege, transport, lifecycle and data handling), gives capture its own lifecycle as [ADR 0006](0006-in-memory-timed-diagnostic-capacity.md) required, and makes the annotation decision [ADR 0008](0008-read-only-tool-annotations.md) withheld from it. Admission builds on [ADR 0009](0009-shared-per-device-eapi-slots.md). Tracks issue #17.
 
 The goal is to let an LLM answer questions such as "are BGP keepalives from 10.0.0.2 reaching leaf1?" by reading decoded packets in the tool result, with filters as flexible as pcap-filter syntax allows. Producing pcap files for humans is out of scope.

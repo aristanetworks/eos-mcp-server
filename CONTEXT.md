@@ -25,8 +25,12 @@ Explicit authorization for an inventory host to perform diagnostics, additional 
 _Avoid_: Read permission, implicit diagnostic access
 
 **Uncertain Execution Reservation**:
-Diagnostic capacity held because an EOS execution's remote completion cannot be confirmed. It is held for that execution's own budget (for ping, `commandTimeoutMs`; for a **Packet Capture**, its window plus a margin) and then frees itself; a late confirmed response frees it sooner. It lives only in the server process that made it.
+Diagnostic capacity held because an EOS execution's remote completion cannot be confirmed. It is held for that execution's own budget (for ping, `commandTimeoutMs`; for a **Packet Capture**, its window plus a margin) and then frees itself; a late confirmed response frees it sooner. It lives only in the server process that made it. A **Device Time Limit** reply is confirmed completion, so it never leaves one.
 _Avoid_: Permanent hold, completed job
+
+**Device Time Limit**:
+EOS's own per-request timer (`runCmds.requestTimeout`) stopping a diagnostic command once it has started. EOS returns none of the command's output, but its reply confirms the execution has ended, so the reservation is freed at once. What it means depends on the diagnostic: the expected end of an unfilled **Packet Capture**, but a failure for a ping, which then has no **Reachability Finding**.
+_Avoid_: Timeout, HTTP timeout, uncertain completion
 
 **Source Address**:
 The local IP address an EOS device uses to originate diagnostic probes within the selected routing context.
@@ -49,7 +53,7 @@ Explicit authorization for an inventory host to perform **Packet Captures**, add
 _Avoid_: Diagnostic permission alone, capture access
 
 **Capture Finding**:
-The conclusion of a completed **Packet Capture**: complete when the requested packet count was observed within the window, carrying those packets; unfilled when fewer arrived, carrying none. An unfilled finding is distinct from a failure to execute the capture, such as an invalid **Capture Filter**.
+The conclusion of a completed **Packet Capture**: complete when the requested packet count was observed within the window, carrying those packets; unfilled when fewer arrived before the **Device Time Limit** stopped it, carrying none. An unfilled finding is distinct from a failure to execute the capture, such as an invalid **Capture Filter**.
 _Avoid_: Timeout, empty capture, no traffic
 
 **Log Severity**:
