@@ -60,11 +60,25 @@ export const diagnosticsConfigSchema = z.object({
   if (config.captureOverallOperationTimeoutMs <= config.maxCaptureWindowSeconds * 1000) {
     invalid("captureOverallOperationTimeoutMs", "Must exceed maxCaptureWindowSeconds");
   }
+  // The window itself fits, but the timers derived from it add margins (ADR 0010).
+  if (Math.max(captureHttpTimeoutMs(config.maxCaptureWindowSeconds), captureUncertainHoldMs(config.maxCaptureWindowSeconds)) > MAX_TIMER_MS) {
+    invalid("maxCaptureWindowSeconds", `Window plus its HTTP and uncertainty margins must not exceed ${MAX_TIMER_MS} ms`);
+  }
 });
 
 /** Conservative bound: finite probes, fixed 1s spacing, reply waits, and scheduling margin. */
 export function pingExecutionBoundMs(count: number, replyTimeoutMs: number): number {
   return count * (1000 + replyTimeoutMs) + 1000;
+}
+
+/** The device timer ends a capture at its window; the HTTP request waits this much longer for the answer. */
+export function captureHttpTimeoutMs(windowSeconds: number): number {
+  return windowSeconds * 1000 + 5000;
+}
+
+/** An uncertain capture holds its slot this much past its window, since the device timer has stopped it by then. */
+export function captureUncertainHoldMs(windowSeconds: number): number {
+  return windowSeconds * 1000 + 2000;
 }
 
 export type DiagnosticsConfig = z.infer<typeof diagnosticsConfigSchema>;

@@ -77,4 +77,15 @@ describe("diagnostic settings", () => {
   ])("rejects unsafe or contradictory packet capture settings: %s", async (line) => {
     await expect(load(["diagnostics:", `  ${line}`])).rejects.toMatchObject({ code: "config_schema_invalid" });
   });
+
+  it("keeps the timers a capture window derives, window plus HTTP or uncertainty margin, within Node's timer range", async () => {
+    const largestOverall = "  captureOverallOperationTimeoutMs: 2147483647";
+    // 2147478 s + 5 s HTTP margin = 2147483000 ms fits; one more second does not.
+    const largest = await load(["diagnostics:", "  maxCaptureWindowSeconds: 2147478", largestOverall]);
+    expect(largest.diagnostics.maxCaptureWindowSeconds).toBe(2_147_478);
+    await expect(load(["diagnostics:", "  maxCaptureWindowSeconds: 2147479", largestOverall])).rejects.toMatchObject({
+      code: "config_schema_invalid",
+      message: expect.stringContaining("diagnostics.maxCaptureWindowSeconds")
+    });
+  });
 });

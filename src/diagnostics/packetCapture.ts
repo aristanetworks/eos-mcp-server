@@ -1,4 +1,4 @@
-import type { DiagnosticsConfig } from "../config/diagnostics.js";
+import { captureHttpTimeoutMs, captureUncertainHoldMs, type DiagnosticsConfig } from "../config/diagnostics.js";
 import { AppError } from "../core/errors.js";
 import { resolveBoundedInteger, validateVrf } from "./validation.js";
 import type { DiagnosticDefinition, PacketCaptureFinding, PacketCaptureRequest, PreparedPacketCapture } from "./types.js";
@@ -9,10 +9,6 @@ const CAPTURE_INTERFACE_PATTERN =
   /^(?:Ethernet\d+(?:\/\d+){0,2}(?:\.\d+)?|Management\d+(?:\/\d+)?|Loopback\d+|Port-Channel\d+(?:\.\d+)?|(?:Vlan|Tunnel|Vxlan)\d+|any)$/;
 
 const MAX_FILTER_LENGTH = 4096;
-// The device timer ends a capture at its window. The HTTP request waits this much longer for the
-// answer, and an uncertain capture holds its slot this much longer, since the timer has stopped it by then.
-const HTTP_TIMEOUT_MARGIN_MS = 5000;
-const UNCERTAIN_HOLD_MARGIN_MS = 2000;
 
 /** One capture per resolved host, all with the same interface, VRF, and filter. */
 export const packetCaptureDiagnostic: DiagnosticDefinition<PacketCaptureRequest, PreparedPacketCapture> = {
@@ -35,10 +31,10 @@ export const packetCaptureDiagnostic: DiagnosticDefinition<PacketCaptureRequest,
   // The device timer is what ends a capture short of its count, so it is never optional (ADR 0010).
   eapiExecution: (execution) => ({
     command: buildPacketCaptureCommand(execution),
-    httpTimeoutMs: execution.window_seconds * 1000 + HTTP_TIMEOUT_MARGIN_MS,
+    httpTimeoutMs: captureHttpTimeoutMs(execution.window_seconds),
     requestTimeoutSeconds: execution.window_seconds
   }),
-  uncertainHoldMs: (execution) => execution.window_seconds * 1000 + UNCERTAIN_HOLD_MARGIN_MS,
+  uncertainHoldMs: (execution) => captureUncertainHoldMs(execution.window_seconds),
   resultIdentity: () => ({}),
   // The device timer is the expected end of a capture that does not fill, so it is a finding, not a failure (ADR 0010).
   interpret: (observation, execution) => "output" in observation
