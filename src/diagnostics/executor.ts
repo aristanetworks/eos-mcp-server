@@ -14,8 +14,7 @@ import {
 } from "../operations/readExecution.js";
 import { EapiSlots, eapiSlotLimits } from "../operations/eapiSlots.js";
 import { DiagnosticExecutionError } from "./executionError.js";
-import { packetCaptureDiagnostic } from "./packetCapture.js";
-import { pingDiagnostic } from "./ping.js";
+import { diagnosticDefinitions } from "./definitions.js";
 import type {
   DiagnosticCapacitySnapshot,
   DiagnosticDefinition,
@@ -36,14 +35,6 @@ export interface DiagnosticDeviceResult extends ReadDeviceResultBase {
 
 export type DiagnosticResult = ReadOperationResultEnvelope<DiagnosticDeviceResult> & {
   request: ResolvedDiagnosticRequest;
-};
-
-const diagnosticDefinitions: { [Kind in DiagnosticRequest["kind"]]: DiagnosticDefinition<
-  Extract<DiagnosticRequest, { kind: Kind }>,
-  Extract<PreparedDiagnostic, { kind: Kind }>
-> } = {
-  ping: pingDiagnostic,
-  packet_capture: packetCaptureDiagnostic
 };
 
 /** Owns policy, budgets, fan-out, cancellation, and result normalization. Admission, per device and
@@ -76,8 +67,7 @@ export class DiagnosticExecutor {
     signal?: AbortSignal;
   }): Promise<DiagnosticResult> {
     const signal = options.signal === undefined ? this.shutdown.signal : AbortSignal.any([options.signal, this.shutdown.signal]);
-    // Each definition only ever receives requests and executions of its own kind.
-    const definition: DiagnosticDefinition = diagnosticDefinitions[options.request.kind];
+    const definition = diagnosticDefinitions[options.request.kind];
     const prepared = definition.prepare(options.request, this.config.diagnostics);
     const operationName = `eos_${options.request.kind}`;
     const operationConfig: ResolvedServerConfig = {
@@ -91,7 +81,11 @@ export class DiagnosticExecutor {
     if (denied.length > 0) {
       throw new AppError(definition.permission.deniedCode, `${definition.permission.deniedMessage}: ${denied.map((host) => host.inventoryHostname).join(", ")}`);
     }
-    definition.enforceBudget(resolvedTarget.resolvedHosts.length, prepared.executions, this.config.diagnostics);
+    const costPerHost = prepared.executions.reduce((total, execution) => total + definition.budget.cost(execution), 0);
+    const budgetLimit = definition.budget.limit(this.config.diagnostics);
+    if (resolvedTarget.resolvedHosts.length * costPerHost > budgetLimit) {
+      throw new AppError(definition.budget.exceededCode, `Request exceeds ${definition.budget.limitName} ${budgetLimit}`);
+    }
 
     // Each host/execution pair takes its own reservation, and all are queued at once so the admission
     // controller, not fan-out order, decides which device runs next. Results stay in host-then-execution order.

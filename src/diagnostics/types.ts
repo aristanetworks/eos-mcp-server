@@ -79,7 +79,14 @@ export type DiagnosticFinding = PingFinding | PacketCaptureFinding;
 /** The request echoed in results, with server defaults applied. */
 export type ResolvedDiagnosticRequest = (PingRequest & { count: number }) | PreparedPacketCapture;
 
-/** Per-kind seam: permission, validation, and budgets before dispatch, the per-execution
+/** How the eAPI runner sends one execution: the EOS command, its HTTP timeout, and EOS's own request timer, if any. */
+export interface EapiExecutionPlan {
+  command: string;
+  httpTimeoutMs: number;
+  requestTimeoutSeconds?: number;
+}
+
+/** Per-kind seam: permission, validation, and budgets before dispatch, the execution's eAPI plan and
  * uncertain hold, and interpretation after. The executor runs every prepared execution on every
  * resolved host; device I/O stays in the runner.
  */
@@ -91,13 +98,14 @@ export interface DiagnosticDefinition<
   /** Every resolved host must have this permission, or the whole request is rejected. */
   permission: { allows(host: InventoryHostModel): boolean; deniedCode: string; deniedMessage: string };
   prepare(request: TRequest, config: DiagnosticsConfig): { request: ResolvedDiagnosticRequest; executions: TExecution[] };
-  /** Rejects a request whose executions, run on `hostCount` hosts, exceed the kind's aggregate budget. */
-  enforceBudget(hostCount: number, executions: TExecution[], config: DiagnosticsConfig): void;
+  /** A request is rejected when its executions' total cost, times the resolved host count, exceeds `limit`. */
+  budget: { cost(execution: TExecution): number; limit(config: DiagnosticsConfig): number; limitName: string; exceededCode: string };
   overallOperationTimeoutMs(config: DiagnosticsConfig): number;
+  eapiExecution(execution: TExecution, config: DiagnosticsConfig): EapiExecutionPlan;
   /** How long a slot stays held once the execution's remote completion is unknown. */
   uncertainHoldMs(execution: TExecution, config: DiagnosticsConfig): number;
-  /** Fields that tell a host's results apart, such as ping's destination; empty for one execution per host. */
-  resultIdentity(execution: TExecution): Record<string, string>;
+  /** Tells a host's results apart: ping's destination; nothing for one execution per host. */
+  resultIdentity(execution: TExecution): { destination?: string };
   /** Receives only observations the runner can produce for this kind. */
   interpret(observation: TObservation, execution: TExecution): DiagnosticFinding;
 }

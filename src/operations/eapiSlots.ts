@@ -45,7 +45,7 @@ export interface EapiSlotLimits {
  */
 export class EapiSlots {
   /** Held diagnostic slots, each with its own uncertain hold; an uncertain slot carries the timer that frees it. */
-  private readonly reservations = new Map<DiagnosticReservationInfo, { uncertainHoldMs: number; releaseTimer?: NodeJS.Timeout }>();
+  private readonly reservations = new Map<DiagnosticReservationInfo, NodeJS.Timeout | undefined>();
   private readonly readsHeldByDevice = new Map<string, number>();
   private readonly waiting: Waiter[] = [];
   private closed = false;
@@ -55,7 +55,7 @@ export class EapiSlots {
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    for (const held of this.reservations.values()) clearTimeout(held.releaseTimer);
+    for (const timer of this.reservations.values()) clearTimeout(timer);
     const error = closedError();
     for (const waiter of this.waiting.splice(0)) waiter.reject(error);
   }
@@ -226,17 +226,17 @@ export class EapiSlots {
       state: "active",
       reserved_at: new Date().toISOString()
     };
-    this.reservations.set(state, { uncertainHoldMs: intent.uncertainHoldMs });
+    this.reservations.set(state, undefined);
     return {
       requestId,
       complete: () => this.freeDiagnostic(state),
-      markUncertain: (reasonCode) => this.markUncertain(state, reasonCode)
+      markUncertain: (reasonCode) => this.markUncertain(state, reasonCode, intent.uncertainHoldMs)
     };
   }
 
   private freeDiagnostic(state: DiagnosticReservationInfo): void {
     if (!this.reservations.has(state)) return;
-    clearTimeout(this.reservations.get(state)?.releaseTimer);
+    clearTimeout(this.reservations.get(state));
     this.reservations.delete(state);
     this.grantWaiting();
   }
@@ -255,17 +255,15 @@ export class EapiSlots {
     }
   }
 
-  private markUncertain(state: DiagnosticReservationInfo, reasonCode: string): void {
-    const held = this.reservations.get(state);
-    if (this.closed || held === undefined || state.state === "uncertain") return;
+  private markUncertain(state: DiagnosticReservationInfo, reasonCode: string, uncertainHoldMs: number): void {
+    if (this.closed || !this.reservations.has(state) || state.state === "uncertain") return;
     const now = Date.now();
-    const uncertainHoldMs = held.uncertainHoldMs;
     state.state = "uncertain";
     state.uncertain_since = new Date(now).toISOString();
     state.releases_at = new Date(now + uncertainHoldMs).toISOString();
     state.reason_code = reasonCode;
     // Unref so a held slot never keeps a stopping server alive.
-    held.releaseTimer = setTimeout(() => this.freeDiagnostic(state), uncertainHoldMs).unref();
+    this.reservations.set(state, setTimeout(() => this.freeDiagnostic(state), uncertainHoldMs).unref());
   }
 }
 

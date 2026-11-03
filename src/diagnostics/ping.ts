@@ -2,6 +2,7 @@ import { isIP } from "node:net";
 import type { DiagnosticsConfig } from "../config/diagnostics.js";
 import { pingExecutionBoundMs } from "../config/diagnostics.js";
 import { AppError } from "../core/errors.js";
+import { resolveBoundedInteger, validateVrf } from "./validation.js";
 import type { DiagnosticDefinition, DiagnosticOutputObservation, PingExecutionRequest, PingFinding, PingRequest, PreparedPing } from "./types.js";
 
 export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing, DiagnosticOutputObservation> = {
@@ -24,13 +25,19 @@ export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing, Dia
     const count = executions[0]?.count ?? config.defaultPingCount;
     return { request: { ...request, count }, executions };
   },
-  enforceBudget(hostCount, executions, config) {
-    const probesPerHost = executions.reduce((total, execution) => total + execution.count, 0);
-    if (hostCount * probesPerHost > config.maxProbesPerRequest) {
-      throw new AppError("diagnostic_probe_limit_exceeded", `Request exceeds maxProbesPerRequest ${config.maxProbesPerRequest}`);
-    }
+  budget: {
+    cost: (execution) => execution.count,
+    limit: (config) => config.maxProbesPerRequest,
+    limitName: "maxProbesPerRequest",
+    exceededCode: "diagnostic_probe_limit_exceeded"
   },
   overallOperationTimeoutMs: (config) => config.overallOperationTimeoutMs,
+  eapiExecution: (execution, config) => ({
+    command: buildPingCommand(execution),
+    httpTimeoutMs: config.httpTimeoutMs,
+    // Lets EOS stop the command itself at the same budget the server holds an uncertain slot for.
+    ...(config.nativeRequestTimeout ? { requestTimeoutSeconds: config.commandTimeoutMs / 1000 } : {})
+  }),
   uncertainHoldMs: (_execution, config) => config.commandTimeoutMs,
   resultIdentity: (execution) => ({ destination: execution.destination }),
   interpret: (observation, execution) => parsePingOutput(observation.output, execution.count)
@@ -38,10 +45,7 @@ export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing, Dia
 
 export function preparePing(request: PingExecutionRequest, config: DiagnosticsConfig): PreparedPing {
   const addressFamily = validateAddress(request.destination);
-  const count = request.count ?? config.defaultPingCount;
-  if (!Number.isSafeInteger(count) || count < 1 || count > config.maxPingCount) {
-    throw new AppError("diagnostic_count_invalid", `Ping count must be between 1 and ${config.maxPingCount}`);
-  }
+  const count = resolveBoundedInteger(request.count, config.defaultPingCount, config.maxPingCount, { code: "diagnostic_count_invalid", label: "Ping count" });
   if (pingExecutionBoundMs(count, config.pingReplyTimeoutMs) > config.commandTimeoutMs) {
     throw new AppError("diagnostic_command_budget_exceeded", "Ping exceeds the configured device command budget");
   }
@@ -50,13 +54,6 @@ export function preparePing(request: PingExecutionRequest, config: DiagnosticsCo
     throw new AppError("diagnostic_source_invalid", "Source and destination must use the same IP address family");
   }
   return { ...request, count, addressFamily, replyTimeoutSeconds: config.pingReplyTimeoutMs / 1000 };
-}
-
-/** Shared by every diagnostic that accepts a VRF. */
-export function validateVrf(vrf: string): void {
-  if (!/^[A-Za-z0-9_][A-Za-z0-9_.:-]{0,63}$/.test(vrf)) {
-    throw new AppError("diagnostic_vrf_invalid", "VRF must be a single safe identifier (1-64 characters)");
-  }
 }
 
 function validateAddress(address: string): 4 | 6 {

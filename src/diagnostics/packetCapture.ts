@@ -1,6 +1,6 @@
 import type { DiagnosticsConfig } from "../config/diagnostics.js";
 import { AppError } from "../core/errors.js";
-import { validateVrf } from "./ping.js";
+import { resolveBoundedInteger, validateVrf } from "./validation.js";
 import type { DiagnosticDefinition, PacketCaptureFinding, PacketCaptureRequest, PreparedPacketCapture } from "./types.js";
 
 // Full canonical names only: EOS abbreviations, `fabric` (whose view differs between cEOS and
@@ -9,7 +9,8 @@ const CAPTURE_INTERFACE_PATTERN =
   /^(?:Ethernet\d+(?:\/\d+){0,2}(?:\.\d+)?|Management\d+(?:\/\d+)?|Loopback\d+|Port-Channel\d+(?:\.\d+)?|(?:Vlan|Tunnel|Vxlan)\d+|any)$/;
 
 const MAX_FILTER_LENGTH = 4096;
-// The device timer ends a capture at its window; the HTTP request waits this much longer for its answer.
+// The device timer ends a capture at its window. The HTTP request waits this much longer for the
+// answer, and an uncertain capture holds its slot this much longer, since the timer has stopped it by then.
 const HTTP_TIMEOUT_MARGIN_MS = 5000;
 const UNCERTAIN_HOLD_MARGIN_MS = 2000;
 
@@ -24,14 +25,19 @@ export const packetCaptureDiagnostic: DiagnosticDefinition<PacketCaptureRequest,
     const execution = preparePacketCapture(request, config);
     return { request: execution, executions: [execution] };
   },
-  enforceBudget(hostCount, executions, config) {
-    const packetsPerHost = executions.reduce((total, execution) => total + execution.packet_count, 0);
-    if (hostCount * packetsPerHost > config.maxCapturePacketsPerRequest) {
-      throw new AppError("packet_capture_packet_limit_exceeded", `Request exceeds maxCapturePacketsPerRequest ${config.maxCapturePacketsPerRequest}`);
-    }
+  budget: {
+    cost: (execution) => execution.packet_count,
+    limit: (config) => config.maxCapturePacketsPerRequest,
+    limitName: "maxCapturePacketsPerRequest",
+    exceededCode: "packet_capture_packet_limit_exceeded"
   },
   overallOperationTimeoutMs: (config) => config.captureOverallOperationTimeoutMs,
-  // The device timer ends the capture at its window, so an uncertain one need not wait out commandTimeoutMs.
+  // The device timer is what ends a capture short of its count, so it is never optional (ADR 0010).
+  eapiExecution: (execution) => ({
+    command: buildPacketCaptureCommand(execution),
+    httpTimeoutMs: execution.window_seconds * 1000 + HTTP_TIMEOUT_MARGIN_MS,
+    requestTimeoutSeconds: execution.window_seconds
+  }),
   uncertainHoldMs: (execution) => execution.window_seconds * 1000 + UNCERTAIN_HOLD_MARGIN_MS,
   resultIdentity: () => ({}),
   // The device timer is the expected end of a capture that does not fill, so it is a finding, not a failure (ADR 0010).
@@ -58,14 +64,10 @@ export function preparePacketCapture(request: PacketCaptureRequest, config: Diag
     throw new AppError("packet_capture_filter_invalid",
       `Filter must be a non-blank pcap-filter expression of at most ${MAX_FILTER_LENGTH} characters without control characters`);
   }
-  const packetCount = request.packet_count ?? config.defaultCapturePacketCount;
-  if (!Number.isSafeInteger(packetCount) || packetCount < 1 || packetCount > config.maxCapturePacketCount) {
-    throw new AppError("packet_capture_count_invalid", `Packet count must be between 1 and ${config.maxCapturePacketCount}`);
-  }
-  const windowSeconds = request.window_seconds ?? config.defaultCaptureWindowSeconds;
-  if (!Number.isSafeInteger(windowSeconds) || windowSeconds < 1 || windowSeconds > config.maxCaptureWindowSeconds) {
-    throw new AppError("packet_capture_window_invalid", `Window must be between 1 and ${config.maxCaptureWindowSeconds} seconds`);
-  }
+  const packetCount = resolveBoundedInteger(request.packet_count, config.defaultCapturePacketCount, config.maxCapturePacketCount,
+    { code: "packet_capture_count_invalid", label: "Packet count" });
+  const windowSeconds = resolveBoundedInteger(request.window_seconds, config.defaultCaptureWindowSeconds, config.maxCaptureWindowSeconds,
+    { code: "packet_capture_window_invalid", label: "Window", unit: "seconds" });
   return { ...request, packet_count: packetCount, window_seconds: windowSeconds };
 }
 
@@ -96,8 +98,4 @@ export function interpretPacketCaptureOutput(output: string, request: PreparedPa
     window_seconds: request.window_seconds,
     packets
   };
-}
-
-export function packetCaptureHttpTimeoutMs(request: PreparedPacketCapture): number {
-  return request.window_seconds * 1000 + HTTP_TIMEOUT_MARGIN_MS;
 }
