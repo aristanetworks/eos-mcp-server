@@ -1,14 +1,13 @@
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { AppError } from "../src/core/errors.js";
-import type { DiagnosticDeviceRunner, DiagnosticExecutionContext, PreparedDiagnostic } from "../src/diagnostics/types.js";
+import type { DiagnosticDeviceRunner, DiagnosticOutcome, PreparedDiagnostic } from "../src/diagnostics/types.js";
 import type { InventoryHostModel } from "../src/inventory/types.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
-import { DiagnosticExecutionError } from "../src/diagnostics/executionError.js";
 import type { DiagnosticObservation } from "../src/diagnostics/types.js";
 import { validateInventory } from "../src/inventory/loadInventory.js";
 import { buildListInventoryView } from "../src/inventory/listInventoryView.js";
 import { buildPingToolResult, pingInputSchema } from "../src/mcp/tools/ping.js";
-import { buildConfig, buildInventoryModel, loadSwitchesModel, stubDiagnosticRunner, writeTempInventory } from "./helpers.js";
+import { buildConfig, buildInventoryModel, loadSwitchesModel, stubDiagnosticRunner, unansweredDiagnosticRunner, writeTempInventory } from "./helpers.js";
 
 const output = "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\nrtt min/avg/max/mdev = 0.020/0.025/0.030/0.001 ms\n";
 const observation: DiagnosticObservation = { end: "output", output };
@@ -164,9 +163,10 @@ describe("server-wide diagnostic admission and deadlines", () => {
     expect(device.execute).toHaveBeenCalledTimes(2);
   });
 
-  it.each(["not_dispatched", "completed"] as const)("releases an error explicitly classified as %s immediately", async (executionState) => {
+  it("frees the slot at once when the runner reports the request was never dispatched", async () => {
     const model = await loadSwitchesModel();
-    const device = { execute: vi.fn().mockRejectedValueOnce(new DiagnosticExecutionError("diagnostic_test_failure", "Classified adapter failure", executionState)).mockResolvedValue(observation) };
+    const notDispatched: DiagnosticOutcome = { end: "failed", error: new AppError("diagnostic_test_failure", "Connection could not be resolved"), remote: "not_dispatched" };
+    const device = { execute: vi.fn<DiagnosticDeviceRunner["execute"]>().mockResolvedValueOnce(notDispatched).mockResolvedValue(observation) };
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
@@ -176,11 +176,13 @@ describe("server-wide diagnostic admission and deadlines", () => {
   });
 
   it.each([
-    new DiagnosticExecutionError("diagnostic_test_failure", "Unknown execution state", "unknown"),
-    new AppError("diagnostic_test_failure", "An untyped marker is not a completion classification", { command_completed: true })
-  ])("retains capacity without a typed settled classification (%s)", async (error) => {
+    { label: "a failure whose remote state is unknown",
+      execute: async (): Promise<DiagnosticOutcome> => ({ end: "failed", error: new AppError("diagnostic_test_failure", "Lost connection"), remote: "unknown" }) },
+    { label: "a runner that throws, even with an untyped completion marker",
+      execute: async (): Promise<DiagnosticOutcome> => { throw new AppError("diagnostic_test_failure", "Not a completion classification", { command_completed: true }); } }
+  ])("retains capacity after $label", async ({ execute }) => {
     const model = await loadSwitchesModel();
-    const device = { execute: vi.fn().mockRejectedValue(error) };
+    const device = { execute: vi.fn<DiagnosticDeviceRunner["execute"]>(execute) };
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
@@ -191,12 +193,10 @@ describe("server-wide diagnostic admission and deadlines", () => {
     });
   });
 
-  it("stops scheduling group hosts on the overall deadline and aborts HTTP work", async () => {
+  it("stops scheduling group hosts on the overall deadline but leaves in-flight HTTP work running", async () => {
     const model = await loadSwitchesModel();
     vi.useFakeTimers();
-    const device = { execute: vi.fn((_host, _request, { signal }: DiagnosticExecutionContext) => new Promise<DiagnosticObservation>((_resolve, reject) => {
-      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-    })) };
+    const device = unansweredDiagnosticRunner();
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
@@ -206,17 +206,15 @@ describe("server-wide diagnostic admission and deadlines", () => {
     await vi.advanceTimersByTimeAsync(50);
     await rejected;
     expect(device.execute).toHaveBeenCalledTimes(1);
-    expect(device.execute.mock.calls[0]?.[2].signal.aborted).toBe(true);
+    // Closing the request would not stop the ping on EOS, only lose the answer that frees its slot.
+    expect(device.execute.mock.calls[0]?.[2].shutdownSignal.aborted).toBe(false);
   });
 
   it("queues new work behind a cancelled command's slot until the command budget elapses", async () => {
     const model = await loadSwitchesModel();
     vi.useFakeTimers();
-    const device = { execute: vi.fn()
-      .mockImplementationOnce((_host, _request, { signal }: DiagnosticExecutionContext) => new Promise((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-      }))
-      .mockResolvedValue(observation) };
+    const device = unansweredDiagnosticRunner();
+    device.execute.mockImplementationOnce(() => new Promise(() => undefined)).mockResolvedValue(observation);
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
@@ -313,7 +311,7 @@ describe("multi-destination ping", () => {
   it("isolates an execution failure to its own destination", async () => {
     const device = { execute: vi.fn(async (_host: InventoryHostModel, execution: PreparedDiagnostic) => {
       if (destinationOf(execution) === "127.0.0.2") {
-        throw new DiagnosticExecutionError("diagnostic_test_failure", "Classified adapter failure", "completed");
+        return { end: "failed", error: new AppError("diagnostic_test_failure", "Classified adapter failure"), remote: "unknown" } satisfies DiagnosticOutcome;
       }
       return observation;
     }) };
@@ -369,9 +367,7 @@ describe("multi-destination ping", () => {
 
   it("leaves only in-flight executions uncertain when a sweep is cancelled", async () => {
     vi.useFakeTimers();
-    const device = { execute: vi.fn((_host, _execution, { signal }: DiagnosticExecutionContext) => new Promise<DiagnosticObservation>((_resolve, reject) => {
-      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-    })) };
+    const device = unansweredDiagnosticRunner();
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 2;
     config.diagnostics.maxConcurrentDiagnostics = 2;

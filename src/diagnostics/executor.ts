@@ -1,5 +1,5 @@
 import type { ResolvedServerConfig } from "../config/schema.js";
-import { AppError, toErrorCode } from "../core/errors.js";
+import { AppError, toAppError, toErrorCode } from "../core/errors.js";
 import { resolveInventoryTarget } from "../inventory/resolveTarget.js";
 import type { InventoryHostModel, InventoryModel } from "../inventory/types.js";
 import {
@@ -13,13 +13,12 @@ import {
   type ReadOperationResultEnvelope
 } from "../operations/readExecution.js";
 import { EapiSlots, eapiSlotLimits, type DiagnosticCapacitySnapshot, type DiagnosticReservationIntent } from "../operations/eapiSlots.js";
-import { DiagnosticExecutionError } from "./executionError.js";
 import { diagnosticDefinitions } from "./definitions.js";
 import type {
   DiagnosticDefinition,
   DiagnosticDeviceRunner,
   DiagnosticFinding,
-  DiagnosticObservation,
+  DiagnosticOutcome,
   DiagnosticRequest,
   PreparedDiagnostic,
   ResolvedDiagnosticRequest
@@ -94,13 +93,8 @@ export class DiagnosticExecutor {
         try {
           return await this.runExecution(definition, host, execution, operationSignal, options.includeRaw === true);
         } catch (error) {
-          return {
-            ...buildReadDeviceFailure(host, "diagnostic_execution_failed", error),
-            ...definition.resultIdentity(execution),
-            ...(options.includeRaw === true && error instanceof AppError && typeof error.details?.raw_output === "string"
-              ? { raw_output: error.details.raw_output }
-              : {})
-          };
+          // Failures before dispatch, such as cancellation while queued, have no evidence.
+          return buildFailedResult(definition, host, execution, error);
         }
       })), signal);
 
@@ -118,34 +112,40 @@ export class DiagnosticExecutor {
     includeRaw: boolean
   ): Promise<DiagnosticDeviceResult> {
     const kindDeviceLimit = definition.perDeviceLimit?.(this.config.diagnostics);
-    const observation = await this.executeOnDevice(host, execution, {
+    const outcome = await this.executeOnDevice(host, execution, {
       inventoryHostname: host.inventoryHostname,
       diagnostic: execution.kind,
       uncertainHoldMs: definition.uncertainHoldMs(execution, this.config.diagnostics),
       ...(kindDeviceLimit === undefined ? {} : { kindDeviceLimit })
     }, signal);
-    // An execution the device timer stopped returns no output, so it has no raw evidence.
-    const rawOutput = observation.end === "output" ? observation.output : undefined;
-    try {
-      return buildReadDeviceSuccess(host, {
-        ...definition.resultIdentity(execution),
-        finding: definition.interpret(observation, execution),
-        ...(includeRaw && rawOutput !== undefined ? { raw_output: rawOutput } : {})
-      });
-    } catch (error) {
-      if (error instanceof AppError && includeRaw && rawOutput !== undefined) {
-        throw new AppError(error.code, error.message, { raw_output: rawOutput });
-      }
-      throw error;
+    if (outcome.end === "failed") {
+      return buildFailedResult(definition, host, execution, outcome.error, includeRaw ? outcome.evidence : undefined);
     }
+    // An execution the device timer stopped returns no output, so it has no raw evidence.
+    const rawOutput = includeRaw && outcome.end === "output" ? outcome.output : undefined;
+    let finding: DiagnosticFinding;
+    try {
+      finding = definition.interpret(outcome, execution);
+    } catch (error) {
+      return buildFailedResult(definition, host, execution, error, rawOutput);
+    }
+    return buildReadDeviceSuccess(host, {
+      ...definition.resultIdentity(execution),
+      finding,
+      ...(rawOutput === undefined ? {} : { raw_output: rawOutput })
+    });
   }
 
+  /** Owns one execution's reservation: dispatch only once admitted, then free it on a confirmed end or hold it
+   * as uncertain. A cancelled call turns the slot uncertain at once but leaves the request running, so a
+   * late answer still frees the slot before its hold expires (ADR 0006).
+   */
   private async executeOnDevice(
     host: InventoryHostModel,
     request: PreparedDiagnostic,
     intent: DiagnosticReservationIntent,
     signal: AbortSignal
-  ): Promise<DiagnosticObservation> {
+  ): Promise<DiagnosticOutcome> {
     const reservation = await this.slots.acquireDiagnostic(signal, intent);
     if (signal.aborted) {
       reservation.complete();
@@ -153,19 +153,40 @@ export class DiagnosticExecutor {
     }
     const onAbort = (): void => reservation.markUncertain(toErrorCode(signal.reason, "operation_aborted"));
     signal.addEventListener("abort", onAbort, { once: true });
+    let outcome: DiagnosticOutcome;
     try {
-      const observation = await this.runner.execute(host, request, { signal, requestId: reservation.requestId });
-      reservation.complete();
-      return observation;
+      outcome = await this.runner.execute(host, request, { shutdownSignal: this.shutdown.signal, requestId: reservation.requestId });
     } catch (error) {
-      if (error instanceof DiagnosticExecutionError && (error.executionState === "not_dispatched" || error.executionState === "completed")) {
-        reservation.complete();
-      } else {
-        reservation.markUncertain(toErrorCode(error, "diagnostic_execution_failed"));
-      }
-      throw error;
+      // A runner reports failures as outcomes; anything it throws instead may still have reached EOS.
+      outcome = { end: "failed", error: toAppError(error, "diagnostic_execution_failed"), remote: "unknown" };
     } finally {
       signal.removeEventListener("abort", onAbort);
     }
+    switch (outcome.end) {
+      case "output":
+      case "device_time_limit":
+        reservation.complete();
+        break;
+      case "failed":
+        if (outcome.remote === "not_dispatched") reservation.complete();
+        else reservation.markUncertain(outcome.error.code);
+        break;
+    }
+    return outcome;
   }
+}
+
+/** A failed entry, identified like its execution's success would be, with `rawOutput` only when the caller asked for it. */
+function buildFailedResult(
+  definition: DiagnosticDefinition,
+  host: InventoryHostModel,
+  execution: PreparedDiagnostic,
+  error: unknown,
+  rawOutput?: string
+): DiagnosticDeviceResult {
+  return {
+    ...buildReadDeviceFailure(host, "diagnostic_execution_failed", error),
+    ...definition.resultIdentity(execution),
+    ...(rawOutput === undefined ? {} : { raw_output: rawOutput })
+  };
 }

@@ -4,12 +4,11 @@ import type { EapiTransport } from "../src/eapi/transport.js";
 import type { EosTextCommandRunner } from "../src/eapi/types.js";
 import { EapiDiagnosticRunner } from "../src/diagnostics/eapiRunner.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
-import { DiagnosticExecutionError } from "../src/diagnostics/executionError.js";
 import { preparePacketCapture } from "../src/diagnostics/packetCapture.js";
 import { preparePing } from "../src/diagnostics/ping.js";
 import { buildConfig, buildHost, buildInventoryModel, echoRpcTransport } from "./helpers.js";
 
-const context = () => ({ signal: new AbortController().signal, requestId: "unit-rpc-id" });
+const context = () => ({ shutdownSignal: new AbortController().signal, requestId: "unit-rpc-id" });
 const output = "1 packets transmitted, 1 received, 0% packet loss, time 0ms\n";
 const host = buildHost({ effectiveVars: { ansible_user: "admin", ansible_password: "test-password" } });
 const call = { target: "leaf1", request: { kind: "ping" as const, destinations: ["::1"] } };
@@ -62,9 +61,8 @@ describe("diagnostic eAPI adapter", () => {
     const postJson = vi.fn();
     const config = buildConfig();
     const runner = new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson })));
-    const failure = runner.execute(buildHost(), preparePing({ kind: "ping", destination: "::1" }, config.diagnostics), context());
-    await expect(failure).rejects.toBeInstanceOf(DiagnosticExecutionError);
-    await expect(failure).rejects.toMatchObject({ code: "connection_username_missing", executionState: "not_dispatched" });
+    expect(await runner.execute(buildHost(), preparePing({ kind: "ping", destination: "::1" }, config.diagnostics), context()))
+      .toMatchObject({ end: "failed", remote: "not_dispatched", error: { code: "connection_username_missing" } });
     expect(postJson).not.toHaveBeenCalled();
   });
 
@@ -75,8 +73,8 @@ describe("diagnostic eAPI adapter", () => {
     const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ error: rpcError }), text: async () => "" }));
     const config = buildConfig();
     const runner = new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson })));
-    await expect(runner.execute(host, preparePing({ kind: "ping", destination: "::1" }, config.diagnostics), context()))
-      .rejects.toMatchObject({ executionState: "unknown" });
+    expect(await runner.execute(host, preparePing({ kind: "ping", destination: "::1" }, config.diagnostics), context()))
+      .toMatchObject({ end: "failed", remote: "unknown", evidence: expect.stringContaining(rpcError.message) });
     expect(postJson).toHaveBeenCalledTimes(1);
   });
 
@@ -156,9 +154,48 @@ describe("diagnostic eAPI adapter", () => {
     const postJson = vi.fn(async () => { throw new Error("connection reset"); });
     const config = buildConfig();
     const runner = new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson })));
-    await expect(runner.execute(host, preparePing({ kind: "ping", destination: "::1" }, config.diagnostics), context()))
-      .rejects.toMatchObject({ code: "eapi_transport_error" });
+    const outcome = await runner.execute(host, preparePing({ kind: "ping", destination: "::1" }, config.diagnostics), context());
+    expect(outcome).toMatchObject({ end: "failed", remote: "unknown", error: { code: "eapi_transport_error" } });
+    expect(outcome).not.toHaveProperty("evidence");
     expect(postJson).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a dispatched diagnostic's request", () => {
+  /** A transport whose device answers only when told to, and that closes the request on abort as the real one does. */
+  function deviceAnsweringLater() {
+    let answer: (() => void) | undefined;
+    let requestSignal: AbortSignal | undefined;
+    const postJson = vi.fn<EapiTransport["postJson"]>((_connection, _requestJson, signal) => new Promise((resolve, reject) => {
+      requestSignal = signal;
+      answer = () => resolve({ ok: true, status: 200, json: async () => ({ result: [{ output: "" }, { output }] }), text: async () => "" });
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }));
+    return { postJson, answer: () => answer?.(), requestSignal: () => requestSignal };
+  }
+
+  it("keeps running after its call is cancelled, so a late answer frees the slot before its hold expires", async () => {
+    const device = deviceAnsweringLater();
+    const executor = createSingleSlotExecutor(new EapiClient(echoRpcTransport({ postJson: device.postJson })));
+    const controller = new AbortController();
+    const cancelled = executor.execute({ ...call, signal: controller.signal });
+    await vi.waitFor(() => expect(device.postJson).toHaveBeenCalledTimes(1));
+    controller.abort();
+    await expect(cancelled).rejects.toMatchObject({ code: "operation_aborted" });
+    expect(device.requestSignal()?.aborted).toBe(false);
+    expect(executor.getCapacity()).toMatchObject({ uncertain_count: 1, available_count: 0, reservations: [{ reason_code: "operation_aborted" }] });
+    device.answer();
+    await vi.waitFor(() => expect(executor.getCapacity()).toMatchObject({ uncertain_count: 0, available_count: 1, reservations: [] }));
+  });
+
+  it("is closed when the server stops", async () => {
+    const device = deviceAnsweringLater();
+    const executor = createSingleSlotExecutor(new EapiClient(echoRpcTransport({ postJson: device.postJson })));
+    const running = executor.execute(call);
+    await vi.waitFor(() => expect(device.postJson).toHaveBeenCalledTimes(1));
+    executor.close();
+    await expect(running).rejects.toMatchObject({ code: "operation_aborted" });
+    expect(device.requestSignal()?.aborted).toBe(true);
   });
 });
 
@@ -185,7 +222,7 @@ describe("packet capture eAPI adapter", () => {
   ])("keeps a capture uncertain after $label", async ({ rpcError }) => {
     const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ error: rpcError }), text: async () => "" }));
     const runner = new EapiDiagnosticRunner(buildConfig(), new EapiClient(echoRpcTransport({ postJson })));
-    await expect(runner.execute(host, capture(), context())).rejects.toMatchObject({ code: "eapi_json_rpc_error", executionState: "unknown" });
+    expect(await runner.execute(host, capture(), context())).toMatchObject({ end: "failed", remote: "unknown", error: { code: "eapi_json_rpc_error" } });
     expect(postJson).toHaveBeenCalledTimes(1);
   });
 

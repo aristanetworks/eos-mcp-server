@@ -1,4 +1,5 @@
 import type { DiagnosticsConfig } from "../config/diagnostics.js";
+import type { AppError } from "../core/errors.js";
 import type { InventoryHostModel } from "../inventory/types.js";
 
 // Extend the discriminated request/observation/finding types as diagnostics ship.
@@ -47,6 +48,15 @@ export type PreparedDiagnostic = PreparedPing | PreparedPacketCapture;
  * reply confirms the execution has ended.
  */
 export type DiagnosticObservation = { end: "output"; output: string } | { end: "device_time_limit" };
+
+/** Every way one execution can end. A failure says whether EOS may still run the command: `not_dispatched`
+ * means the request never left the server, so its slot frees at once; `unknown` means it may have reached
+ * EOS, so its slot turns uncertain. `evidence` is EOS's raw text for the failure, exposed only when the
+ * caller asks for raw output; `error` never carries it.
+ */
+export type DiagnosticOutcome =
+  | DiagnosticObservation
+  | { end: "failed"; error: AppError; remote: "not_dispatched" | "unknown"; evidence?: string };
 
 export interface PingFinding {
   kind: "ping";
@@ -106,14 +116,17 @@ export interface DiagnosticDefinition<
   interpret(observation: DiagnosticObservation, execution: TExecution): DiagnosticFinding;
 }
 
+/** `shutdownSignal` aborts only when the server stops. A cancelled call never stops its request, because
+ * closing it would not stop the command on EOS, only lose the answer that frees its slot (ADR 0006).
+ */
 export interface DiagnosticExecutionContext {
-  signal: AbortSignal;
+  shutdownSignal: AbortSignal;
   requestId: string;
 }
 
-/** Device execution seam: inventory identity, typed intent, and the reserved attempt ID.
- * Errors stay uncertain unless classified as not_dispatched/completed by DiagnosticExecutionError.
+/** Device execution seam: inventory identity, typed intent, and the reserved attempt ID. Reports failures as
+ * outcomes rather than rejecting; the executor treats a rejection as a failure with unknown remote state.
  */
 export interface DiagnosticDeviceRunner {
-  execute(host: InventoryHostModel, request: PreparedDiagnostic, context: DiagnosticExecutionContext): Promise<DiagnosticObservation>;
+  execute(host: InventoryHostModel, request: PreparedDiagnostic, context: DiagnosticExecutionContext): Promise<DiagnosticOutcome>;
 }

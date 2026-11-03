@@ -20,6 +20,11 @@ export function toErrorCode(error: unknown, fallback = "unknown_error"): string 
   return getErrorCode(error) ?? fallback;
 }
 
+/** `error` itself when it is an AppError, otherwise an AppError with `fallbackCode` and its message. */
+export function toAppError(error: unknown, fallbackCode: string): AppError {
+  return error instanceof AppError ? error : new AppError(fallbackCode, toErrorMessage(error));
+}
+
 export function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
