@@ -6,7 +6,7 @@ import { EapiDiagnosticRunner } from "../src/diagnostics/eapiRunner.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
 import { preparePacketCapture } from "../src/diagnostics/packetCapture.js";
 import { preparePing } from "../src/diagnostics/ping.js";
-import { buildConfig, buildHost, buildInventoryModel, echoRpcTransport } from "./helpers.js";
+import { buildConfig, buildEapiSlots, buildHost, buildInventoryModel, echoRpcTransport } from "./helpers.js";
 
 const context = () => ({ shutdownSignal: new AbortController().signal, requestId: "unit-rpc-id" });
 const output = "1 packets transmitted, 1 received, 0% packet loss, time 0ms\n";
@@ -18,7 +18,7 @@ function createSingleSlotExecutor(runner: EosTextCommandRunner): DiagnosticExecu
   config.diagnostics.deviceConcurrency = 1;
   config.diagnostics.maxConcurrentDiagnostics = 1;
   return new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true, effectiveVars: host.effectiveVars }), config,
-    new EapiDiagnosticRunner(config, runner));
+    new EapiDiagnosticRunner(config, runner), buildEapiSlots(config));
 }
 
 // Recorded from cEOS 4.34.3M when runCmds.requestTimeout ends a capture short of its count; data[0] is `enable`.
@@ -84,7 +84,7 @@ describe("diagnostic eAPI adapter", () => {
     }), text: async () => "" }));
     const config = buildConfig();
     const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true, effectiveVars: host.effectiveVars }), config,
-      new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson }))));
+      new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson }))), buildEapiSlots(config));
     const normal = await executor.execute(call);
     expect(JSON.stringify(normal)).not.toContain("private EOS error detail");
     const diagnostic = await executor.execute({ ...call, includeRaw: true });

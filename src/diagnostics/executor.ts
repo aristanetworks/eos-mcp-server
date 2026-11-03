@@ -12,7 +12,7 @@ import {
   type ReadDeviceResultBase,
   type ReadOperationResultEnvelope
 } from "../operations/readExecution.js";
-import { EapiSlots, eapiSlotLimits, type DiagnosticCapacitySnapshot, type DiagnosticReservationIntent } from "../operations/eapiSlots.js";
+import { EapiSlots, type DiagnosticCapacitySnapshot, type DiagnosticReservationIntent } from "../operations/eapiSlots.js";
 import { diagnosticDefinitions } from "./definitions.js";
 import type {
   DiagnosticDefinition,
@@ -41,17 +41,16 @@ export type DiagnosticResult = ReadOperationResultEnvelope<DiagnosticDeviceResul
 export class DiagnosticExecutor {
   private readonly shutdown = new AbortController();
 
-  /** A running server passes its shared `slots`; tests may omit it to get a private instance. */
+  /** `slots` is required and shared with the read tools; the caller (server wiring) owns it and closes it. */
   constructor(
     private readonly model: InventoryModel,
     private readonly config: ResolvedServerConfig,
     private readonly runner: DiagnosticDeviceRunner,
-    private readonly slots = new EapiSlots(eapiSlotLimits(config))
+    private readonly slots: EapiSlots
   ) {}
 
   close(): void {
     this.shutdown.abort(new AppError("diagnostic_server_stopping", "Diagnostic executor is stopping"));
-    this.slots.close();
   }
 
   getCapacity(): DiagnosticCapacitySnapshot {

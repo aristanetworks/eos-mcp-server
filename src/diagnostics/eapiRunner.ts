@@ -17,7 +17,7 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
     const plan = diagnosticDefinitions[request.kind].eapiExecution(request, this.config.diagnostics);
     let connection: EapiConnectionConfig;
     try {
-      connection = { ...resolveEapiConnection(this.config, host), timeoutMs: plan.httpTimeoutMs };
+      connection = resolveEapiConnection(this.config, host, plan.httpTimeoutMs);
     } catch (error) {
       return { end: "failed", error: toAppError(error, "diagnostic_execution_failed"), remote: "not_dispatched" };
     }

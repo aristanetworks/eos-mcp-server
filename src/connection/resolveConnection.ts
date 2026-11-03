@@ -6,7 +6,8 @@ import { readBoolean, readNonEmptyString, readPositiveInteger } from "../utils/v
 
 export function resolveEapiConnection(
   config: ResolvedServerConfig,
-  host: InventoryHostModel
+  host: InventoryHostModel,
+  httpTimeoutMs: number = config.readTimeoutMs
 ): EapiConnectionConfig {
   const effectiveVars = host.effectiveVars;
   const endpointHost = host.resolvedEndpoint;
@@ -62,7 +63,7 @@ export function resolveEapiConnection(
     password,
     validateCerts,
     ...(config.caFile !== undefined ? { caFile: config.caFile } : {}),
-    timeoutMs: config.readTimeoutMs,
+    timeoutMs: httpTimeoutMs,
     eapiVersion: config.eapiVersion,
     maxResponseSizeBytes: config.maxResponseSizeBytes
   };
