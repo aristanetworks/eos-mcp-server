@@ -33,7 +33,7 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
       }
       return { kind: request.kind, output };
     } catch (error) {
-      if (request.kind === "packet_capture" && isDeviceTimeLimitError(error)) {
+      if (request.kind === "packet_capture" && isCaptureTimeLimitError(error)) {
         return { kind: request.kind, deviceTimeLimitReached: true };
       }
       // After dispatch, an error is never proof that remote work has stopped.
@@ -54,12 +54,15 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
 
 const DEVICE_TIME_LIMIT_ERROR = "Command exceeded its allowed time limit";
 
-/** EOS's answer when runCmds.requestTimeout stops the last command: RPC error 1001 whose final
- * data entry, that command's result, carries the time-limit error (error 408). Measured on cEOS 4.34.3M.
+/** EOS's answer when runCmds.requestTimeout stops tcpdump: RPC error 1001 whose data holds a successful
+ * `enable` result, then tcpdump's result carrying the time-limit error (error 408). Measured on cEOS 4.34.3M.
+ * A time limit hit during `enable` leaves one entry and means tcpdump never ran, so it is not a capture's end.
  */
-function isDeviceTimeLimitError(error: unknown): boolean {
+function isCaptureTimeLimitError(error: unknown): boolean {
   if (!(error instanceof AppError) || error.details?.jsonRpcCode !== 1001) return false;
   const data = error.details.data;
-  const commandResult = Array.isArray(data) ? data.at(-1) : undefined;
-  return isObject(commandResult) && Array.isArray(commandResult.errors) && commandResult.errors.includes(DEVICE_TIME_LIMIT_ERROR);
+  if (!Array.isArray(data) || data.length !== 2) return false;
+  const [enableResult, captureResult] = data;
+  return isObject(enableResult) && enableResult.errors === undefined &&
+    isObject(captureResult) && Array.isArray(captureResult.errors) && captureResult.errors.includes(DEVICE_TIME_LIMIT_ERROR);
 }

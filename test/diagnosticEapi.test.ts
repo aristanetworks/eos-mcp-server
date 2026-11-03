@@ -158,7 +158,11 @@ describe("packet capture eAPI adapter", () => {
   it.each([
     { label: "1001 with another command error", rpcError: { ...deviceTimeLimitError, data: [{ output: "" }, { errors: ["Interface does not exist"] }] } },
     { label: "1001 without command errors", rpcError: { ...deviceTimeLimitError, data: [{ output: "" }, { output: "" }] } },
-    { label: "the time-limit message under another RPC code", rpcError: { ...deviceTimeLimitError, code: 1000 } }
+    { label: "the time-limit message under another RPC code", rpcError: { ...deviceTimeLimitError, code: 1000 } },
+    { label: "a time limit hit during enable, before tcpdump ran",
+      rpcError: { ...deviceTimeLimitError, message: "CLI command 1 of 2 'enable' failed: unexpected error 408", data: [{ errors: ["Command exceeded its allowed time limit"] }] } },
+    { label: "a time limit reported after a failed enable",
+      rpcError: { ...deviceTimeLimitError, data: [{ errors: ["Authorization denied"] }, { errors: ["Command exceeded its allowed time limit"] }] } }
   ])("keeps a capture uncertain after $label", async ({ rpcError }) => {
     const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ error: rpcError }), text: async () => "" }));
     const runner = new EapiDiagnosticRunner(buildConfig(), new EapiClient(echoRpcTransport({ postJson })));
