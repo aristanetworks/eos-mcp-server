@@ -25,7 +25,8 @@ export async function buildRunShowToolResult(
   inventoryModel: InventoryModel,
   config: ResolvedServerConfig,
   args: z.infer<typeof runShowInputSchema>,
-  reader: EosDeviceReader
+  reader: EosDeviceReader,
+  signal?: AbortSignal
 ) {
   const hasCommand = args.command !== undefined;
   const hasCommands = args.commands !== undefined;
@@ -46,7 +47,8 @@ export async function buildRunShowToolResult(
       outputFormat: args.output_format,
       includeRaw: args.include_raw ?? false
     },
-    reader
+    reader,
+    signal
   );
 
   return buildJsonToolResult(payload);

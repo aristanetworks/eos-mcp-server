@@ -16,7 +16,8 @@ export async function buildGetRunningConfigToolResult(
   inventoryModel: InventoryModel,
   config: ResolvedServerConfig,
   args: z.infer<typeof getRunningConfigInputSchema>,
-  reader: EosDeviceReader
+  reader: EosDeviceReader,
+  signal?: AbortSignal
 ) {
   const payload = await getRunningConfig(
     inventoryModel,
@@ -25,7 +26,8 @@ export async function buildGetRunningConfigToolResult(
       target: args.target,
       ...(args.section !== undefined ? { section: args.section } : {})
     },
-    reader
+    reader,
+    signal
   );
 
   return buildJsonToolResult(payload);

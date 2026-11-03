@@ -37,13 +37,15 @@ export async function getRunningConfig(
   model: InventoryModel,
   config: ResolvedServerConfig,
   options: GetRunningConfigOptions,
-  reader: EosDeviceReader
+  reader: EosDeviceReader,
+  signal?: AbortSignal
 ): Promise<GetRunningConfigResult> {
   const section = options.section !== undefined ? normalizeSingleLineEosInput(options.section, "running config section") : undefined;
   const command = section ? `show running-config section ${section}` : "show running-config";
   const operation = await executeReadOperation<GetRunningConfigResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_get_running_config",
+    ...(signal !== undefined ? { signal } : {}),
     validateTarget: (resolvedTarget) => {
       if (resolvedTarget.targetType === "group" && !section) {
         throw new AppError("running_config_section_required", "Group targets for eos_get_running_config require a section");

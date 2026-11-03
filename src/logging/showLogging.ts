@@ -40,7 +40,8 @@ export async function showLogging(
   model: InventoryModel,
   config: ResolvedServerConfig,
   options: ShowLoggingOptions,
-  reader: EosDeviceReader
+  reader: EosDeviceReader,
+  signal?: AbortSignal
 ): Promise<ShowLoggingResult> {
   const query = buildLoggingQuery(
     {
@@ -53,6 +54,7 @@ export async function showLogging(
   const operation = await executeReadOperation<ShowLoggingResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_show_logging",
+    ...(signal !== undefined ? { signal } : {}),
     run: async (host, signal) =>
       buildReadDeviceSuccess(host, {
         command: query.command,

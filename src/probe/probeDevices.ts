@@ -34,11 +34,13 @@ export async function probeDevices(
   model: InventoryModel,
   config: ResolvedServerConfig,
   options: ProbeDevicesOptions,
-  reader: EosDeviceReader
+  reader: EosDeviceReader,
+  signal?: AbortSignal
 ): Promise<ProbeDevicesResult> {
   const operation = await executeReadOperation<ProbeDevicesResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_probe_devices",
+    ...(signal !== undefined ? { signal } : {}),
     run: async (host, signal) => {
       const commandResults = await reader.runShowCommands(host, ["show version"], "json", {
         signal,
