@@ -43,6 +43,7 @@ describe("buildReadOperationResultEnvelope", () => {
       eligible: true,
       readAllowed: true,
       diagnosticsAllowed: false,
+      packetCaptureAllowed: false,
       ineligibilityReasons: [],
       groupMemberships: []
     };

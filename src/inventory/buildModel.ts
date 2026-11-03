@@ -37,6 +37,7 @@ export function buildInventoryModel(
       eligible: eligibility.eligible,
       readAllowed: access.readAllowed,
       diagnosticsAllowed: access.diagnosticsAllowed,
+      packetCaptureAllowed: access.packetCaptureAllowed,
       ineligibilityReasons: eligibility.ineligibilityReasons,
       groupMemberships: [...lineageGroups].sort()
     });

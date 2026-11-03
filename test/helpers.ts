@@ -5,8 +5,10 @@ import { vi, type Mock } from "vitest";
 import type { ResolvedServerConfig } from "../src/config/schema.js";
 import { diagnosticsConfigSchema } from "../src/config/diagnostics.js";
 import type { EosDeviceReader } from "../src/connection/eosDeviceReader.js";
-import type { EapiConnectionConfig } from "../src/eapi/types.js";
+import type { DiagnosticDeviceRunner, DiagnosticObservation, PreparedDiagnostic } from "../src/diagnostics/types.js";
+import type { EapiConnectionConfig, EosCommandRunner } from "../src/eapi/types.js";
 import type { EapiTransport } from "../src/eapi/transport.js";
+import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import type { InventoryHostModel, InventoryModel } from "../src/inventory/types.js";
 import { EapiSlots, eapiSlotLimits } from "../src/operations/eapiSlots.js";
 
@@ -63,7 +65,7 @@ export function buildConfig(overrides: Partial<ResolvedServerConfig> = {}): Reso
 
 /** The shared eAPI slots a server would build from `config`. */
 export function buildEapiSlots(config: ResolvedServerConfig = buildConfig()): EapiSlots {
-  return new EapiSlots(eapiSlotLimits(config), config.diagnostics.commandTimeoutMs);
+  return new EapiSlots(eapiSlotLimits(config));
 }
 
 export function setTestPasswordEnv(value = "secret", name = "EOS_MCP_PASSWORD"): void {
@@ -99,6 +101,7 @@ export function buildHost(overrides: Partial<InventoryHostModel> = {}): Inventor
     eligible: true,
     readAllowed: true,
     diagnosticsAllowed: false,
+    packetCaptureAllowed: false,
     ineligibilityReasons: [],
     groupMemberships: [],
     ...overrides
@@ -126,4 +129,62 @@ export function buildInventoryModel(hostOverrides: Partial<InventoryHostModel> =
     hostMap: new Map([[host.inventoryHostname, host]]),
     groupMap: new Map()
   };
+}
+
+/** A ping whose three probes were all answered. */
+export const pingObservation: DiagnosticObservation = {
+  kind: "ping",
+  output: "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n"
+};
+
+/** Runner that answers every execution with `observation`. */
+export function stubDiagnosticRunner(observation: DiagnosticObservation = pingObservation) {
+  return { execute: vi.fn<DiagnosticDeviceRunner["execute"]>(async () => observation) };
+}
+
+/** EOS hosts leaf1 and leaf2 in group `switches`, allowed diagnostics. `vars` adds inherited vars,
+ * and `leaf2Vars` adds vars to leaf2 only.
+ */
+export async function loadSwitchesModel(options: { vars?: string[]; leaf2Vars?: string[] } = {}): Promise<InventoryModel> {
+  return loadInventoryModel(await writeTempInventory([
+    "vars:", "  ansible_network_os: eos", "  mcp_diagnostics_allowed: true", ...(options.vars ?? []).map((line) => `  ${line}`),
+    "hosts:", "  leaf1: {}", "  leaf2:", "    ansible_host: leaf2", ...(options.leaf2Vars ?? []).map((line) => `    ${line}`),
+    "groups:", "  switches:", "    hosts: [leaf2, leaf1]"
+  ]));
+}
+
+/** A device request held pending until the test settles or fails it. */
+export interface DispatchedRequest {
+  hostname: string;
+  kind: PreparedDiagnostic["kind"] | "read";
+  settle: () => void;
+  fail: (error: Error) => void;
+}
+
+/** Diagnostic runner whose executions stay pending in `dispatched`, in dispatch order, until settled
+ * with `observationFor(execution)`.
+ */
+export function controlledDiagnosticRunner(
+  observationFor: (execution: PreparedDiagnostic) => DiagnosticObservation = () => pingObservation,
+  dispatched: DispatchedRequest[] = []
+): { runner: DiagnosticDeviceRunner; dispatched: DispatchedRequest[] } {
+  const runner: DiagnosticDeviceRunner = {
+    execute: (host, execution) => new Promise<DiagnosticObservation>((resolve, reject) => {
+      dispatched.push({ hostname: host.inventoryHostname, kind: execution.kind, settle: () => resolve(observationFor(execution)), fail: reject });
+    })
+  };
+  return { runner, dispatched };
+}
+
+/** Read runner whose requests stay pending in `dispatched`, in dispatch order, until settled with an empty `show version`. */
+export function controlledReadRunner(dispatched: DispatchedRequest[] = []): { runner: EosCommandRunner; dispatched: DispatchedRequest[] } {
+  const runner: EosCommandRunner = {
+    runShowCommands: (connection) => new Promise((resolve, reject) => {
+      dispatched.push({
+        hostname: connection.inventoryHostname, kind: "read",
+        settle: () => resolve([{ command: "show version", output_format: "json", output: {} }]), fail: reject
+      });
+    })
+  };
+  return { runner, dispatched };
 }

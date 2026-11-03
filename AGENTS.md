@@ -8,7 +8,7 @@ Repository guidance for Codex and other coding agents working in this project.
 # Build TypeScript to dist/
 make build          # or: npm run build
 
-# Type-check without emitting
+# Type-check src/ and test/ without emitting (tsconfig.test.json)
 make typecheck      # or: npm run typecheck
 
 # Run all tests

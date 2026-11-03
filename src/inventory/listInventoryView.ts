@@ -7,6 +7,7 @@ export interface ListInventoryView {
     eligible: boolean;
     read_allowed: boolean;
     diagnostics_allowed: boolean;
+    packet_capture_allowed: boolean;
     ineligibility_reasons: string[];
     group_memberships: string[];
   }>;
@@ -36,6 +37,7 @@ export function buildListInventoryView(
       eligible: host.eligible,
       read_allowed: host.readAllowed,
       diagnostics_allowed: host.diagnosticsAllowed,
+      packet_capture_allowed: host.packetCaptureAllowed,
       ineligibility_reasons: [...host.ineligibilityReasons],
       group_memberships: [...host.groupMemberships]
     }));

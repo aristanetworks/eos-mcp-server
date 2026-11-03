@@ -165,6 +165,27 @@ VLAN 100 (`VLAN100`) active on all leaves, member of `Vx1` only, empty MAC table
 
 ---
 
+## Packet Capture
+
+Requires `mcp_diagnostics_allowed: true` and `mcp_packet_capture_allowed: true` on the target hosts. A capture sees only traffic the switch's control plane sends or receives, never hardware-forwarded transit traffic.
+
+### Check that BGP keepalives are arriving from a peer
+
+> Are BGP packets flowing between node1-1 and node2-1 on Ethernet1?
+
+Claude runs `eos_packet_capture` on node1-1 `Ethernet1` with filter `tcp port 179` and a small `packet_count`, and reads the tcpdump lines it gets back:
+
+```
+10.255.255.0.bgp > 10.255.255.1.33219: Flags [P.], ... length 19: BGP
+10.255.255.1.33219 > 10.255.255.0.bgp: Flags [.], ack 19, ... length 0
+```
+
+### Example findings
+
+A complete capture of 2 packets: a 19-byte BGP message (a keepalive) from node1-1 and node2-1's ACK, both carrying TCP-MD5 options, so the session is alive and authenticated. The same capture with filter `udp port 161` and a 3 s window came back `unfilled`: fewer SNMP packets than requested arrived in the window, which is not proof that none ever do. A malformed filter fails with `packet_capture_filter_rejected` instead of looking like "no traffic".
+
+---
+
 ## Available Tools
 
 | Tool | Description |
@@ -176,3 +197,5 @@ VLAN 100 (`VLAN100`) active on all leaves, member of `Vx1` only, empty MAC table
 | `eos_run_show` | Run arbitrary `show ...` commands; returns JSON or text |
 | `eos_show_logging` | Retrieve bounded logging output with minimum severity threshold |
 | `eos_get_server_info` | Show server capabilities, runtime mode, inventory summary |
+| `eos_ping` | Ping one or more destinations from a host or group (needs `mcp_diagnostics_allowed`) |
+| `eos_packet_capture` | Capture control-plane packets on one interface with a pcap filter (needs `mcp_packet_capture_allowed`) |

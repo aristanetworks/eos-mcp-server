@@ -46,7 +46,14 @@ export function buildServerInfo(context: ServerRuntimeContext, diagnosticCapacit
         command_timeout_ms: context.config.diagnostics.commandTimeoutMs,
         http_timeout_ms: context.config.diagnostics.httpTimeoutMs,
         overall_operation_timeout_ms: context.config.diagnostics.overallOperationTimeoutMs,
-        native_request_timeout: context.config.diagnostics.nativeRequestTimeout
+        native_request_timeout: context.config.diagnostics.nativeRequestTimeout,
+        default_capture_packet_count: context.config.diagnostics.defaultCapturePacketCount,
+        max_capture_packet_count: context.config.diagnostics.maxCapturePacketCount,
+        default_capture_window_seconds: context.config.diagnostics.defaultCaptureWindowSeconds,
+        max_capture_window_seconds: context.config.diagnostics.maxCaptureWindowSeconds,
+        max_capture_packets_per_request: context.config.diagnostics.maxCapturePacketsPerRequest,
+        capture_device_concurrency: context.config.diagnostics.captureDeviceConcurrency,
+        capture_overall_operation_timeout_ms: context.config.diagnostics.captureOverallOperationTimeoutMs
       }
     },
     diagnostics: {

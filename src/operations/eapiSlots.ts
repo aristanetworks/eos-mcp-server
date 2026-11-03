@@ -2,18 +2,21 @@ import { randomUUID } from "node:crypto";
 import { AppError } from "../core/errors.js";
 import type { DiagnosticCapacitySnapshot, DiagnosticDeviceCapacity, DiagnosticRequest, DiagnosticReservationInfo } from "../diagnostics/types.js";
 
-type SlotKind = "read" | "diagnostic";
+/** What a waiter asks for; a diagnostic names its kind, because captures have their own per-device limit. */
+type SlotRequest =
+  | { inventoryHostname: string; kind: "read" }
+  | { inventoryHostname: string; kind: "diagnostic"; diagnostic: DiagnosticRequest["kind"] };
 
-interface Waiter {
-  inventoryHostname: string;
-  kind: SlotKind;
+type Waiter = SlotRequest & {
   grant: () => void;
   reject: (error: AppError) => void;
-}
+};
 
 interface DiagnosticReservationIntent {
   inventoryHostname: string;
   diagnostic: DiagnosticRequest["kind"];
+  /** How long the slot stays held once the execution's remote completion is unknown. */
+  uncertainHoldMs: number;
 }
 
 export interface DiagnosticReservation {
@@ -29,23 +32,25 @@ export interface EapiSlotLimits {
   diagnosticDeviceLimit: number;
   /** Diagnostic slots shared by every device in the server process. Reads have no server-wide limit. */
   diagnosticServerLimit: number;
+  /** Of a host's diagnostic share, the slots packet captures may hold, so a capture never blocks every ping. */
+  captureDeviceLimit: number;
 }
 
 /** One instance per server process, shared by every eAPI request (ADR 0009). A slot is granted only
  * while its device has room and, for a diagnostic, its device's diagnostic share and the server-wide
- * diagnostic ceiling have room; waiters are served oldest first, skipping those that cannot run yet
- * (ADR 0007). A read frees its slot when its request settles. A diagnostic slot with unknown remote
- * completion stays held for the execution budget, then frees itself; a late confirmed response frees
- * it sooner (ADR 0006).
+ * diagnostic ceiling have room, and for a packet capture, its device's capture limit too (ADR 0010);
+ * waiters are served oldest first, skipping those that cannot run yet (ADR 0007). A read frees its
+ * slot when its request settles. A diagnostic slot with unknown remote completion stays held for its
+ * own execution's budget, then frees itself; a late confirmed response frees it sooner (ADR 0006).
  */
 export class EapiSlots {
-  /** Held diagnostic slots; an uncertain slot carries the timer that frees it. */
+  /** Held diagnostic slots, each with its own uncertain hold; an uncertain slot carries the timer that frees it. */
   private readonly reservations = new Map<DiagnosticReservationInfo, NodeJS.Timeout | undefined>();
   private readonly readsHeldByDevice = new Map<string, number>();
   private readonly waiting: Waiter[] = [];
   private closed = false;
 
-  constructor(private readonly limits: EapiSlotLimits, private readonly uncertainHoldMs: number) {}
+  constructor(private readonly limits: EapiSlotLimits) {}
 
   close(): void {
     if (this.closed) return;
@@ -65,6 +70,7 @@ export class EapiSlots {
       limit: this.limits.diagnosticServerLimit,
       device_limit: this.limits.diagnosticDeviceLimit,
       eapi_device_limit: this.limits.deviceLimit,
+      capture_device_limit: this.limits.captureDeviceLimit,
       available_count: serverAvailable,
       active_count: reservations.length - uncertain,
       uncertain_count: uncertain,
@@ -83,7 +89,8 @@ export class EapiSlots {
         entry = {
           inventory_hostname: inventoryHostname,
           available_count: 0, active_count: 0, uncertain_count: 0, queued_count: 0,
-          read_active_count: 0, read_queued_count: 0
+          read_active_count: 0, read_queued_count: 0,
+          capture_active_count: 0, capture_uncertain_count: 0, capture_queued_count: 0
         };
         devices.set(inventoryHostname, entry);
       }
@@ -91,14 +98,24 @@ export class EapiSlots {
     };
     for (const reservation of reservations) {
       const entry = deviceEntry(reservation.inventory_hostname);
-      if (reservation.state === "uncertain") entry.uncertain_count += 1;
-      else entry.active_count += 1;
+      const isCapture = reservation.diagnostic === "packet_capture";
+      if (reservation.state === "uncertain") {
+        entry.uncertain_count += 1;
+        if (isCapture) entry.capture_uncertain_count += 1;
+      } else {
+        entry.active_count += 1;
+        if (isCapture) entry.capture_active_count += 1;
+      }
     }
     for (const [inventoryHostname, readsHeld] of this.readsHeldByDevice) deviceEntry(inventoryHostname).read_active_count = readsHeld;
     for (const waiter of this.waiting) {
       const entry = deviceEntry(waiter.inventoryHostname);
-      if (waiter.kind === "diagnostic") entry.queued_count += 1;
-      else entry.read_queued_count += 1;
+      if (waiter.kind === "read") {
+        entry.read_queued_count += 1;
+      } else {
+        entry.queued_count += 1;
+        if (waiter.diagnostic === "packet_capture") entry.capture_queued_count += 1;
+      }
     }
     for (const entry of devices.values()) {
       entry.available_count = this.diagnosticHeadroom(entry.active_count + entry.uncertain_count, entry.read_active_count, serverAvailable);
@@ -108,14 +125,15 @@ export class EapiSlots {
 
   /** Waits for a read slot on the host; the returned function frees it. */
   acquireRead(signal: AbortSignal | undefined, inventoryHostname: string): Promise<() => void> {
-    return this.enqueue(signal, inventoryHostname, "read", () => this.reserveRead(inventoryHostname));
+    return this.enqueue(signal, { inventoryHostname, kind: "read" }, () => this.reserveRead(inventoryHostname));
   }
 
   acquireDiagnostic(signal: AbortSignal | undefined, intent: DiagnosticReservationIntent): Promise<DiagnosticReservation> {
-    return this.enqueue(signal, intent.inventoryHostname, "diagnostic", () => this.reserveDiagnostic(intent));
+    const slot: SlotRequest = { inventoryHostname: intent.inventoryHostname, kind: "diagnostic", diagnostic: intent.diagnostic };
+    return this.enqueue(signal, slot, () => this.reserveDiagnostic(intent));
   }
 
-  private enqueue<TSlot>(signal: AbortSignal | undefined, inventoryHostname: string, kind: SlotKind, reserve: () => TSlot): Promise<TSlot> {
+  private enqueue<TSlot>(signal: AbortSignal | undefined, slot: SlotRequest, reserve: () => TSlot): Promise<TSlot> {
     return new Promise((resolve, reject) => {
       if (signal?.aborted === true) {
         reject(abortedError());
@@ -132,8 +150,7 @@ export class EapiSlots {
       };
       const stopListening = (): void => signal?.removeEventListener("abort", cancelled);
       const waiter: Waiter = {
-        inventoryHostname,
-        kind,
+        ...slot,
         reject: (error) => {
           stopListening();
           reject(error);
@@ -156,6 +173,9 @@ export class EapiSlots {
     const diagnosticsHeld = this.diagnosticSlotsHeldBy(waiter.inventoryHostname);
     const readsHeld = this.readsHeldByDevice.get(waiter.inventoryHostname) ?? 0;
     if (waiter.kind === "read") return diagnosticsHeld + readsHeld < this.limits.deviceLimit;
+    if (waiter.diagnostic === "packet_capture" && this.diagnosticSlotsHeldBy(waiter.inventoryHostname, "packet_capture") >= this.limits.captureDeviceLimit) {
+      return false;
+    }
     return this.diagnosticHeadroom(diagnosticsHeld, readsHeld, this.limits.diagnosticServerLimit - this.reservations.size) > 0;
   }
 
@@ -168,11 +188,13 @@ export class EapiSlots {
     return Math.max(0, Math.min(diagnosticShareLeft, deviceSlotsLeft, serverAvailable));
   }
 
-  /** Counted from the held reservations, which never exceed the server-wide diagnostic limit. */
-  private diagnosticSlotsHeldBy(inventoryHostname: string): number {
+  /** Counted from the held reservations, which never exceed the server-wide diagnostic limit; `diagnostic`
+   * narrows the count to one kind.
+   */
+  private diagnosticSlotsHeldBy(inventoryHostname: string, diagnostic?: DiagnosticRequest["kind"]): number {
     let held = 0;
     for (const reservation of this.reservations.keys()) {
-      if (reservation.inventory_hostname === inventoryHostname) held += 1;
+      if (reservation.inventory_hostname === inventoryHostname && (diagnostic === undefined || reservation.diagnostic === diagnostic)) held += 1;
     }
     return held;
   }
@@ -208,7 +230,7 @@ export class EapiSlots {
     return {
       requestId,
       complete: () => this.freeDiagnostic(state),
-      markUncertain: (reasonCode) => this.markUncertain(state, reasonCode)
+      markUncertain: (reasonCode) => this.markUncertain(state, reasonCode, intent.uncertainHoldMs)
     };
   }
 
@@ -233,27 +255,28 @@ export class EapiSlots {
     }
   }
 
-  private markUncertain(state: DiagnosticReservationInfo, reasonCode: string): void {
+  private markUncertain(state: DiagnosticReservationInfo, reasonCode: string, uncertainHoldMs: number): void {
     if (this.closed || !this.reservations.has(state) || state.state === "uncertain") return;
     const now = Date.now();
     state.state = "uncertain";
     state.uncertain_since = new Date(now).toISOString();
-    state.releases_at = new Date(now + this.uncertainHoldMs).toISOString();
+    state.releases_at = new Date(now + uncertainHoldMs).toISOString();
     state.reason_code = reasonCode;
     // Unref so a held slot never keeps a stopping server alive.
-    this.reservations.set(state, setTimeout(() => this.freeDiagnostic(state), this.uncertainHoldMs).unref());
+    this.reservations.set(state, setTimeout(() => this.freeDiagnostic(state), uncertainHoldMs).unref());
   }
 }
 
 /** Limits from config: top-level `deviceConcurrency` per device, `diagnostics.*` for the diagnostic share. */
 export function eapiSlotLimits(config: {
   deviceConcurrency: number;
-  diagnostics: { deviceConcurrency: number; maxConcurrentDiagnostics: number };
+  diagnostics: { deviceConcurrency: number; maxConcurrentDiagnostics: number; captureDeviceConcurrency: number };
 }): EapiSlotLimits {
   return {
     deviceLimit: config.deviceConcurrency,
     diagnosticDeviceLimit: config.diagnostics.deviceConcurrency,
-    diagnosticServerLimit: config.diagnostics.maxConcurrentDiagnostics
+    diagnosticServerLimit: config.diagnostics.maxConcurrentDiagnostics,
+    captureDeviceLimit: config.diagnostics.captureDeviceConcurrency
   };
 }
 

@@ -14,7 +14,7 @@ import {
 } from "../operations/readExecution.js";
 import { EapiSlots, eapiSlotLimits } from "../operations/eapiSlots.js";
 import { DiagnosticExecutionError } from "./executionError.js";
-import { pingDiagnostic } from "./ping.js";
+import { diagnosticDefinitions } from "./definitions.js";
 import type {
   DiagnosticCapacitySnapshot,
   DiagnosticDefinition,
@@ -26,18 +26,15 @@ import type {
   ResolvedDiagnosticRequest
 } from "./types.js";
 
+/** Ping entries carry their `destination`; a capture's single execution per host needs no identity. */
 export interface DiagnosticDeviceResult extends ReadDeviceResultBase {
-  destination: string;
+  destination?: string;
   finding?: DiagnosticFinding;
   raw_output?: string;
 }
 
 export type DiagnosticResult = ReadOperationResultEnvelope<DiagnosticDeviceResult> & {
   request: ResolvedDiagnosticRequest;
-};
-
-const diagnosticDefinitions: Record<DiagnosticRequest["kind"], DiagnosticDefinition> = {
-  ping: pingDiagnostic
 };
 
 /** Owns policy, budgets, fan-out, cancellation, and result normalization. Admission, per device and
@@ -51,7 +48,7 @@ export class DiagnosticExecutor {
     private readonly model: InventoryModel,
     private readonly config: ResolvedServerConfig,
     private readonly runner: DiagnosticDeviceRunner,
-    private readonly slots = new EapiSlots(eapiSlotLimits(config), config.diagnostics.commandTimeoutMs)
+    private readonly slots = new EapiSlots(eapiSlotLimits(config))
   ) {}
 
   close(): void {
@@ -75,18 +72,19 @@ export class DiagnosticExecutor {
     const operationName = `eos_${options.request.kind}`;
     const operationConfig: ResolvedServerConfig = {
       ...this.config,
-      overallOperationTimeoutMs: this.config.diagnostics.overallOperationTimeoutMs
+      overallOperationTimeoutMs: definition.overallOperationTimeoutMs(this.config.diagnostics)
     };
 
     const resolvedTarget = resolveInventoryTarget(this.model, { target: options.target });
     enforceReadTargetLimit(operationConfig, resolvedTarget.resolvedHosts.length);
-    const denied = resolvedTarget.resolvedHosts.filter((host) => !host.diagnosticsAllowed);
+    const denied = resolvedTarget.resolvedHosts.filter((host) => !definition.permission.allows(host));
     if (denied.length > 0) {
-      throw new AppError("diagnostic_policy_denied", `Diagnostic permission denied for: ${denied.map((host) => host.inventoryHostname).join(", ")}`);
+      throw new AppError(definition.permission.deniedCode, `${definition.permission.deniedMessage}: ${denied.map((host) => host.inventoryHostname).join(", ")}`);
     }
-    const probesPerHost = prepared.executions.reduce((total, execution) => total + definition.probeCount(execution), 0);
-    if (resolvedTarget.resolvedHosts.length * probesPerHost > this.config.diagnostics.maxProbesPerRequest) {
-      throw new AppError("diagnostic_probe_limit_exceeded", `Request exceeds maxProbesPerRequest ${this.config.diagnostics.maxProbesPerRequest}`);
+    const costPerHost = prepared.executions.reduce((total, execution) => total + definition.budget.cost(execution), 0);
+    const budgetLimit = definition.budget.limit(this.config.diagnostics);
+    if (resolvedTarget.resolvedHosts.length * costPerHost > budgetLimit) {
+      throw new AppError(definition.budget.exceededCode, `Request exceeds ${definition.budget.limitName} ${budgetLimit}`);
     }
 
     // Each host/execution pair takes its own reservation, and all are queued at once so the admission
@@ -99,7 +97,7 @@ export class DiagnosticExecutor {
         } catch (error) {
           return {
             ...buildReadDeviceFailure(host, "diagnostic_execution_failed", error),
-            destination: execution.destination,
+            ...definition.resultIdentity(execution),
             ...(options.includeRaw === true && error instanceof AppError && typeof error.details?.raw_output === "string"
               ? { raw_output: error.details.raw_output }
               : {})
@@ -120,16 +118,18 @@ export class DiagnosticExecutor {
     signal: AbortSignal,
     includeRaw: boolean
   ): Promise<DiagnosticDeviceResult> {
-    const observation = await this.executeOnDevice(host, execution, signal);
+    const observation = await this.executeOnDevice(host, execution, definition.uncertainHoldMs(execution, this.config.diagnostics), signal);
+    // An observation without output, such as a capture ended by the device timer, has no raw evidence.
+    const rawOutput = "output" in observation ? observation.output : undefined;
     try {
       return buildReadDeviceSuccess(host, {
-        destination: execution.destination,
-        finding: definition.interpret(observation.output, execution),
-        ...(includeRaw ? { raw_output: observation.output } : {})
+        ...definition.resultIdentity(execution),
+        finding: definition.interpret(observation, execution),
+        ...(includeRaw && rawOutput !== undefined ? { raw_output: rawOutput } : {})
       });
     } catch (error) {
-      if (error instanceof AppError && includeRaw) {
-        throw new AppError(error.code, error.message, { raw_output: observation.output });
+      if (error instanceof AppError && includeRaw && rawOutput !== undefined) {
+        throw new AppError(error.code, error.message, { raw_output: rawOutput });
       }
       throw error;
     }
@@ -138,9 +138,10 @@ export class DiagnosticExecutor {
   private async executeOnDevice(
     host: InventoryHostModel,
     request: PreparedDiagnostic,
+    uncertainHoldMs: number,
     signal: AbortSignal
   ): Promise<DiagnosticObservation> {
-    const reservation = await this.slots.acquireDiagnostic(signal, { inventoryHostname: host.inventoryHostname, diagnostic: request.kind });
+    const reservation = await this.slots.acquireDiagnostic(signal, { inventoryHostname: host.inventoryHostname, diagnostic: request.kind, uncertainHoldMs });
     if (signal.aborted) {
       reservation.complete();
       throw new AppError("operation_aborted", "Diagnostic was cancelled before dispatch");

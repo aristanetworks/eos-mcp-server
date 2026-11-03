@@ -25,7 +25,7 @@ Explicit authorization for an inventory host to perform diagnostics, additional 
 _Avoid_: Read permission, implicit diagnostic access
 
 **Uncertain Execution Reservation**:
-Diagnostic capacity held because an EOS execution's remote completion cannot be confirmed. It is held for the execution budget (`commandTimeoutMs`) and then frees itself; a late confirmed response frees it sooner. It lives only in the server process that made it.
+Diagnostic capacity held because an EOS execution's remote completion cannot be confirmed. It is held for that execution's own budget (for ping, `commandTimeoutMs`; for a **Packet Capture**, its window plus a margin) and then frees itself; a late confirmed response frees it sooner. It lives only in the server process that made it.
 _Avoid_: Permanent hold, completed job
 
 **Source Address**:
@@ -35,6 +35,22 @@ _Avoid_: Target address, destination address
 **Reachability Finding**:
 The conclusion of a completed ping diagnostic: reachable when all probes receive replies, partial when only some do, or unreachable when none do. An unreachable finding does not establish why replies were absent and is distinct from a failure to execute the diagnostic.
 _Avoid_: Tool failure, confirmed network outage
+
+**Packet Capture**:
+A **Non-configuring Diagnostic** that observes packets sent or received by an EOS device's control plane, up to a requested packet count within a bounded window. It never observes hardware-forwarded transit traffic.
+_Avoid_: tcpdump, sniff, trace
+
+**Capture Filter**:
+The pcap-filter expression that selects which packets a **Packet Capture** keeps.
+_Avoid_: BPF, match, ACL
+
+**Packet Capture Permission**:
+Explicit authorization for an inventory host to perform **Packet Captures**, additional to **Diagnostic Permission**; denial of read or diagnostic access also denies capture.
+_Avoid_: Diagnostic permission alone, capture access
+
+**Capture Finding**:
+The conclusion of a completed **Packet Capture**: complete when the requested packet count was observed within the window, carrying those packets; unfilled when fewer arrived, carrying none. An unfilled finding is distinct from a failure to execute the capture, such as an invalid **Capture Filter**.
+_Avoid_: Timeout, empty capture, no traffic
 
 **Log Severity**:
 The priority level assigned to an EOS log message, interpreted by logging tools as a minimum threshold when filtering results.
@@ -55,6 +71,9 @@ _Avoid_: Raw result, raw output
 ## Relationships
 
 - A ping request names one or more **Destinations** and a **Target**; it performs one **Diagnostic Execution** per resolved host and **Destination**, each producing its own **Reachability Finding** or execution failure.
+- Permissions form a ladder: read access ⊂ **Diagnostic Permission** ⊂ **Packet Capture Permission**.
+- A **Packet Capture** has at most one **Capture Filter** and performs one **Diagnostic Execution** per resolved host, each yielding its own **Capture Finding** or execution failure.
+- An unfilled **Capture Finding** says fewer matching packets arrived than requested; it does not say none arrived.
 - A **Log Severity** filter includes messages at that severity and more urgent severities.
 - A **Logging Query** has exactly one minimum **Log Severity** and one message-count limit.
 - The **EOS Command Runner** returns command-aligned results: one result for each requested EOS command.

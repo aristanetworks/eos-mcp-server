@@ -1,33 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "../src/core/errors.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
-import type { DiagnosticDeviceRunner, DiagnosticObservation } from "../src/diagnostics/types.js";
-import { loadInventoryModel } from "../src/inventory/loadInventory.js";
-import { buildConfig, writeTempInventory } from "./helpers.js";
-
-const observation: DiagnosticObservation = {
-  kind: "ping",
-  output: "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n"
-};
-
-async function twoHostModel() {
-  return loadInventoryModel(await writeTempInventory([
-    "vars:", "  ansible_network_os: eos", "  mcp_diagnostics_allowed: true",
-    "hosts:", "  leaf1: {}", "  leaf2: {}",
-    "groups:", "  switches:", "    hosts: [leaf1, leaf2]"
-  ]));
-}
-
-/** Runner whose executions stay pending until the test settles them, in dispatch order. */
-function controlledRunner() {
-  const dispatched: Array<{ hostname: string; settle: () => void; fail: (error: AppError) => void }> = [];
-  const runner: DiagnosticDeviceRunner = {
-    execute: (host) => new Promise<DiagnosticObservation>((resolve, reject) => {
-      dispatched.push({ hostname: host.inventoryHostname, settle: () => resolve(observation), fail: reject });
-    })
-  };
-  return { runner, dispatched };
-}
+import { buildConfig, controlledDiagnosticRunner, loadSwitchesModel } from "./helpers.js";
 
 function ping(target: string, destinations = ["127.0.0.1"]) {
   return { target, request: { kind: "ping" as const, destinations } };
@@ -41,8 +15,8 @@ describe("per-device diagnostic concurrency", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 4;
-    const { runner, dispatched } = controlledRunner();
-    const executor = new DiagnosticExecutor(await twoHostModel(), config, runner);
+    const { runner, dispatched } = controlledDiagnosticRunner();
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner);
     const running = executor.execute(ping("switches", ["127.0.0.1", "127.0.0.2"]));
     await vi.advanceTimersByTimeAsync(0);
     expect(dispatched.map((execution) => execution.hostname)).toEqual(["leaf1", "leaf2"]);
@@ -67,8 +41,8 @@ describe("per-device diagnostic concurrency", () => {
     vi.useFakeTimers();
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
-    const { runner, dispatched } = controlledRunner();
-    const executor = new DiagnosticExecutor(await twoHostModel(), config, runner);
+    const { runner, dispatched } = controlledDiagnosticRunner();
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner);
     const lost = executor.execute(ping("leaf1"));
     await vi.advanceTimersByTimeAsync(0);
     dispatched[0]?.fail(new AppError("eapi_transport_error", "lost"));
@@ -94,8 +68,8 @@ describe("per-device diagnostic concurrency", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
-    const { runner, dispatched } = controlledRunner();
-    const executor = new DiagnosticExecutor(await twoHostModel(), config, runner);
+    const { runner, dispatched } = controlledDiagnosticRunner();
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner);
     const first = executor.execute(ping("leaf1"));
     const second = executor.execute(ping("leaf2"));
     await vi.advanceTimersByTimeAsync(0);
@@ -120,8 +94,8 @@ describe("per-device diagnostic concurrency", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 2;
-    const { runner, dispatched } = controlledRunner();
-    const executor = new DiagnosticExecutor(await twoHostModel(), config, runner);
+    const { runner, dispatched } = controlledDiagnosticRunner();
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner);
     const holdingLeaf1 = executor.execute(ping("leaf1"));
     const holdingLeaf2 = executor.execute(ping("leaf2"));
     await vi.advanceTimersByTimeAsync(0);
@@ -145,8 +119,8 @@ describe("per-device diagnostic concurrency", () => {
     vi.useFakeTimers();
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
-    const { runner, dispatched } = controlledRunner();
-    const executor = new DiagnosticExecutor(await twoHostModel(), config, runner);
+    const { runner, dispatched } = controlledDiagnosticRunner();
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner);
     const holdingLeaf1 = executor.execute(ping("leaf1"));
     await vi.advanceTimersByTimeAsync(0);
     const controller = new AbortController();
@@ -155,7 +129,8 @@ describe("per-device diagnostic concurrency", () => {
     const laterWaiter = executor.execute(ping("leaf1"));
     await vi.advanceTimersByTimeAsync(0);
     expect(executor.getCapacity().devices).toEqual([
-      { inventory_hostname: "leaf1", available_count: 0, active_count: 1, uncertain_count: 0, queued_count: 2, read_active_count: 0, read_queued_count: 0 }
+      { inventory_hostname: "leaf1", available_count: 0, active_count: 1, uncertain_count: 0, queued_count: 2, read_active_count: 0, read_queued_count: 0,
+        capture_active_count: 0, capture_uncertain_count: 0, capture_queued_count: 0 }
     ]);
     controller.abort();
     await cancelledRejection;
@@ -173,8 +148,8 @@ describe("per-device diagnostic concurrency", () => {
     const config = buildConfig();
     config.diagnostics.deviceConcurrency = 1;
     config.diagnostics.maxConcurrentDiagnostics = 1;
-    const { runner, dispatched } = controlledRunner();
-    const executor = new DiagnosticExecutor(await twoHostModel(), config, runner);
+    const { runner, dispatched } = controlledDiagnosticRunner();
+    const executor = new DiagnosticExecutor(await loadSwitchesModel(), config, runner);
     const lost = executor.execute(ping("leaf1"));
     await vi.advanceTimersByTimeAsync(0);
     dispatched[0]?.fail(new AppError("eapi_transport_error", "lost"));

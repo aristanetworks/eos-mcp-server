@@ -5,27 +5,27 @@ import type { EapiConnectionConfig, EosTextCommandRunner } from "../eapi/types.j
 import type { InventoryHostModel } from "../inventory/types.js";
 import { isObject } from "../utils/value.js";
 import { DiagnosticExecutionError } from "./executionError.js";
-import { buildPingCommand } from "./ping.js";
+import { diagnosticDefinitions } from "./definitions.js";
 import type { DiagnosticDeviceRunner, DiagnosticExecutionContext, DiagnosticObservation, PreparedDiagnostic } from "./types.js";
 
 export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
   constructor(private readonly config: ResolvedServerConfig, private readonly runner: EosTextCommandRunner) {}
 
   async execute(host: InventoryHostModel, request: PreparedDiagnostic, context: DiagnosticExecutionContext): Promise<DiagnosticObservation> {
+    const plan = diagnosticDefinitions[request.kind].eapiExecution(request, this.config.diagnostics);
     let connection: EapiConnectionConfig;
     try {
-      connection = { ...resolveEapiConnection(this.config, host), timeoutMs: this.config.diagnostics.httpTimeoutMs };
+      connection = { ...resolveEapiConnection(this.config, host), timeoutMs: plan.httpTimeoutMs };
     } catch (error) {
       throw new DiagnosticExecutionError(toErrorCode(error, "diagnostic_execution_failed"), toErrorMessage(error), "not_dispatched");
     }
 
     try {
-      const results = await this.runner.runTextCommands(connection, [buildPingCommand(request)], {
+      const results = await this.runner.runTextCommands(connection, [plan.command], {
         enable: true,
         signal: context.signal,
         requestId: context.requestId,
-        // Lets EOS stop the command itself at the same budget the server holds an uncertain slot for.
-        ...(this.config.diagnostics.nativeRequestTimeout ? { requestTimeoutSeconds: this.config.diagnostics.commandTimeoutMs / 1000 } : {})
+        ...(plan.requestTimeoutSeconds === undefined ? {} : { requestTimeoutSeconds: plan.requestTimeoutSeconds })
       });
       const output = results[0]?.output;
       if (results.length !== 1 || typeof output !== "string") {
@@ -33,6 +33,9 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
       }
       return { kind: request.kind, output };
     } catch (error) {
+      if (request.kind === "packet_capture" && isCaptureTimeLimitError(error)) {
+        return { kind: request.kind, deviceTimeLimitReached: true };
+      }
       // After dispatch, an error is never proof that remote work has stopped.
       const code = toErrorCode(error, "diagnostic_execution_failed");
       if (!["eapi_json_rpc_error", "json_output_unavailable", "eapi_http_error", "eapi_response_invalid_json"].includes(code)) throw error;
@@ -47,4 +50,19 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
       });
     }
   }
+}
+
+const DEVICE_TIME_LIMIT_ERROR = "Command exceeded its allowed time limit";
+
+/** EOS's answer when runCmds.requestTimeout stops tcpdump: RPC error 1001 whose data holds a successful
+ * `enable` result, then tcpdump's result carrying the time-limit error (error 408). Measured on cEOS 4.34.3M.
+ * A time limit hit during `enable` leaves one entry and means tcpdump never ran, so it is not a capture's end.
+ */
+function isCaptureTimeLimitError(error: unknown): boolean {
+  if (!(error instanceof AppError) || error.details?.jsonRpcCode !== 1001) return false;
+  const data = error.details.data;
+  if (!Array.isArray(data) || data.length !== 2) return false;
+  const [enableResult, captureResult] = data;
+  return isObject(enableResult) && enableResult.errors === undefined &&
+    isObject(captureResult) && Array.isArray(captureResult.errors) && captureResult.errors.includes(DEVICE_TIME_LIMIT_ERROR);
 }

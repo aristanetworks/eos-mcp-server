@@ -47,6 +47,7 @@ describe("stdio MCP smoke test", () => {
           "eos_get_running_config",
           "eos_get_server_info",
           "eos_list_inventory",
+          "eos_packet_capture",
           "eos_ping",
           "eos_probe_devices",
           "eos_run_show",
@@ -61,6 +62,7 @@ describe("stdio MCP smoke test", () => {
         const toolsWithArgs = [
           "eos_get_facts",
           "eos_get_running_config",
+          "eos_packet_capture",
           "eos_ping",
           "eos_probe_devices",
           "eos_run_show",
@@ -91,6 +93,13 @@ describe("stdio MCP smoke test", () => {
         });
         expect(deniedPing.isError).toBe(true);
         expect(JSON.stringify(deniedPing.content)).toContain("Diagnostic permission denied");
+
+        const deniedCapture = await client.callTool({
+          name: "eos_packet_capture",
+          arguments: { target: "leaf1", interface: "Ethernet1" }
+        });
+        expect(deniedCapture.isError).toBe(true);
+        expect(JSON.stringify(deniedCapture.content)).toContain("Packet capture permission denied");
 
         const serverInfo = CallToolResultSchema.parse(await client.callTool({
           name: "eos_get_server_info",

@@ -12,6 +12,7 @@ EOS MCP Server is an ESM TypeScript MCP server that provides inventory-scoped, r
 | `eos_list_inventory` | Eligible hosts and groups |
 | `eos_probe_devices` | Connectivity, authentication, and harmless command check |
 | `eos_ping` | Explicitly authorized, bounded active ping diagnostics on EOS to one or more destinations |
+| `eos_packet_capture` | Explicitly authorized, bounded control-plane packet capture on one interface, returning tcpdump's line per packet |
 | `eos_run_show` | Validated single-line `show` commands |
 | `eos_show_logging` | Bounded logging retrieval |
 | `eos_get_facts` | Fixed device facts |
@@ -34,6 +35,8 @@ Canonical Ansible-style YAML and simplified YAML are supported. Structural keys 
 `mcp_read_allowed` defaults to `true` for eligible EOS hosts and follows inherited inventory variable precedence. Operational requests fail closed when any resolved host is ineligible or read-denied — a mixed or ineligible target fails as a whole, and devices are never silently skipped. The inventory is the only policy source.
 
 `mcp_diagnostics_allowed` defaults to `false` and must explicitly resolve to boolean `true` to permit diagnostics. It follows existing inheritance; EOS eligibility and read permission are prerequisites. Mixed diagnostic permission in a group fails the entire request before dispatch.
+
+`mcp_packet_capture_allowed` defaults to `false` and must explicitly resolve to boolean `true` to permit packet capture. It follows the same inheritance and requires diagnostic permission, so read ⊂ diagnostics ⊂ capture. See [ADR 0010](adr/0010-bounded-synchronous-packet-capture.md).
 
 ## Connection security
 
@@ -58,12 +61,14 @@ A ping request names one or more destinations and sends exactly one text-mode eA
 
 Only unicast literal destinations are supported; DNS, scoped/link-local IPv6, multicast, unspecified, and limited broadcast addresses are rejected. Optional VRF/source selection must not fall back. Directed-broadcast detection is not guaranteed from an address alone.
 
+`eos_packet_capture` runs one text-mode `tcpdump interface <INTF> [vrf <VRF>] packet-count <N> [filter <FILTER>]` per resolved host, filter last, and always sends EOS `requestTimeout` equal to the capture window. Its settings are packet count 10/max 1000, window 10 s/max 60 s, hosts × packet count at most 2000, and overall timeout 90000 ms. It shares the diagnostic slots with ping; an uncertain capture holds its slot for its window plus 2 s. Captures see only control-plane traffic ([ADR 0010](adr/0010-bounded-synchronous-packet-capture.md)).
+
 ## Result and error model
 
 Every eAPI response must identify JSON-RPC 2.0, match its request ID exactly, and contain exactly one result/error member before interpretation. Missing or mismatched identity is `eapi_response_uncorrelated`, not completion evidence. Each diagnostic execution's reservation ID is its wire ID. Correlation IDs do not provide an EOS job lookup, cancellation, or idempotency facility.
 
-Device-facing tools return target metadata, resolved devices, summary counts, and per-device results. Request-level failures and known device failures use `AppError` machine-readable codes. Supported read tools expose raw eAPI payloads only through an explicit `include_raw` option. Ping separates successful execution from a reachability finding and returns normalized loss/RTT measurements; original EOS text is opt-in. Unrecognized output is an explicit device failure, never an invented finding.
+Device-facing tools return target metadata, resolved devices, summary counts, and per-device results. Request-level failures and known device failures use `AppError` machine-readable codes. Supported read tools expose raw eAPI payloads only through an explicit `include_raw` option. Ping separates successful execution from a reachability finding and returns normalized loss/RTT measurements; original EOS text is opt-in. A packet capture's finding carries tcpdump's lines verbatim, with no protocol parsing. Unrecognized output is an explicit device failure, never an invented finding.
 
 ## Compatibility and validation
 
-The read surface is validated against cEOS 4.34.3M. EOS 4.20 is the documented minimum for supported read operations. Ping is separately qualified on cEOS 4.34.3M; its compatibility with older EOS versions or physical platforms is not established by the existing read-path minimum. Traceroute and packet capture remain future work requiring their own capability and lifecycle decisions. Changes must preserve strict TypeScript checks and pass the unit, stdio smoke, and package-policy test suites.
+The read surface is validated against cEOS 4.34.3M. EOS 4.20 is the documented minimum for supported read operations. Ping and packet capture are separately qualified on cEOS 4.34.3M; their compatibility with older EOS versions or physical platforms is not established by the existing read-path minimum. Traceroute remains future work requiring its own capability and lifecycle decisions. Changes must preserve strict TypeScript checks and pass the unit, stdio smoke, and package-policy test suites.

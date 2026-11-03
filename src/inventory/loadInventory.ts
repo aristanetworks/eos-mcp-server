@@ -1,6 +1,7 @@
 import { AppError } from "../core/errors.js";
 import { buildInventoryModel } from "./buildModel.js";
 import type { ValidationContext } from "./internalTypes.js";
+import { buildListInventoryView } from "./listInventoryView.js";
 import { detectSchemaKind, normalizeInventory } from "./normalize.js";
 import { parseInventoryDocument } from "./parse.js";
 import type {
@@ -59,6 +60,7 @@ export async function validateInventory(inventoryPath: string): Promise<Inventor
     ok: result.errors.length === 0,
     ...(result.schemaKind !== undefined ? { schemaKind: result.schemaKind } : {}),
     ...(result.summary !== undefined ? { summary: result.summary } : {}),
+    ...(result.model !== undefined ? { hosts: buildListInventoryView(result.model, { includeIneligible: true }).hosts } : {}),
     errors: result.errors,
     notes: result.notes
   };

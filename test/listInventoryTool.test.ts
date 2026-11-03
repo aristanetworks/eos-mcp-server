@@ -45,4 +45,27 @@ describe("buildListInventoryToolResult", () => {
     expect(payload.hosts[0]?.inventory_hostname).toBe("linux1");
     expect(payload.hosts[0]?.eligible).toBe(false);
   });
+
+  it("reports packet capture permission per host", async () => {
+    const inventoryPath = await writeTempInventory([
+      "vars:",
+      "  ansible_network_os: eos",
+      "  mcp_diagnostics_allowed: true",
+      "hosts:",
+      "  leaf1:",
+      "    mcp_packet_capture_allowed: true",
+      "  leaf2: {}"
+    ]);
+
+    const model = await loadInventoryModel(inventoryPath);
+    const result = buildListInventoryToolResult(model, listInventoryInputSchema.parse({}));
+    const payload = result.structuredContent as {
+      hosts: Array<{ inventory_hostname: string; diagnostics_allowed: boolean; packet_capture_allowed: boolean }>;
+    };
+
+    expect(payload.hosts).toEqual([
+      expect.objectContaining({ inventory_hostname: "leaf1", diagnostics_allowed: true, packet_capture_allowed: true }),
+      expect.objectContaining({ inventory_hostname: "leaf2", diagnostics_allowed: true, packet_capture_allowed: false })
+    ]);
+  });
 });

@@ -1,6 +1,6 @@
 {
   "name": "@aristanetworks/eos-mcp-server",
-  "version": "0.9.0-beta",
+  "version": "0.10.0-beta",
   "description": "MCP server for Arista EOS eAPI",
   "license": "Apache-2.0",
   "type": "module",
@@ -37,7 +37,7 @@
     "lint": "node scripts/static-policy.mjs",
     "prepack": "npm run build",
     "static-policy": "node scripts/static-policy.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run"
   },
   "engines": {

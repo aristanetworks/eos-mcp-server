@@ -5,6 +5,7 @@ import type { EosTextCommandRunner } from "../src/eapi/types.js";
 import { EapiDiagnosticRunner } from "../src/diagnostics/eapiRunner.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
 import { DiagnosticExecutionError } from "../src/diagnostics/executionError.js";
+import { preparePacketCapture } from "../src/diagnostics/packetCapture.js";
 import { preparePing } from "../src/diagnostics/ping.js";
 import { buildConfig, buildHost, buildInventoryModel, echoRpcTransport } from "./helpers.js";
 
@@ -20,6 +21,13 @@ function createSingleSlotExecutor(runner: EosTextCommandRunner): DiagnosticExecu
   return new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true, effectiveVars: host.effectiveVars }), config,
     new EapiDiagnosticRunner(config, runner));
 }
+
+// Recorded from cEOS 4.34.3M when runCmds.requestTimeout ends a capture short of its count; data[0] is `enable`.
+const deviceTimeLimitError = {
+  code: 1001,
+  message: "CLI command 2 of 2 'tcpdump interface Ethernet1 packet-count 1 filter udp port 9' failed: unexpected error 408",
+  data: [{ output: "" }, { errors: ["Command exceeded its allowed time limit"] }]
+};
 
 describe("diagnostic eAPI adapter", () => {
   it("sends one text request, in enable mode, using the configured version, diagnostic HTTP timeout, and EOS request timeout", async () => {
@@ -115,7 +123,9 @@ describe("diagnostic eAPI adapter", () => {
 
   it.each([
     { code: 1000, message: "request timed out" },
-    { code: 1001, message: "CLI command failed: unexpected error 408", data: [{ errors: ["Command exceeded its allowed time limit"] }] }
+    { code: 1001, message: "CLI command failed: unexpected error 408", data: [{ errors: ["Command exceeded its allowed time limit"] }] },
+    // The same error ends an unfilled capture, but for ping it is not proof the process has exited.
+    { ...deviceTimeLimitError, message: "CLI command 2 of 2 'ping ::1 repeat 1' failed: unexpected error 408" }
   ])("does not equate an EOS RPC interruption error with confirmed process exit ($code)", async (rpcError) => {
     const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ error: rpcError }), text: async () => "" }));
     const executor = createSingleSlotExecutor(new EapiClient(echoRpcTransport({ postJson })));
@@ -130,5 +140,49 @@ describe("diagnostic eAPI adapter", () => {
     await expect(runner.execute(host, preparePing({ kind: "ping", destination: "::1" }, config.diagnostics), context()))
       .rejects.toMatchObject({ code: "eapi_transport_error" });
     expect(postJson).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("packet capture eAPI adapter", () => {
+  const packets = "22:06:07.386059 IP 10.255.255.1 > 10.255.255.0: ICMP echo request\n";
+  const capture = (config = buildConfig()) =>
+    preparePacketCapture({ kind: "packet_capture", interface: "Ethernet1", filter: "udp port 9", packet_count: 1, window_seconds: 2 }, config.diagnostics);
+
+  it("observes that the device time limit ended a capture rather than failing it", async () => {
+    const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ error: deviceTimeLimitError }), text: async () => "" }));
+    const runner = new EapiDiagnosticRunner(buildConfig(), new EapiClient(echoRpcTransport({ postJson })));
+    expect(await runner.execute(host, capture(), context())).toEqual({ kind: "packet_capture", deviceTimeLimitReached: true });
+    expect(postJson).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { label: "1001 with another command error", rpcError: { ...deviceTimeLimitError, data: [{ output: "" }, { errors: ["Interface does not exist"] }] } },
+    { label: "1001 without command errors", rpcError: { ...deviceTimeLimitError, data: [{ output: "" }, { output: "" }] } },
+    { label: "the time-limit message under another RPC code", rpcError: { ...deviceTimeLimitError, code: 1000 } },
+    { label: "a time limit hit during enable, before tcpdump ran",
+      rpcError: { ...deviceTimeLimitError, message: "CLI command 1 of 2 'enable' failed: unexpected error 408", data: [{ errors: ["Command exceeded its allowed time limit"] }] } },
+    { label: "a time limit reported after a failed enable",
+      rpcError: { ...deviceTimeLimitError, data: [{ errors: ["Authorization denied"] }, { errors: ["Command exceeded its allowed time limit"] }] } }
+  ])("keeps a capture uncertain after $label", async ({ rpcError }) => {
+    const postJson = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ error: rpcError }), text: async () => "" }));
+    const runner = new EapiDiagnosticRunner(buildConfig(), new EapiClient(echoRpcTransport({ postJson })));
+    await expect(runner.execute(host, capture(), context())).rejects.toMatchObject({ code: "eapi_json_rpc_error", executionState: "unknown" });
+    expect(postJson).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([true, false])("always sends the window as the EOS request timeout and outlasts it over HTTP (nativeRequestTimeout %s)", async (nativeRequestTimeout) => {
+    const postJson = vi.fn<EapiTransport["postJson"]>(async () => ({ ok: true, status: 200, json: async () => ({ result: [{ output: "" }, { output: packets }] }), text: async () => "" }));
+    const config = buildConfig();
+    config.diagnostics.nativeRequestTimeout = nativeRequestTimeout;
+    const runner = new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson })));
+    const request = preparePacketCapture({ kind: "packet_capture", interface: "any", vrf: "MGMT", filter: "icmp", packet_count: 2, window_seconds: 7 }, config.diagnostics);
+    expect(await runner.execute(host, request, context())).toEqual({ kind: "packet_capture", output: packets });
+    expect(postJson).toHaveBeenCalledTimes(1);
+    const [connection, body] = postJson.mock.calls[0] ?? [];
+    expect(connection?.timeoutMs).toBeGreaterThan(7000);
+    expect(JSON.parse(String(body)).id).toBe("unit-rpc-id");
+    expect(JSON.parse(String(body)).params).toEqual({
+      version: "latest", format: "text", cmds: ["enable", "tcpdump interface any vrf MGMT packet-count 2 filter icmp"], requestTimeout: 7
+    });
   });
 });

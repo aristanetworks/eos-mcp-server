@@ -3,12 +3,7 @@ import { AppError } from "../src/core/errors.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
 import type { DiagnosticDeviceRunner, DiagnosticObservation } from "../src/diagnostics/types.js";
 import { buildGetServerInfoToolResult } from "../src/mcp/tools/getServerInfo.js";
-import { buildConfig, buildInventoryModel } from "./helpers.js";
-
-const observation: DiagnosticObservation = {
-  kind: "ping",
-  output: "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n"
-};
+import { buildConfig, buildInventoryModel, pingObservation as observation } from "./helpers.js";
 const call = { target: "leaf1", request: { kind: "ping" as const, destinations: ["127.0.0.1"] } };
 
 afterEach(() => {

@@ -2,6 +2,8 @@ import { z } from "zod";
 
 // Node timers must not overflow into an effectively immediate timeout.
 const MAX_TIMER_MS = 2_147_483_647;
+// EOS accepts tcpdump packet-count values from 1 to 10000.
+const EOS_MAX_CAPTURE_PACKET_COUNT = 10_000;
 const positiveInteger = z.number().int().positive().max(MAX_TIMER_MS);
 
 export const diagnosticsConfigSchema = z.object({
@@ -16,7 +18,14 @@ export const diagnosticsConfigSchema = z.object({
   commandTimeoutMs: positiveInteger.default(30_000),
   httpTimeoutMs: positiveInteger.default(35_000),
   overallOperationTimeoutMs: positiveInteger.default(60_000),
-  nativeRequestTimeout: z.boolean().default(true)
+  nativeRequestTimeout: z.boolean().default(true),
+  defaultCapturePacketCount: positiveInteger.default(10),
+  maxCapturePacketCount: positiveInteger.max(EOS_MAX_CAPTURE_PACKET_COUNT).default(1000),
+  defaultCaptureWindowSeconds: positiveInteger.default(10),
+  maxCaptureWindowSeconds: positiveInteger.default(60),
+  maxCapturePacketsPerRequest: positiveInteger.default(2000),
+  captureDeviceConcurrency: positiveInteger.default(1),
+  captureOverallOperationTimeoutMs: positiveInteger.default(90_000)
 }).strict().superRefine((config, context) => {
   const invalid = (path: string, message: string): void => {
     context.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
@@ -36,11 +45,40 @@ export const diagnosticsConfigSchema = z.object({
   if (config.httpTimeoutMs < config.commandTimeoutMs + 1000) {
     invalid("httpTimeoutMs", "Must exceed commandTimeoutMs by at least 1000 ms");
   }
+  if (config.defaultCapturePacketCount > config.maxCapturePacketCount) {
+    invalid("defaultCapturePacketCount", "Must not exceed maxCapturePacketCount");
+  }
+  if (config.maxCapturePacketCount > config.maxCapturePacketsPerRequest) {
+    invalid("maxCapturePacketCount", "Must not exceed maxCapturePacketsPerRequest");
+  }
+  if (config.defaultCaptureWindowSeconds > config.maxCaptureWindowSeconds) {
+    invalid("defaultCaptureWindowSeconds", "Must not exceed maxCaptureWindowSeconds");
+  }
+  if (config.captureDeviceConcurrency > config.deviceConcurrency) {
+    invalid("captureDeviceConcurrency", "Must not exceed deviceConcurrency");
+  }
+  if (config.captureOverallOperationTimeoutMs <= config.maxCaptureWindowSeconds * 1000) {
+    invalid("captureOverallOperationTimeoutMs", "Must exceed maxCaptureWindowSeconds");
+  }
+  // The window itself fits, but the timers derived from it add margins (ADR 0010).
+  if (Math.max(captureHttpTimeoutMs(config.maxCaptureWindowSeconds), captureUncertainHoldMs(config.maxCaptureWindowSeconds)) > MAX_TIMER_MS) {
+    invalid("maxCaptureWindowSeconds", `Window plus its HTTP and uncertainty margins must not exceed ${MAX_TIMER_MS} ms`);
+  }
 });
 
 /** Conservative bound: finite probes, fixed 1s spacing, reply waits, and scheduling margin. */
 export function pingExecutionBoundMs(count: number, replyTimeoutMs: number): number {
   return count * (1000 + replyTimeoutMs) + 1000;
+}
+
+/** The device timer ends a capture at its window; the HTTP request waits this much longer for the answer. */
+export function captureHttpTimeoutMs(windowSeconds: number): number {
+  return windowSeconds * 1000 + 5000;
+}
+
+/** An uncertain capture holds its slot this much past its window, since the device timer has stopped it by then. */
+export function captureUncertainHoldMs(windowSeconds: number): number {
+  return windowSeconds * 1000 + 2000;
 }
 
 export type DiagnosticsConfig = z.infer<typeof diagnosticsConfigSchema>;

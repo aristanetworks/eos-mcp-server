@@ -55,4 +55,29 @@ describe("buildValidateInventoryResult", () => {
     expect(result.ok).toBe(true);
     expect(result.notes).toContain("Effective validation included startup connection checks for EOS-eligible hosts.");
   });
+
+  it("reports read, diagnostic and packet capture permission per host", async () => {
+    const inventoryPath = await writeTempInventory([
+      "vars:",
+      "  ansible_network_os: eos",
+      "  mcp_diagnostics_allowed: true",
+      "hosts:",
+      "  leaf1:",
+      "    mcp_packet_capture_allowed: true",
+      "  leaf2:",
+      "    mcp_read_allowed: false",
+      "    mcp_packet_capture_allowed: true"
+    ]);
+
+    const result = await buildValidateInventoryResult(buildConfig({ inventoryPath }), { inventoryOnly: true });
+
+    expect(result.hosts).toEqual([
+      expect.objectContaining({
+        inventory_hostname: "leaf1", read_allowed: true, diagnostics_allowed: true, packet_capture_allowed: true
+      }),
+      expect.objectContaining({
+        inventory_hostname: "leaf2", read_allowed: false, diagnostics_allowed: false, packet_capture_allowed: false
+      })
+    ]);
+  });
 });

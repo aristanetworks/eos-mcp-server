@@ -1,3 +1,5 @@
+import type { ListInventoryView } from "./listInventoryView.js";
+
 export type InventorySchemaKind = "canonical-ansible-yaml" | "simplified-yaml";
 
 export interface InventorySummary {
@@ -20,6 +22,7 @@ export interface InventoryValidationResult {
   ok: boolean;
   schemaKind?: InventorySchemaKind;
   summary?: InventorySummary;
+  hosts?: ListInventoryView["hosts"];
   errors: InventoryValidationError[];
   notes: string[];
 }
@@ -31,6 +34,7 @@ export interface InventoryHostModel {
   eligible: boolean;
   readAllowed: boolean;
   diagnosticsAllowed: boolean;
+  packetCaptureAllowed: boolean;
   ineligibilityReasons: string[];
   groupMemberships: string[];
 }
