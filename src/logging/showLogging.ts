@@ -5,12 +5,11 @@ import type { EosDeviceReader } from "../connection/eosDeviceReader.js";
 import type { InventoryModel } from "../inventory/types.js";
 import { buildLoggingQuery, type LoggingSeverity } from "./loggingQuery.js";
 import {
-  buildReadDeviceFailure,
-  buildReadDeviceSuccess,
-  buildReadOperationResultEnvelope,
-  executeReadOperation,
+  buildDeviceSuccess,
+  readOperationLimits,
+  runTargetOperation,
   type DeviceResultSummary
-} from "../operations/readExecution.js";
+} from "../operations/targetOperation.js";
 
 export interface ShowLoggingOptions {
   target: string;
@@ -51,28 +50,23 @@ export async function showLogging(
     { maxMessageCount: config.maxLoggingMessagesPerRequest }
   );
 
-  const operation = await executeReadOperation<ShowLoggingResult["results"][number]>(model, config, {
+  return runTargetOperation(model, config, {
     target: options.target,
     operationName: "eos_show_logging",
+    ...readOperationLimits(config),
     ...(signal !== undefined ? { signal } : {}),
-    run: async (host, signal) =>
-      buildReadDeviceSuccess(host, {
+    run: async (host, signal): Promise<Array<ShowLoggingResult["results"][number]>> => [
+      buildDeviceSuccess(host, {
         command: query.command,
         log_text: extractLogText(await reader.runShowCommands(host, [query.command], "text", { signal }))
-      }),
-    onError: (host, error) => buildReadDeviceFailure(host, "logging_failed", error)
-  });
-
-  return buildReadOperationResultEnvelope(options.target, operation, {
+      })
+    ],
+    failureCode: "logging_failed",
     extra: {
       minimum_severity: query.minimumSeverity,
       message_count: query.messageCount
     },
-    responseSizeLimit: {
-      config,
-      operationName: "eos_show_logging",
-      narrowingGuidance: "Reduce message_count, target fewer devices, or raise minimum_severity to return fewer log lines."
-    }
+    narrowingGuidance: "Reduce message_count, target fewer devices, or raise minimum_severity to return fewer log lines."
   });
 }
 

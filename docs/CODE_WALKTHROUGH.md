@@ -68,7 +68,7 @@ The core read behavior is implemented as service modules:
 
 All device-facing read services accept an `EosDeviceReader` (defined in `src/connection/eosDeviceReader.ts`). They provide inventory hosts and command intent; the eAPI adapter resolves each host's connection before executing commands.
 
-Shared read orchestration lives in `src/operations/readExecution.ts`. It centralizes target resolution, target limits, concurrency, overall timeout cancellation, common per-device result fields, result summaries (including the shared `DeviceResultSummary` type used by all result interfaces), final result-envelope response-size enforcement, and per-device `AppError.code` preservation.
+Every tool that runs on a Target, read or diagnostic, goes through `runTargetOperation` in `src/operations/targetOperation.ts`. It takes the Target, a per-host `run` that returns that host's entries (one for a read, one per destination for a ping), and the call's concurrency and deadline, and returns the finished response. It resolves the Target, enforces `maxReadTargets` and an optional `validateTarget` before contacting any host, bounds the call by its deadline (naming the setting that controls it) and the caller's signal, turns a host's throw into that host's failed entry with the caller's fallback code (an `AppError`'s own code wins), and builds the summary and response, always enforcing `maxResponseSizeBytes`. Read tools take `readOperationLimits(config)` (`readFanOut` hosts at once, the top-level `overallOperationTimeoutMs`); the diagnostic executor starts every host at once and lets the eAPI slots schedule, under its definition's deadline. `buildDeviceSuccess`/`buildDeviceFailure` build entries, and `DeviceResultSummary` is the summary type all result interfaces share.
 
 Shared type-narrowing utilities (`isObject`, `readString`, `readBoolean`, `readNumber`, etc.) live in `src/utils/value.ts`.
 
@@ -124,7 +124,7 @@ Tests mirror the source layout:
 - CLI and config: `cli.test.ts`, `loadConfig.test.ts`, `validateInventoryCommand.test.ts`
 - Inventory and target behavior: `inventory.test.ts`, `targetResolution.test.ts`
 - eAPI and connection behavior: `eapiClient.test.ts`, `eosDeviceReader.test.ts`, `startupValidation.test.ts`, `responseSize.test.ts`
-- Read services and orchestration: `probeDevices.test.ts`, `runShow.test.ts`, `loggingQuery.test.ts`, `showLogging.test.ts`, `getFacts.test.ts`, `getRunningConfig.test.ts`, `readExecution.test.ts`
+- Read services and orchestration: `probeDevices.test.ts`, `runShow.test.ts`, `loggingQuery.test.ts`, `showLogging.test.ts`, `getFacts.test.ts`, `getRunningConfig.test.ts`, `targetOperation.test.ts`
 - Diagnostics: `ping.test.ts`, `diagnosticConfig.test.ts`, `diagnostics.test.ts`, `diagnosticEapi.test.ts`, `diagnosticReservations.test.ts` (timed release, cancellation, late responses and visibility), `packetCapture.test.ts` (capture validation, command, finding), `packetCaptureExecution.test.ts` (capture permission, fan-out, budget, uncertain hold, tool schema)
 - Response correlation: `eapiCorrelation.test.ts`
 - Server info and errors: `buildServerInfo.test.ts`, `errors.test.ts`, `errorTaxonomy.test.ts`

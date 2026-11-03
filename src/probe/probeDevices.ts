@@ -3,12 +3,11 @@ import type { EosCommandResult } from "../eapi/types.js";
 import type { EosDeviceReader } from "../connection/eosDeviceReader.js";
 import type { InventoryModel } from "../inventory/types.js";
 import {
-  buildReadDeviceFailure,
-  buildReadDeviceSuccess,
-  buildReadOperationResultEnvelope,
-  executeReadOperation,
+  buildDeviceSuccess,
+  readOperationLimits,
+  runTargetOperation,
   type DeviceResultSummary
-} from "../operations/readExecution.js";
+} from "../operations/targetOperation.js";
 
 export interface ProbeDevicesOptions {
   target: string;
@@ -37,26 +36,20 @@ export async function probeDevices(
   reader: EosDeviceReader,
   signal?: AbortSignal
 ): Promise<ProbeDevicesResult> {
-  const operation = await executeReadOperation<ProbeDevicesResult["results"][number]>(model, config, {
+  return runTargetOperation<ProbeDevicesResult["results"][number]>(model, config, {
     target: options.target,
     operationName: "eos_probe_devices",
+    ...readOperationLimits(config),
     ...(signal !== undefined ? { signal } : {}),
     run: async (host, signal) => {
       const commandResults = await reader.runShowCommands(host, ["show version"], "json", {
         signal,
         includeRawEntries: options.include_raw
       });
-      return buildReadDeviceSuccess(host, {
+      return [buildDeviceSuccess(host, {
         ...(options.include_raw ? { command_results: commandResults } : {})
-      });
+      })];
     },
-    onError: (host, error) => buildReadDeviceFailure(host, "probe_failed", error)
-  });
-
-  return buildReadOperationResultEnvelope(options.target, operation, {
-    responseSizeLimit: {
-      config,
-      operationName: "eos_probe_devices"
-    }
+    failureCode: "probe_failed"
   });
 }

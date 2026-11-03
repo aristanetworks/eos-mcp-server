@@ -72,7 +72,7 @@ This is a TypeScript ESM-only Node 20+ MCP server that exposes Arista EOS networ
 - Enable mode is opt-in on the eAPI client via `{ enable: true }` on `runShowCommands` and `runCommands`; it prepends `enable` and strips the extra response entry transparently.
 - `overallOperationTimeoutMs` aborts in-flight read eAPI requests and stops scheduling new devices.
 - eAPI requests send `version: "latest"` by default so JSON output uses the current schema; `eapiVersion: 1` in server config pins the original schema. Never hardcode the version in the client.
-- `executeReadOperation` enforces `maxResponseSizeBytes`, defaulting to 1 MB, on serialized results.
+- `runTargetOperation` (`src/operations/targetOperation.ts`) runs every Target-wide tool, read or diagnostic, and enforces `maxReadTargets` and `maxResponseSizeBytes` (default 1 MB) on serialized results.
 - `eos_run_show` returns normalized `{ command, output }` pairs by default; raw eAPI payloads are opt-in via `include_raw`.
 - `eos_get_facts`, `eos_run_show`, and `eos_probe_devices` support `include_raw`, defaulting to `false`.
 - All error paths should use `AppError(code, message)` with machine-readable error codes. Avoid plain `Error` throws.

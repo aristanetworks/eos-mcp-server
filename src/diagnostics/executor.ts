@@ -1,17 +1,13 @@
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { AppError, toAppError, toErrorCode } from "../core/errors.js";
-import { resolveInventoryTarget } from "../inventory/resolveTarget.js";
 import type { InventoryHostModel, InventoryModel } from "../inventory/types.js";
 import {
-  buildDeviceResultSummary,
-  buildReadDeviceFailure,
-  buildReadDeviceSuccess,
-  buildReadOperationResultEnvelope,
-  enforceReadTargetLimit,
-  runWithOperationTimeout,
-  type ReadDeviceResultBase,
-  type ReadOperationResultEnvelope
-} from "../operations/readExecution.js";
+  buildDeviceFailure,
+  buildDeviceSuccess,
+  runTargetOperation,
+  type DeviceResultBase,
+  type TargetOperationResult
+} from "../operations/targetOperation.js";
 import { EapiSlots, type DiagnosticCapacitySnapshot, type DiagnosticReservationIntent } from "../operations/eapiSlots.js";
 import { diagnosticDefinitions } from "./definitions.js";
 import type {
@@ -25,18 +21,19 @@ import type {
 } from "./types.js";
 
 /** Ping entries carry their `destination`; a capture's single execution per host needs no identity. */
-export interface DiagnosticDeviceResult extends ReadDeviceResultBase {
+export interface DiagnosticDeviceResult extends DeviceResultBase {
   destination?: string;
   finding?: DiagnosticFinding;
   raw_output?: string;
 }
 
-export type DiagnosticResult = ReadOperationResultEnvelope<DiagnosticDeviceResult> & {
+export type DiagnosticResult = TargetOperationResult<DiagnosticDeviceResult> & {
   request: ResolvedDiagnosticRequest;
 };
 
-/** Owns policy, budgets, fan-out, cancellation, and result normalization. Admission, per device and
- * server-wide, belongs to the EapiSlots it shares with read tools.
+/** Owns diagnostic policy, budgets, and each execution's reservation. Target resolution, the deadline,
+ * cancellation and the response belong to runTargetOperation, and admission, per device and server-wide,
+ * to the EapiSlots it shares with read tools.
  */
 export class DiagnosticExecutor {
   private readonly shutdown = new AbortController();
@@ -66,40 +63,37 @@ export class DiagnosticExecutor {
     const signal = options.signal === undefined ? this.shutdown.signal : AbortSignal.any([options.signal, this.shutdown.signal]);
     const definition = diagnosticDefinitions[options.request.kind];
     const prepared = definition.prepare(options.request, this.config.diagnostics);
-    const operationName = `eos_${options.request.kind}`;
-    const operationConfig: ResolvedServerConfig = {
-      ...this.config,
-      overallOperationTimeoutMs: definition.overallOperationTimeoutMs(this.config.diagnostics)
-    };
+    const includeRaw = options.includeRaw === true;
 
-    const resolvedTarget = resolveInventoryTarget(this.model, { target: options.target });
-    enforceReadTargetLimit(operationConfig, resolvedTarget.resolvedHosts.length);
-    const denied = resolvedTarget.resolvedHosts.filter((host) => !definition.permission.allows(host));
-    if (denied.length > 0) {
-      throw new AppError(definition.permission.deniedCode, `${definition.permission.deniedMessage}: ${denied.map((host) => host.inventoryHostname).join(", ")}`);
-    }
-    const costPerHost = prepared.executions.reduce((total, execution) => total + definition.budget.cost(execution), 0);
-    const budgetLimit = definition.budget.limit(this.config.diagnostics);
-    if (resolvedTarget.resolvedHosts.length * costPerHost > budgetLimit) {
-      throw new AppError(definition.budget.exceededCode, `Request exceeds ${definition.budget.limitName} ${budgetLimit}`);
-    }
-
-    // Each host/execution pair takes its own reservation, and all are queued at once so the admission
-    // controller, not fan-out order, decides which device runs next. Results stay in host-then-execution order.
-    const hostExecutions = resolvedTarget.resolvedHosts.flatMap((host) => prepared.executions.map((execution) => ({ host, execution })));
-    const results = await runWithOperationTimeout(operationConfig, operationName, (operationSignal) =>
-      Promise.all(hostExecutions.map(async ({ host, execution }) => {
+    return runTargetOperation(this.model, this.config, {
+      target: options.target,
+      operationName: `eos_${options.request.kind}`,
+      // Every host starts at once and queues all its executions, so the eAPI slots, not fan-out order,
+      // decide which device runs next. Results stay in host-then-execution order.
+      concurrency: Infinity,
+      deadline: definition.deadline(this.config.diagnostics),
+      signal,
+      validateTarget: ({ resolvedHosts }) => {
+        const denied = resolvedHosts.filter((host) => !definition.permission.allows(host));
+        if (denied.length > 0) {
+          throw new AppError(definition.permission.deniedCode, `${definition.permission.deniedMessage}: ${denied.map((host) => host.inventoryHostname).join(", ")}`);
+        }
+        const costPerHost = prepared.executions.reduce((total, execution) => total + definition.budget.cost(execution), 0);
+        const budgetLimit = definition.budget.limit(this.config.diagnostics);
+        if (resolvedHosts.length * costPerHost > budgetLimit) {
+          throw new AppError(definition.budget.exceededCode, `Request exceeds ${definition.budget.limitName} ${budgetLimit}`);
+        }
+      },
+      run: (host, operationSignal) => Promise.all(prepared.executions.map(async (execution) => {
         try {
-          return await this.runExecution(definition, host, execution, operationSignal, options.includeRaw === true);
+          return await this.runExecution(definition, host, execution, operationSignal, includeRaw);
         } catch (error) {
           // Failures before dispatch, such as cancellation while queued, have no evidence.
           return buildFailedResult(definition, host, execution, error);
         }
-      })), signal);
-
-    return buildReadOperationResultEnvelope(options.target, { resolvedTarget, results, summary: buildDeviceResultSummary(results) }, {
-      extra: { request: prepared.request },
-      responseSizeLimit: { config: this.config, operationName }
+      })),
+      failureCode: "diagnostic_execution_failed",
+      extra: { request: prepared.request }
     });
   }
 
@@ -128,7 +122,7 @@ export class DiagnosticExecutor {
     } catch (error) {
       return buildFailedResult(definition, host, execution, error, rawOutput);
     }
-    return buildReadDeviceSuccess(host, {
+    return buildDeviceSuccess(host, {
       ...definition.resultIdentity(execution),
       finding,
       ...(rawOutput === undefined ? {} : { raw_output: rawOutput })
@@ -184,7 +178,7 @@ function buildFailedResult(
   rawOutput?: string
 ): DiagnosticDeviceResult {
   return {
-    ...buildReadDeviceFailure(host, "diagnostic_execution_failed", error),
+    ...buildDeviceFailure(host, "diagnostic_execution_failed", error),
     ...definition.resultIdentity(execution),
     ...(rawOutput === undefined ? {} : { raw_output: rawOutput })
   };
