@@ -3,26 +3,21 @@ import { EapiDeviceReader } from "../src/connection/eosDeviceReader.js";
 import { AppError } from "../src/core/errors.js";
 import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
 import type { DiagnosticDeviceRunner, DiagnosticExecutionContext, DiagnosticObservation } from "../src/diagnostics/types.js";
-import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import { buildPacketCaptureToolResult, packetCaptureInputSchema } from "../src/mcp/tools/packetCapture.js";
-import type { EosCommandRunner } from "../src/eapi/types.js";
-import { buildConfig, buildEapiSlots, buildHost, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
+import {
+  buildConfig, buildEapiSlots, buildHost, controlledDiagnosticRunner, controlledReadRunner, loadSwitchesModel, pingObservation,
+  setTestPasswordEnv, stubDiagnosticRunner
+} from "./helpers.js";
 
 const packets = ["22:06:07.386059 IP 10.255.255.1 > 10.255.255.0: ICMP echo request", "22:06:07.386088 IP 10.255.255.0 > 10.255.255.1: ICMP echo reply"];
 const observation: DiagnosticObservation = { kind: "packet_capture", output: `${packets.join("\n")}\n` };
 const call = { target: "switches", request: { kind: "packet_capture" as const, interface: "Ethernet1", filter: "icmp", packet_count: 2 } };
 
-function runner() {
-  return { execute: vi.fn<DiagnosticDeviceRunner["execute"]>(async () => observation) };
-}
+const runner = () => stubDiagnosticRunner(observation);
 
 /** leaf1 and leaf2 in group `switches`, both allowed to capture unless `leaf2Vars` says otherwise. */
-async function captureModel(leaf2Vars: string[] = []) {
-  return loadInventoryModel(await writeTempInventory([
-    "vars:", "  ansible_network_os: eos", "  mcp_diagnostics_allowed: true", "  mcp_packet_capture_allowed: true",
-    "hosts:", "  leaf1: {}", "  leaf2:", "    ansible_host: leaf2", ...leaf2Vars.map((line) => `    ${line}`),
-    "groups:", "  switches:", "    hosts: [leaf2, leaf1]"
-  ]));
+function captureModel(leaf2Vars: string[] = []) {
+  return loadSwitchesModel({ vars: ["mcp_packet_capture_allowed: true"], leaf2Vars });
 }
 
 afterEach(() => {
@@ -180,23 +175,8 @@ describe("packet capture execution", () => {
 
 /** Device whose captures, pings and reads stay pending until the test settles them, in dispatch order. */
 function controlledDevice() {
-  const dispatched: Array<{ hostname: string; kind: string; settle: () => void }> = [];
-  const diagnosticRunner: DiagnosticDeviceRunner = {
-    execute: (host, execution) => new Promise<DiagnosticObservation>((resolve) => {
-      const settled: DiagnosticObservation = execution.kind === "ping"
-        ? { kind: "ping", output: "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n" }
-        : observation;
-      dispatched.push({ hostname: host.inventoryHostname, kind: execution.kind, settle: () => resolve(settled) });
-    })
-  };
-  const readRunner: EosCommandRunner = {
-    runShowCommands: (connection) => new Promise((resolve) => {
-      dispatched.push({
-        hostname: connection.inventoryHostname, kind: "read",
-        settle: () => resolve([{ command: "show version", output_format: "json", output: {} }])
-      });
-    })
-  };
+  const { runner: diagnosticRunner, dispatched } = controlledDiagnosticRunner((execution) => execution.kind === "ping" ? pingObservation : observation);
+  const { runner: readRunner } = controlledReadRunner(dispatched);
   return { diagnosticRunner, readRunner, dispatched };
 }
 

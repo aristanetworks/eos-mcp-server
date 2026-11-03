@@ -27,14 +27,14 @@ describe.runIf(process.env.INTEGRATION === "1")("integration: bounded EOS ping (
   ])("executes $destination with explicit VRF/source and parses measurements", async (addresses) => {
     const result = await (await executor()).execute({ target: "ping1", request: { kind: "ping", destinations: [addresses.destination], source: addresses.source, vrf: "default", count: 2 }, includeRaw: true });
     expect(result.results[0]).toMatchObject({ status: "success", finding: { reachability: "reachable", packets_sent: 2, packets_received: 2 } });
-    expect(result.results[0]?.finding?.rtt_ms).not.toBeNull();
+    expect(result.results[0]?.finding).toMatchObject({ rtt_ms: expect.anything() });
     expect(result.results[0]?.raw_output).toContain("ping statistics");
   }, 15_000);
 
   it("fans out through the shared executor", async () => {
     const result = await (await executor()).execute({ target: "switches", request: { kind: "ping", destinations: ["127.0.0.1"], count: 1 } });
     expect(result.summary).toEqual({ total_count: 2, success_count: 2, failed_count: 0 });
-    expect(result.results.every((device) => device.finding?.reachability === "reachable")).toBe(true);
+    expect(result.results.every((device) => device.finding?.kind === "ping" && device.finding.reachability === "reachable")).toBe(true);
   }, 15_000);
 
   it("reports a silent destination as unreachable, not an execution failure", async () => {

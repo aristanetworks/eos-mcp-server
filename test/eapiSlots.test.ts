@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { EapiDeviceReader } from "../src/connection/eosDeviceReader.js";
-import type { EosCommandResult, EosCommandRunner } from "../src/eapi/types.js";
 import { EapiSlots } from "../src/operations/eapiSlots.js";
-import { buildConfig, buildHost, setTestPasswordEnv } from "./helpers.js";
+import { buildConfig, buildHost, controlledReadRunner, setTestPasswordEnv } from "./helpers.js";
 
 const limits = { deviceLimit: 3, diagnosticDeviceLimit: 2, diagnosticServerLimit: 32, captureDeviceLimit: 1 };
-const showVersion: EosCommandResult = { command: "show version", output_format: "json", output: {} };
 
 function ping(inventoryHostname = "leaf1") {
   return { inventoryHostname, diagnostic: "ping" as const, uncertainHoldMs: 30_000 };
@@ -13,17 +11,6 @@ function ping(inventoryHostname = "leaf1") {
 
 function capture(inventoryHostname = "leaf1") {
   return { inventoryHostname, diagnostic: "packet_capture" as const, uncertainHoldMs: 12_000 };
-}
-
-/** Runner whose requests stay pending until the test settles them, in dispatch order. */
-function controlledRunner() {
-  const dispatched: Array<{ hostname: string; settle: () => void }> = [];
-  const runner: EosCommandRunner = {
-    runShowCommands: (connection) => new Promise((resolve) => {
-      dispatched.push({ hostname: connection.inventoryHostname, settle: () => resolve([showVersion]) });
-    })
-  };
-  return { runner, dispatched };
 }
 
 async function flush(): Promise<void> {
@@ -92,7 +79,7 @@ describe("shared per-device eAPI slots", () => {
   it("holds a read slot per request in EapiDeviceReader and frees it when the request settles", async () => {
     setTestPasswordEnv();
     const slots = new EapiSlots({ deviceLimit: 1, diagnosticDeviceLimit: 1, diagnosticServerLimit: 1, captureDeviceLimit: 1 });
-    const { runner, dispatched } = controlledRunner();
+    const { runner, dispatched } = controlledReadRunner();
     const reader = new EapiDeviceReader(buildConfig({ defaultConnection: { ansibleUser: "admin", mcpPasswordEnv: "EOS_MCP_PASSWORD" } }), runner, slots);
     const host = buildHost({ inventoryHostname: "leaf1", resolvedEndpoint: "10.0.0.11" });
     const first = reader.runShowCommands(host, ["show version"], "json");
