@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.11.2-beta
+
+- Internal: inventory validation now reuses the parsed inventory model for startup connection checks, avoiding a second file read and ensuring both checks use the same inventory snapshot.
+- Internal: read tools compose their response types from the shared Target response and discriminated success/failure entries. Successful payload fields are required after narrowing by status; response JSON is unchanged.
+
 ## 0.11.1-beta
 
 - A diagnostic call that reaches its deadline now names the setting that controls it: `eos_ping exceeded diagnostics.overallOperationTimeoutMs 60000`, or `diagnostics.captureOverallOperationTimeoutMs` for a capture. Before, both named the top-level `overallOperationTimeoutMs`, which bounds read tools only. The `operation_timeout` code is unchanged.

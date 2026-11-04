@@ -7,7 +7,8 @@ import {
   buildDeviceSuccess,
   readOperationLimits,
   runTargetOperation,
-  type DeviceResultSummary
+  type DeviceResult,
+  type TargetOperationResult
 } from "../operations/targetOperation.js";
 import { readNumber, readString } from "../utils/value.js";
 
@@ -16,29 +17,20 @@ export interface GetFactsOptions {
   include_raw: boolean;
 }
 
-export interface GetFactsResult {
-  target: string;
-  target_type: "host" | "group";
-  resolved_devices: string[];
-  summary: DeviceResultSummary;
-  results: Array<{
+export type GetFactsDeviceResult = DeviceResult<{
+  facts: {
     inventory_hostname: string;
-    resolved_endpoint: string;
-    status: "success" | "failed";
-    facts?: {
-      inventory_hostname: string;
-      device_hostname?: string;
-      model?: string;
-      serial_number?: string;
-      eos_version?: string;
-      uptime?: number;
-      system_mac?: string;
-    };
-    command_results?: EosCommandResult[];
-    error_code?: string;
-    message?: string;
-  }>;
-}
+    device_hostname?: string;
+    model?: string;
+    serial_number?: string;
+    eos_version?: string;
+    uptime?: number;
+    system_mac?: string;
+  };
+  command_results?: EosCommandResult[];
+}>;
+
+export type GetFactsResult = TargetOperationResult<GetFactsDeviceResult>;
 
 export async function getFacts(
   model: InventoryModel,

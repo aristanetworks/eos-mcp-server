@@ -8,7 +8,8 @@ import {
   buildDeviceSuccess,
   readOperationLimits,
   runTargetOperation,
-  type DeviceResultSummary
+  type DeviceResult,
+  type TargetOperationResult
 } from "../operations/targetOperation.js";
 
 export interface RunShowOptions {
@@ -20,22 +21,14 @@ export interface RunShowOptions {
 
 export type NormalizedCommandResult = EosCommandResult;
 
-export interface RunShowResult {
-  target: string;
-  target_type: "host" | "group";
-  requested_output_format: "auto" | "json" | "text";
-  resolved_devices: string[];
-  summary: DeviceResultSummary;
-  results: Array<{
-    inventory_hostname: string;
-    resolved_endpoint: string;
-    status: "success" | "failed";
-    actual_output_format?: "json" | "text";
-    command_results?: NormalizedCommandResult[];
-    error_code?: string;
-    message?: string;
-  }>;
-}
+export type RunShowDeviceResult = DeviceResult<{
+  actual_output_format: EosCommandResult["output_format"];
+  command_results: NormalizedCommandResult[];
+}>;
+
+export type RunShowResult = TargetOperationResult<RunShowDeviceResult> & {
+  requested_output_format: RunShowOptions["outputFormat"];
+};
 
 export async function runShow(
   model: InventoryModel,

@@ -8,7 +8,8 @@ import {
   buildDeviceSuccess,
   readOperationLimits,
   runTargetOperation,
-  type DeviceResultSummary
+  type DeviceResult,
+  type TargetOperationResult
 } from "../operations/targetOperation.js";
 
 export interface ShowLoggingOptions {
@@ -17,23 +18,15 @@ export interface ShowLoggingOptions {
   messageCount?: number;
 }
 
-export interface ShowLoggingResult {
-  target: string;
-  target_type: "host" | "group";
+export type ShowLoggingDeviceResult = DeviceResult<{
+  command: string;
+  log_text: string;
+}>;
+
+export type ShowLoggingResult = TargetOperationResult<ShowLoggingDeviceResult> & {
   minimum_severity: LoggingSeverity;
   message_count: number;
-  resolved_devices: string[];
-  summary: DeviceResultSummary;
-  results: Array<{
-    inventory_hostname: string;
-    resolved_endpoint: string;
-    status: "success" | "failed";
-    command?: string;
-    log_text?: string;
-    error_code?: string;
-    message?: string;
-  }>;
-}
+};
 
 export async function showLogging(
   model: InventoryModel,

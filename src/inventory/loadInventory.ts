@@ -53,10 +53,20 @@ export async function loadInventoryModel(inventoryPath: string): Promise<Invento
   return assertParsedInventorySuccess(result, result.model);
 }
 
+/** The validation report and model from one read of the inventory file. The model is absent on failure. */
+export interface InventoryInspection {
+  validation: InventoryValidationResult;
+  model: InventoryModel | undefined;
+}
+
 export async function validateInventory(inventoryPath: string): Promise<InventoryValidationResult> {
+  return (await inspectInventory(inventoryPath)).validation;
+}
+
+export async function inspectInventory(inventoryPath: string): Promise<InventoryInspection> {
   const result = await parseAndValidateInventory(inventoryPath);
 
-  return {
+  const validation: InventoryValidationResult = {
     ok: result.errors.length === 0,
     ...(result.schemaKind !== undefined ? { schemaKind: result.schemaKind } : {}),
     ...(result.summary !== undefined ? { summary: result.summary } : {}),
@@ -64,6 +74,7 @@ export async function validateInventory(inventoryPath: string): Promise<Inventor
     errors: result.errors,
     notes: result.notes
   };
+  return { validation, model: result.model };
 }
 
 async function parseAndValidateInventory(inventoryPath: string): Promise<ParsedInventoryResult> {

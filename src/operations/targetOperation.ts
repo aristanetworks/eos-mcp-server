@@ -14,6 +14,13 @@ export interface DeviceResultBase {
 
 export type FailedDeviceResult = DeviceResultBase & { status: "failed"; error_code: string; message: string };
 
+export type SuccessfulDeviceResult<TFields extends Record<string, unknown>> = DeviceResultBase & { status: "success" } & TFields;
+
+/** Successful payload fields are absent on failure; optional access remains available before narrowing. */
+export type DeviceResult<TFields extends Record<string, unknown>> =
+  | SuccessfulDeviceResult<TFields>
+  | (FailedDeviceResult & Partial<Record<keyof TFields, never>>);
+
 export interface DeviceResultSummary {
   total_count: number;
   success_count: number;
@@ -107,7 +114,7 @@ export function readOperationLimits(config: ResolvedServerConfig): Pick<TargetOp
 export function buildDeviceSuccess<TExtra extends Record<string, unknown>>(
   host: InventoryHostModel,
   extra: TExtra
-): DeviceResultBase & { status: "success" } & TExtra {
+): SuccessfulDeviceResult<TExtra> {
   return {
     inventory_hostname: host.inventoryHostname,
     resolved_endpoint: host.resolvedEndpoint,

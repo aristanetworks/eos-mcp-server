@@ -1,8 +1,46 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs/promises";
+import { describe, expect, it, vi } from "vitest";
 import { buildValidateInventoryResult } from "../src/commands/validateInventory.js";
 import { buildConfig, setTestPasswordEnv, writeTempInventory } from "./helpers.js";
 
 describe("buildValidateInventoryResult", () => {
+  it("uses one inventory snapshot for the report and startup connection checks", async () => {
+    const inventoryPath = await writeTempInventory([
+      "hosts:",
+      "  leaf1:",
+      "    ansible_network_os: eos",
+      "    ansible_user: admin",
+      "    ansible_password: secret"
+    ]);
+    const original = await fs.readFile(inventoryPath, "utf8");
+    // A second read would see a different host with missing connection credentials.
+    const readFile = vi.spyOn(fs, "readFile")
+      .mockResolvedValueOnce(original)
+      .mockResolvedValueOnce("hosts:\n  leaf2:\n    ansible_network_os: eos\n");
+    try {
+      const result = await buildValidateInventoryResult(buildConfig({ inventoryPath }), { inventoryOnly: false });
+
+      expect(result.ok).toBe(true);
+      expect(result.errors).toEqual([]);
+      expect(result.hosts).toEqual([expect.objectContaining({ inventory_hostname: "leaf1" })]);
+      expect(result).not.toHaveProperty("model");
+      expect(JSON.stringify(result)).not.toContain("secret");
+      expect(readFile).toHaveBeenCalledExactlyOnceWith(inventoryPath, "utf8");
+    } finally {
+      readFile.mockRestore();
+    }
+  });
+
+  it("returns structural errors before startup connection checks", async () => {
+    const inventoryPath = await writeTempInventory(["hosts: []"]);
+
+    const result = await buildValidateInventoryResult(buildConfig({ inventoryPath }), { inventoryOnly: false });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toEqual(expect.arrayContaining([expect.objectContaining({ code: "inventory_hosts_invalid" })]));
+    expect(result.notes).toContain("Effective validation stopped before startup connection checks due to inventory errors.");
+    expect(result).not.toHaveProperty("model");
+  });
   it("inventory-only mode skips startup connection validation", async () => {
     const inventoryPath = await writeTempInventory([
       "hosts:",
