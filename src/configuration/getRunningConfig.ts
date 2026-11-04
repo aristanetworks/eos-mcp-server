@@ -8,7 +8,8 @@ import {
   buildDeviceSuccess,
   readOperationLimits,
   runTargetOperation,
-  type DeviceResultSummary
+  type DeviceResult,
+  type TargetOperationResult
 } from "../operations/targetOperation.js";
 
 export interface GetRunningConfigOptions {
@@ -16,21 +17,13 @@ export interface GetRunningConfigOptions {
   section?: string;
 }
 
-export interface GetRunningConfigResult {
-  target: string;
-  target_type: "host" | "group";
+export type GetRunningConfigDeviceResult = DeviceResult<{
+  config_text: string;
+}>;
+
+export type GetRunningConfigResult = TargetOperationResult<GetRunningConfigDeviceResult> & {
   section_requested: string | null;
-  resolved_devices: string[];
-  summary: DeviceResultSummary;
-  results: Array<{
-    inventory_hostname: string;
-    resolved_endpoint: string;
-    status: "success" | "failed";
-    config_text?: string;
-    error_code?: string;
-    message?: string;
-  }>;
-}
+};
 
 export async function getRunningConfig(
   model: InventoryModel,

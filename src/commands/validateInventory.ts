@@ -1,7 +1,7 @@
 import { AppError } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { collectStartupConnectionValidationErrors } from "../connection/validateStartupConnections.js";
-import { loadInventoryModel, validateInventory } from "../inventory/loadInventory.js";
+import { inspectInventory } from "../inventory/loadInventory.js";
 import type { InventoryValidationResult } from "../inventory/types.js";
 import { prettyJson } from "../utils/json.js";
 
@@ -13,10 +13,9 @@ export async function buildValidateInventoryResult(
     throw new AppError("inventory_path_missing", "validate-inventory requires an inventory path via --inventory or config file");
   }
 
-  const inventoryPath = config.inventoryPath;
-  const inventoryResult = await validateInventory(inventoryPath);
+  const { validation: inventoryResult, model } = await inspectInventory(config.inventoryPath);
 
-  if (!inventoryResult.ok) {
+  if (model === undefined) {
     return {
       ...inventoryResult,
       notes: options.inventoryOnly
@@ -32,7 +31,6 @@ export async function buildValidateInventoryResult(
     };
   }
 
-  const model = await loadInventoryModel(inventoryPath);
   const startupErrors = collectStartupConnectionValidationErrors(config, model);
 
   return {

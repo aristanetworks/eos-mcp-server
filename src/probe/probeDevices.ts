@@ -6,7 +6,8 @@ import {
   buildDeviceSuccess,
   readOperationLimits,
   runTargetOperation,
-  type DeviceResultSummary
+  type DeviceResult,
+  type TargetOperationResult
 } from "../operations/targetOperation.js";
 
 export interface ProbeDevicesOptions {
@@ -14,20 +15,11 @@ export interface ProbeDevicesOptions {
   include_raw: boolean;
 }
 
-export interface ProbeDevicesResult {
-  target: string;
-  target_type: "host" | "group";
-  resolved_devices: string[];
-  summary: DeviceResultSummary;
-  results: Array<{
-    inventory_hostname: string;
-    resolved_endpoint: string;
-    status: "success" | "failed";
-    error_code?: string;
-    message?: string;
-    command_results?: EosCommandResult[];
-  }>;
-}
+export type ProbeDevicesDeviceResult = DeviceResult<{
+  command_results?: EosCommandResult[];
+}>;
+
+export type ProbeDevicesResult = TargetOperationResult<ProbeDevicesDeviceResult>;
 
 export async function probeDevices(
   model: InventoryModel,
