@@ -28,6 +28,10 @@ Operational skills for interacting with Arista EOS devices via the `eos` MCP ser
 | [ptp-triage](ptp-triage/SKILL.md)                                     | PTP synchronization and unclear timing symptoms             | Classify PTP issues and route to GM or connectivity diagnostics                        |
 | [ptp-gm](ptp-gm/SKILL.md)                                            | PTP grandmaster election and BMCA                            | Diagnose wrong-GM and GM-oscillation problems                                          |
 | [ptp-debug](ptp-debug/SKILL.md)                                      | PTP connectivity, delay, domain, and packet issues          | Diagnose missing delay responses, source IP, domain, and message failures              |
+| [eos-fabric-report](eos-fabric-report/SKILL.md) | HTML fabric dashboard, topology, redundancy | Generate an offline topology and fabric health report with inspectable evidence |
+| [eos-reachability-report](eos-reachability-report/SKILL.md) | HTML ping matrix, VTEP/tenant heatmaps | Generate source-pinned underlay and tenant reachability heatmaps with loss and RTT |
+| [eos-incident-report](eos-incident-report/SKILL.md) | HTML incident report, before/after recovery | Save resumable baseline, degraded, and recovered snapshots and generate a visual comparison |
+| [eos-tenant-report](eos-tenant-report/SKILL.md) | HTML EVPN/VRF investigation | Trace tenant advertisement, import, next-hop, and return-route evidence in a visual report |
 
 ## How skills work
 
@@ -46,7 +50,7 @@ Each skill defines:
 
 1. Create a new directory with your skill name
 2. Add a `SKILL.md` file in the directory
-3. Add frontmatter with `name`, `description`, `trigger`, and `allowed-tools`
+3. Add frontmatter with `name`, `description`, and `allowed-tools`; optional trigger hints can go under `metadata`
 4. Keep the skill **read-only** — never modify device configuration
 5. Keep it **generic** — no site-specific group names, inventory layouts, or deployment conventions
 6. Prefer group targets over per-host loops for efficiency
@@ -54,6 +58,30 @@ Each skill defines:
 8. Include diagnostic procedures for common failure modes
 
 ## Installing skills
+
+### HTML report skills
+
+The four `eos-*-report` skills collect evidence through EOS MCP and generate
+self-contained local HTML and sanitized JSON artifacts. They use local file and
+shell tools to render reports; device access stays within EOS MCP. Each skill
+can be installed independently using the instructions below.
+
+Example invocations after installation:
+
+```text
+Use $eos-fabric-report to create an HTML health dashboard for my containerlab fabric.
+Use $eos-reachability-report to compare underlay and tenant connectivity in HTML heatmaps.
+Use $eos-incident-report to collect a baseline for an uplink fault I will stage manually.
+Use $eos-tenant-report to investigate the tenant VRFs and generate an HTML evidence report.
+```
+
+Report output paths are configurable. By default they live under
+`.local-artifacts/reports/`. The incident skill persists its state between phases;
+resume it with the incident directory after staging or restoring the fault.
+For lab-specific prompts, see the
+[containerlab troubleshooting demos](../docs/CONTAINERLAB_TROUBLESHOOTING_DEMOS.md#html-report-scenarios).
+
+### Link skills into your assistant
 
 Skills aren't included in the npm package. Clone this repository, then link each skill folder into the skills directory your assistant reads. Both assistants follow symlinks, so a `git pull` in the clone updates every linked skill.
 
