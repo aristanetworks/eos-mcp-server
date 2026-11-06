@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-The server is a permanent read-only MCP service. Scope includes inventory inspection, device probing, validated EOS `show` commands, bounded logging, facts, running-configuration retrieval, and explicitly authorized non-configuring diagnostics. Ping and bounded control-plane packet capture are implemented; traceroute is a future tool requiring separate capability/lifecycle work.
+The server is a permanent read-only MCP service. Scope includes inventory inspection, device probing, validated EOS `show` commands, bounded logging, facts, running-configuration retrieval, and non-configuring diagnostics enabled by default with inventory opt-out. Ping and bounded control-plane packet capture are implemented; traceroute is a future tool requiring separate capability/lifecycle work.
 
 ## Implemented work
 

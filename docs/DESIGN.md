@@ -11,8 +11,8 @@ EOS MCP Server is an ESM TypeScript MCP server that provides inventory-scoped, r
 | `eos_get_server_info` | Sanitized runtime, limits, and inventory summary |
 | `eos_list_inventory` | Eligible hosts and groups |
 | `eos_probe_devices` | Connectivity, authentication, and harmless command check |
-| `eos_ping` | Explicitly authorized, bounded active ping diagnostics on EOS to one or more destinations |
-| `eos_packet_capture` | Explicitly authorized, bounded control-plane packet capture on one interface, returning tcpdump's line per packet |
+| `eos_ping` | Bounded active ping diagnostics on EOS to one or more destinations, enabled by default with inventory opt-out |
+| `eos_packet_capture` | Bounded control-plane packet capture on one interface, enabled by default with inventory opt-out, returning tcpdump's line per packet |
 | `eos_run_show` | Validated single-line `show` commands |
 | `eos_show_logging` | Bounded logging retrieval |
 | `eos_get_facts` | Fixed device facts |
