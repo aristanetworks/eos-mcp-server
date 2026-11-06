@@ -12,7 +12,7 @@ The server is a permanent read-only MCP service. Scope includes inventory inspec
 - Inventory-authoritative host/group target resolution.
 - HTTPS eAPI client with TLS validation, custom CA support, credential validation, request cancellation, and response-size limits.
 - Eight MCP tools: server info, inventory, probe, ping, show, logging, facts, and running configuration.
-- Typed diagnostic execution with inherited opt-in, configurable budgets/timeouts, in-memory per-server admission, no retries, uncertain-execution reservations held for the command budget, and live sanitized capacity visibility. Machine-verified remote completion/deadline qualification remains follow-up work.
+- Typed diagnostic execution with inherited opt-out (enabled by default), configurable budgets/timeouts, in-memory per-server admission, no retries, uncertain-execution reservations held for the command budget, and live sanitized capacity visibility. Machine-verified remote completion/deadline qualification remains follow-up work.
 - Local `validate-inventory`, `print-server-info`, and `probe` commands.
 - Bounded concurrency, target counts, command counts, logging messages, device responses, and aggregate tool responses.
 - Unit, MCP stdio smoke, package-policy, and optional cEOS integration coverage.
@@ -27,7 +27,7 @@ The server is a permanent read-only MCP service. Scope includes inventory inspec
 
 ## Completion criteria
 
-- Every registered MCP tool is non-configuring and inventory-scoped at the execution target; active diagnostics are explicitly authorized.
+- Every registered MCP tool is non-configuring and inventory-scoped at the execution target; active diagnostics are enabled by default and can be denied per host in inventory.
 - All device-facing paths use the shared target, connection, timeout, and result-envelope safeguards.
 - Documentation lists only supported tools and configuration fields.
 - `npm test`, `npm run typecheck`, and `npm run build` pass.

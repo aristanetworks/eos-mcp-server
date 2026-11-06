@@ -21,8 +21,8 @@ One run of a diagnostic on one inventory host; for ping, against one **Destinati
 _Avoid_: Probe, job
 
 **Diagnostic Permission**:
-Explicit authorization for an inventory host to perform diagnostics, additional to read access; read denial also denies diagnostics.
-_Avoid_: Read permission, implicit diagnostic access
+Authorization for an inventory host to perform diagnostics, additional to read access. Granted by default; `mcp_diagnostics_allowed: false` opts out, and read denial also denies diagnostics.
+_Avoid_: Read permission
 
 **Uncertain Execution Reservation**:
 Diagnostic capacity held because an EOS execution's remote completion cannot be confirmed. It is held for that execution's own budget (for ping, `commandTimeoutMs`; for a **Packet Capture**, its window plus a margin) and then frees itself; a late confirmed response frees it sooner. It lives only in the server process that made it. A **Device Time Limit** reply is confirmed completion, so it never leaves one.
@@ -49,7 +49,7 @@ The pcap-filter expression that selects which packets a **Packet Capture** keeps
 _Avoid_: BPF, match, ACL
 
 **Packet Capture Permission**:
-Explicit authorization for an inventory host to perform **Packet Captures**, additional to **Diagnostic Permission**; denial of read or diagnostic access also denies capture.
+Authorization for an inventory host to perform **Packet Captures**, additional to **Diagnostic Permission**. Granted by default; `mcp_packet_capture_allowed: false` opts out, and denial of read or diagnostic access also denies capture.
 _Avoid_: Diagnostic permission alone, capture access
 
 **Capture Finding**:
