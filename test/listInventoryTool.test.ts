@@ -54,7 +54,8 @@ describe("buildListInventoryToolResult", () => {
       "hosts:",
       "  leaf1:",
       "    mcp_packet_capture_allowed: true",
-      "  leaf2: {}"
+      "  leaf2:",
+      "    mcp_packet_capture_allowed: false"
     ]);
 
     const model = await loadInventoryModel(inventoryPath);

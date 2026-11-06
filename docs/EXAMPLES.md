@@ -167,7 +167,7 @@ VLAN 100 (`VLAN100`) active on all leaves, member of `Vx1` only, empty MAC table
 
 ## Packet Capture
 
-Requires `mcp_diagnostics_allowed: true` and `mcp_packet_capture_allowed: true` on the target hosts. A capture sees only traffic the switch's control plane sends or receives, never hardware-forwarded transit traffic.
+Enabled by default; denied on hosts that set `mcp_diagnostics_allowed: false` or `mcp_packet_capture_allowed: false`. A capture sees only traffic the switch's control plane sends or receives, never hardware-forwarded transit traffic.
 
 ### Check that BGP keepalives are arriving from a peer
 
@@ -197,5 +197,5 @@ A complete capture of 2 packets: a 19-byte BGP message (a keepalive) from node1-
 | `eos_run_show` | Run arbitrary `show ...` commands; returns JSON or text |
 | `eos_show_logging` | Retrieve bounded logging output with minimum severity threshold |
 | `eos_get_server_info` | Show server capabilities, runtime mode, inventory summary |
-| `eos_ping` | Ping one or more destinations from a host or group (needs `mcp_diagnostics_allowed`) |
-| `eos_packet_capture` | Capture control-plane packets on one interface with a pcap filter (needs `mcp_packet_capture_allowed`) |
+| `eos_ping` | Ping one or more destinations from a host or group (disable with `mcp_diagnostics_allowed: false`) |
+| `eos_packet_capture` | Capture control-plane packets on one interface with a pcap filter (disable with `mcp_packet_capture_allowed: false`) |

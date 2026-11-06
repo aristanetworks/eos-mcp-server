@@ -134,10 +134,10 @@ Once connected, Claude Code has access to these tools:
 | `eos_show_logging`       | Retrieve bounded logging output          |
 | `eos_get_facts`          | Collect device facts from `show version` |
 | `eos_get_running_config` | Retrieve running configuration           |
-| `eos_ping`               | Ping from a device (needs opt-in)        |
-| `eos_packet_capture`     | Capture control-plane packets (needs opt-in) |
+| `eos_ping`               | Ping from a device (on by default)        |
+| `eos_packet_capture`     | Capture control-plane packets (on by default) |
 
-`eos_ping` requires `mcp_diagnostics_allowed: true` in inventory, and `eos_packet_capture` additionally requires `mcp_packet_capture_allowed: true`. Both are denied by default; see [Network diagnostics](DIAGNOSTICS.md).
+`eos_ping` and `eos_packet_capture` are enabled by default. Set `mcp_diagnostics_allowed: false` in inventory to deny both, or `mcp_packet_capture_allowed: false` to deny only capture; see [Network diagnostics](DIAGNOSTICS.md).
 
 ## Troubleshooting
 

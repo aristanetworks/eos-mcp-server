@@ -73,3 +73,5 @@ New `diagnostics` settings, reported under `limits.diagnostics` in server info:
 - **Parsing packets into fields.** Loses information for any protocol the parser does not handle.
 - **Treating the 408 timeout as uncertain, as ping does.** Every unfilled capture, the most common outcome, would hold its device's single capture slot for another window.
 - **Omitting `enable`.** Works on 4.34.3M but fails on releases where `tcpdump` is privileged, and saves no privilege because the ladder already implies ping.
+
+**Update (0.12):** `mcp_packet_capture_allowed` now defaults to `true`; set it to `false` to deny capture. The ladder and whole-group rejection are unchanged.

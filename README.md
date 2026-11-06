@@ -8,7 +8,7 @@ Read-only (non-configuring) MCP server for Arista EOS eAPI (JSON-RPC over HTTPS)
 > **Beta status:** this project is under active development.
 > **Support:** best-effort only. This open source project is not currently supported by Arista TAC.
 
-This server never exposes configuration-changing operations. It provides read-only inspection and explicitly authorized, bounded **active diagnostics**. Non-configuring does not mean passive or harmless: diagnostics generate traffic. The server can:
+This server never exposes configuration-changing operations. It provides read-only inspection and bounded **active diagnostics** (ping and packet capture, enabled by default and disabled per host or group in inventory). Non-configuring does not mean passive or harmless: diagnostics generate traffic. The server can:
 
 - introspect its own runtime and inventory
 - list inventory hosts/groups
@@ -88,7 +88,7 @@ No install step is needed. `npx` downloads the package on first use and caches i
 npx -y @aristanetworks/eos-mcp-server --help
 ```
 
-The [MCP client examples](#connect-to-an-mcp-client) below use `npx`. `-y` skips npm's install confirmation prompt, which an MCP client can't answer. Without a version, npx checks the registry for the latest release each time it launches the server. To pin a specific release, append a version, for example `@aristanetworks/eos-mcp-server@0.11.2-beta`.
+The [MCP client examples](#connect-to-an-mcp-client) below use `npx`. `-y` skips npm's install confirmation prompt, which an MCP client can't answer. Without a version, npx checks the registry for the latest release each time it launches the server. To pin a specific release, append a version, for example `@aristanetworks/eos-mcp-server@0.12.0-beta`.
 
 ### Or install globally
 
@@ -201,7 +201,7 @@ Supported config fields:
 
 For read tools, `readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole read-tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized result of device read operations. `eapiVersion` selects the eAPI JSON output schema sent as the `runCmds` `version` parameter: `latest` (the default) returns the current schema for each command, and `1` pins the original schema for consumers that depend on it. It only affects JSON output, so `eos_get_running_config` and `eos_show_logging` are unchanged.
 
-`eos_ping` and `eos_packet_capture` use their own configurable `diagnostics` timeouts and concurrency (per device, under a per-server ceiling), while sharing `maxReadTargets` and `maxResponseSizeBytes`. Omitted diagnostic settings retain the defaults shown above; invalid or contradictory settings fail validation. Ping requires explicit inventory permission and has no automatic retries. Response IDs and protocol envelopes are validated before output is accepted. When a ping's remote completion is unknown (timeout, cancellation, lost connection), its slot is held for `commandTimeoutMs` and then freed automatically; inspect the running server's `eos_get_server_info.diagnostics.capacity`. Capacity lives in memory, so several MCP servers can use the same inventory at once. An uncertain packet capture is held for its own window plus 2 s instead. See [Network diagnostics](docs/DIAGNOSTICS.md), including the distinction between a reply timeout, command budget, and remote process termination.
+`eos_ping` and `eos_packet_capture` use their own configurable `diagnostics` timeouts and concurrency (per device, under a per-server ceiling), while sharing `maxReadTargets` and `maxResponseSizeBytes`. Omitted diagnostic settings retain the defaults shown above; invalid or contradictory settings fail validation. Ping is enabled by default for read-allowed EOS hosts; `mcp_diagnostics_allowed: false` denies it. Ping has no automatic retries. Response IDs and protocol envelopes are validated before output is accepted. When a ping's remote completion is unknown (timeout, cancellation, lost connection), its slot is held for `commandTimeoutMs` and then freed automatically; inspect the running server's `eos_get_server_info.diagnostics.capacity`. Capacity lives in memory, so several MCP servers can use the same inventory at once. An uncertain packet capture is held for its own window plus 2 s instead. See [Network diagnostics](docs/DIAGNOSTICS.md), including the distinction between a reply timeout, command budget, and remote process termination.
 
 `actor` and `logFile` remain sanitized runtime metadata and do not enable a general tool-call audit log.
 
@@ -443,8 +443,8 @@ still using their individual credentials.
   - `mcp_platform: arista_eos`
 - `mcp_read_allowed` defaults to `true` for eligible EOS hosts. Set it to `false` — inherited like any other variable — to explicitly deny read access to a host or group.
 - Read operations fail closed if the resolved target contains ineligible or read-denied hosts.
-- `mcp_diagnostics_allowed` defaults to `false`. Set this inherited boolean to `true` to permit `eos_ping`; read denial still vetoes diagnostics. A mixed-permission group fails before any dispatch.
-- `mcp_packet_capture_allowed` defaults to `false`. This inherited boolean is the packet capture opt-in, the top of a permission ladder: a host is capture-allowed only when it is read-allowed, `mcp_diagnostics_allowed: true`, and `mcp_packet_capture_allowed: true`. It permits `eos_packet_capture`. Captures return decoded packets and can reveal cleartext secrets in those protocols, such as SNMPv1/v2c community strings. See [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md).
+- `mcp_diagnostics_allowed` defaults to `true`. Set this inherited boolean to `false` to deny `eos_ping`; read denial still vetoes diagnostics. A mixed-permission group fails before any dispatch.
+- `mcp_packet_capture_allowed` defaults to `true`. Set this inherited boolean to `false` to deny `eos_packet_capture`. It is the top of a permission ladder: a host is capture-allowed only when it is read-allowed and neither `mcp_diagnostics_allowed` nor `mcp_packet_capture_allowed` is `false`. Captures return decoded packets and can reveal cleartext secrets in those protocols, such as SNMPv1/v2c community strings. See [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md).
 - A diagnostic destination is distinct from the inventory target and may be an address outside inventory.
 
 ## Connection and authentication
@@ -619,7 +619,7 @@ Input:
 
 ### `eos_ping`
 
-Runs bounded ping from an inventory host or group to one or more destinations, requiring inherited `mcp_diagnostics_allowed: true`. It generates traffic without changing configuration. Each destination must be a unicast IPv4/IPv6 literal, and duplicates are rejected, including different spellings of the same IPv6 address; use a one-element `destinations` array for a single ping. Destinations run concurrently, up to `diagnostics.deviceConcurrency` at once per device (default 2, leaving a slot of the device's shared eAPI limit for reads), with up to 16 destinations per call by default. Optional VRF and source IP apply to every destination and never silently fall back. Count defaults to 3 per destination and is capped at 10 unless changed in settings.
+Runs bounded ping from an inventory host or group to one or more destinations, requiring that `mcp_diagnostics_allowed` is not `false` (it defaults to `true`). It generates traffic without changing configuration. Each destination must be a unicast IPv4/IPv6 literal, and duplicates are rejected, including different spellings of the same IPv6 address; use a one-element `destinations` array for a single ping. Destinations run concurrently, up to `diagnostics.deviceConcurrency` at once per device (default 2, leaving a slot of the device's shared eAPI limit for reads), with up to 16 destinations per call by default. Optional VRF and source IP apply to every destination and never silently fall back. Count defaults to 3 per destination and is capped at 10 unless changed in settings.
 
 ```json
 {
@@ -636,7 +636,7 @@ Runs bounded ping from an inventory host or group to one or more destinations, r
 
 ### `eos_packet_capture`
 
-Captures packets on one interface of an inventory host or group for a bounded window, requiring inherited `mcp_packet_capture_allowed: true` on every resolved host (which in turn requires `mcp_diagnostics_allowed: true`). It runs EOS `tcpdump` without changing configuration or writing files, and returns once `packet_count` packets have arrived. A capture sees only traffic sent or received by the device's control plane, never hardware-forwarded transit traffic.
+Captures packets on one interface of an inventory host or group for a bounded window, requiring that `mcp_packet_capture_allowed` is not `false` on every resolved host (which in turn requires `mcp_diagnostics_allowed` not `false`). It runs EOS `tcpdump` without changing configuration or writing files, and returns once `packet_count` packets have arrived. A capture sees only traffic sent or received by the device's control plane, never hardware-forwarded transit traffic.
 
 ```json
 {
@@ -777,7 +777,7 @@ This means the target resolved to at least one host that is either not marked as
 
 ### Packet capture denied, unfilled, or rejected
 
-- `packet_capture_policy_denied`: at least one resolved host lacks `mcp_packet_capture_allowed: true`, or lacks the `mcp_diagnostics_allowed: true` and read access it depends on. The whole request is rejected before any capture starts. Check `packet_capture_allowed` with `eos_list_inventory` or `validate-inventory --json`.
+- `packet_capture_policy_denied`: at least one resolved host sets `mcp_packet_capture_allowed: false`, or sets `mcp_diagnostics_allowed: false` or `mcp_read_allowed: false`. The whole request is rejected before any capture starts. Check `packet_capture_allowed` with `eos_list_inventory` or `validate-inventory --json`.
 - `capture: "unfilled"` with no packets: fewer matching packets than `packet_count` arrived within `window_seconds`. EOS discards a partial capture, so this does not mean none arrived. Lower `packet_count`, widen the window, or loosen the filter. On hardware, also remember that captures see only control-plane traffic.
 - `packet_capture_filter_rejected`: tcpdump exited without capturing, usually because the filter is not valid pcap-filter syntax (EOS does not check it, and its error text is lost), or because the interface cannot be captured on.
 - `packet_capture_filter_invalid`: the server rejected the filter before dispatch because it was blank, longer than 4096 characters, or contained control characters.
@@ -792,7 +792,7 @@ The read-path tools have been validated against EOS 4.34.3M. The minimum support
 
 - inventory is the execution-target trust boundary; diagnostic destinations may be outside inventory
 - reads are fail-closed on ineligible or denied targets
-- the server exposes only documented non-configuring operations; active diagnostics require explicit opt-in
+- the server exposes only documented non-configuring operations; active diagnostics are enabled by default and can be disabled per host or group in inventory
 
 ## Project docs
 

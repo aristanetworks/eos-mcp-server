@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.12.0-beta
+
+- **Behaviour change:** `eos_ping` and `eos_packet_capture` are now enabled by default. `mcp_diagnostics_allowed` and `mcp_packet_capture_allowed` default to `true` for read-allowed EOS hosts; set either to `false` (on a host, group or globally) to opt out. `mcp_read_allowed: false` and `mcp_diagnostics_allowed: false` still deny capture. Packet captures can reveal cleartext secrets, so disable `mcp_packet_capture_allowed` where that matters.
+
 ## 0.11.2-beta
 
 - Internal: inventory validation now reuses the parsed inventory model for startup connection checks, avoiding a second file read and ensuring both checks use the same inventory snapshot.

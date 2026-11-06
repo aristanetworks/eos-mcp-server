@@ -16,7 +16,9 @@ describe("stdio MCP smoke test", () => {
         "hosts:",
         "  leaf1:",
         "    ansible_host: 10.0.0.11",
-        "    ansible_network_os: eos"
+        "    ansible_network_os: eos",
+        "    mcp_diagnostics_allowed: false",
+        "    mcp_packet_capture_allowed: false"
       ]);
 
       const client = new Client(
