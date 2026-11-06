@@ -8,7 +8,7 @@ Read-only (non-configuring) MCP server for Arista EOS eAPI (JSON-RPC over HTTPS)
 > **Beta status:** this project is under active development.
 > **Support:** best-effort only. This open source project is not currently supported by Arista TAC.
 
-This server never exposes configuration-changing operations. It provides read-only inspection and explicitly authorized, bounded **active diagnostics**. Non-configuring does not mean passive or harmless: diagnostics generate traffic. The server can:
+This server never exposes configuration-changing operations. It provides read-only inspection and bounded **active diagnostics** (ping and packet capture, enabled by default and disabled per host or group in inventory). Non-configuring does not mean passive or harmless: diagnostics generate traffic. The server can:
 
 - introspect its own runtime and inventory
 - list inventory hosts/groups
