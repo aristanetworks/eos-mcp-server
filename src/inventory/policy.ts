@@ -46,12 +46,14 @@ export function evaluateHostAccess(
   eligible: boolean,
   effectiveVars: Record<string, unknown>
 ): HostAccessEvaluation {
-  const readAllowed = eligible && (readBoolean(effectiveVars.mcp_read_allowed) ?? true);
-  const diagnosticsAllowed = readAllowed && (readBoolean(effectiveVars.mcp_diagnostics_allowed) ?? true);
+  // Every permission is granted unless inventory sets it to boolean false.
+  const notDenied = (key: string): boolean => readBoolean(effectiveVars[key]) ?? true;
+  const readAllowed = eligible && notDenied("mcp_read_allowed");
+  const diagnosticsAllowed = readAllowed && notDenied("mcp_diagnostics_allowed");
   return {
     readAllowed,
     diagnosticsAllowed,
-    packetCaptureAllowed: diagnosticsAllowed && (readBoolean(effectiveVars.mcp_packet_capture_allowed) ?? true)
+    packetCaptureAllowed: diagnosticsAllowed && notDenied("mcp_packet_capture_allowed")
   };
 }
 
