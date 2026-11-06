@@ -319,9 +319,17 @@ describe("packet capture permission", () => {
     expect(model.hostMap.get("leaf2")?.packetCaptureAllowed).toBe(false);
   });
 
-  it("denies capture by default to a diagnostics-allowed host", async () => {
+  it("allows diagnostics and capture by default on a read-allowed host", async () => {
     const model = await loadInventoryModel(await writeTempInventory([
-      "hosts:", "  leaf1:", "    ansible_network_os: eos", "    mcp_diagnostics_allowed: true"
+      "hosts:", "  leaf1:", "    ansible_network_os: eos"
+    ]));
+    expect(model.hostMap.get("leaf1")?.diagnosticsAllowed).toBe(true);
+    expect(model.hostMap.get("leaf1")?.packetCaptureAllowed).toBe(true);
+  });
+
+  it("lets a host opt out of capture while keeping diagnostics", async () => {
+    const model = await loadInventoryModel(await writeTempInventory([
+      "hosts:", "  leaf1:", "    ansible_network_os: eos", "    mcp_packet_capture_allowed: false"
     ]));
     expect(model.hostMap.get("leaf1")?.diagnosticsAllowed).toBe(true);
     expect(model.hostMap.get("leaf1")?.packetCaptureAllowed).toBe(false);

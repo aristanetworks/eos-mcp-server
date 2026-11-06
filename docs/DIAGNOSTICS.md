@@ -6,35 +6,34 @@
 
 A **Target** is an inventory host or group executing the diagnostic. A **Destination** is a literal IPv4/IPv6 address being tested and need not appear in inventory. DNS names and inventory-reference shorthand are not accepted as destinations. One request may name several destinations; each is tested from every resolved host.
 
-Diagnostic access defaults to denied. Opt in explicitly using inherited inventory variables:
+Diagnostic access defaults to allowed for every read-allowed EOS host. Opt out explicitly using inherited inventory variables:
 
 ```yaml
 vars:
   ansible_network_os: eos
   ansible_user: diagnostics-user
   mcp_password_env: EOS_MCP_PASSWORD
-  mcp_diagnostics_allowed: true
+  mcp_diagnostics_allowed: false
 hosts:
   leaf1:
     ansible_host: 192.0.2.11
 ```
 
-`mcp_read_allowed: false` also denies diagnostics, regardless of the opt-in. Every resolved host must be eligible and authorized; a mixed-permission group fails before any commands are dispatched. `eos_list_inventory` and `validate-inventory --json` report `diagnostics_allowed` per host. Group resolution deduplicates hosts and preserves the existing alphabetical result ordering.
+`mcp_read_allowed: false` also denies diagnostics, regardless of `mcp_diagnostics_allowed`. Every resolved host must be eligible and authorized; a mixed-permission group fails before any commands are dispatched. `eos_list_inventory` and `validate-inventory --json` report `diagnostics_allowed` per host. Group resolution deduplicates hosts and preserves the existing alphabetical result ordering.
 
-Packet capture needs a further opt-in, `mcp_packet_capture_allowed`. It defaults to `false`, must resolve to boolean `true`, and is inherited like `mcp_diagnostics_allowed`. Permissions form a ladder, read ⊂ diagnostics ⊂ packet capture: a host is capture-allowed only when it is read-allowed, has `mcp_diagnostics_allowed: true`, and has `mcp_packet_capture_allowed: true`, so `mcp_read_allowed: false` or a missing diagnostic opt-in also denies capture. `eos_list_inventory` and `validate-inventory --json` report `packet_capture_allowed` per host. `eos_packet_capture` requires it on every resolved host.
+Packet capture is controlled by `mcp_packet_capture_allowed`. It defaults to `true`, must be a boolean when set, and is inherited like `mcp_diagnostics_allowed`. Permissions form a ladder, read ⊂ diagnostics ⊂ packet capture: a host is capture-allowed only when it is read-allowed and neither `mcp_diagnostics_allowed` nor `mcp_packet_capture_allowed` is `false`, so `mcp_read_allowed: false` or `mcp_diagnostics_allowed: false` also denies capture. `eos_list_inventory` and `validate-inventory --json` report `packet_capture_allowed` per host. `eos_packet_capture` requires it on every resolved host.
 
 ```yaml
 groups:
-  capture_ok:
+  no_capture:
     hosts: [leaf1]
     vars:
-      mcp_diagnostics_allowed: true
-      mcp_packet_capture_allowed: true
+      mcp_packet_capture_allowed: false
 ```
 
-Grant capture deliberately. A capture returns tcpdump's decoded summary of each packet, which can reveal cleartext secrets in the protocols it decodes, for example SNMPv1/v2c community strings. Anyone who can read the MCP results can see them.
+Capture is on by default, so disable it on hosts where decoded traffic must not reach MCP clients. A capture returns tcpdump's decoded summary of each packet, which can reveal cleartext secrets in the protocols it decodes, for example SNMPv1/v2c community strings. Anyone who can read the MCP results can see them.
 
-Use EOS AAA to restrict the credential to the intended operational commands. Ping requires enable mode on the tested EOS version. There is no SSH, device-shell, or MCP-host-shell fallback. Explicit diagnostic opt-in authorizes probes to arbitrary supported destinations reachable from the selected routing context; it is not a destination allowlist. Use network policy/ACLs if additional destination restrictions are required.
+Use EOS AAA to restrict the credential to the intended operational commands. Ping requires enable mode on the tested EOS version. There is no SSH, device-shell, or MCP-host-shell fallback. Diagnostics being enabled authorizes probes to arbitrary supported destinations reachable from the selected routing context; it is not a destination allowlist. Use network policy/ACLs if additional destination restrictions are required.
 
 Supported addresses are unicast IPv4/IPv6 literals, including loopback. Unspecified addresses, IPv4 0/8 and reserved/multicast ranges, limited broadcast, IPv6 multicast, and IPv6 link-local/scoped addresses are rejected. IPv4-mapped IPv6 cannot bypass IPv4 restrictions. A directed broadcast cannot reliably be identified from an address alone; no such detection is promised.
 

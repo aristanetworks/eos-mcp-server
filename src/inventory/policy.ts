@@ -47,11 +47,11 @@ export function evaluateHostAccess(
   effectiveVars: Record<string, unknown>
 ): HostAccessEvaluation {
   const readAllowed = eligible && (readBoolean(effectiveVars.mcp_read_allowed) ?? true);
-  const diagnosticsAllowed = readAllowed && effectiveVars.mcp_diagnostics_allowed === true;
+  const diagnosticsAllowed = readAllowed && (readBoolean(effectiveVars.mcp_diagnostics_allowed) ?? true);
   return {
     readAllowed,
     diagnosticsAllowed,
-    packetCaptureAllowed: diagnosticsAllowed && effectiveVars.mcp_packet_capture_allowed === true
+    packetCaptureAllowed: diagnosticsAllowed && (readBoolean(effectiveVars.mcp_packet_capture_allowed) ?? true)
   };
 }
 

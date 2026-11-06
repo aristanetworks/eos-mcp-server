@@ -34,9 +34,9 @@ Canonical Ansible-style YAML and simplified YAML are supported. Structural keys 
 
 `mcp_read_allowed` defaults to `true` for eligible EOS hosts and follows inherited inventory variable precedence. Operational requests fail closed when any resolved host is ineligible or read-denied — a mixed or ineligible target fails as a whole, and devices are never silently skipped. The inventory is the only policy source.
 
-`mcp_diagnostics_allowed` defaults to `false` and must explicitly resolve to boolean `true` to permit diagnostics. It follows existing inheritance; EOS eligibility and read permission are prerequisites. Mixed diagnostic permission in a group fails the entire request before dispatch.
+`mcp_diagnostics_allowed` defaults to `true`; an explicit boolean `false` denies diagnostics. It follows existing inheritance; EOS eligibility and read permission are prerequisites. Mixed diagnostic permission in a group fails the entire request before dispatch.
 
-`mcp_packet_capture_allowed` defaults to `false` and must explicitly resolve to boolean `true` to permit packet capture. It follows the same inheritance and requires diagnostic permission, so read ⊂ diagnostics ⊂ capture. See [ADR 0010](adr/0010-bounded-synchronous-packet-capture.md).
+`mcp_packet_capture_allowed` defaults to `true`; an explicit boolean `false` denies packet capture. It follows the same inheritance and requires diagnostic permission, so read ⊂ diagnostics ⊂ capture. See [ADR 0010](adr/0010-bounded-synchronous-packet-capture.md).
 
 ## Connection security
 
