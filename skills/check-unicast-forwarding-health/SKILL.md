@@ -186,13 +186,17 @@ Do not expand the task into active tests to fill evidence gaps.
 
 ## Collect hardware evidence for the selected platform
 
-Use [hardware evidence](references/hardware-evidence.md) for 7050X3, 7050X4,
-7060X5, 7060X6, 7280R3, 7280R3A, 7300 with Trident3 forwarding cards,
-7289, and selected 7500R3/7800R3 chassis with matching forwarding ASICs. Read
-its model/card restrictions before selecting commands. Chassis identity, ASIC generation and command availability are separate observations.
+Use [identify-eos-forwarding-hardware](../identify-eos-forwarding-hardware/SKILL.md)
+to establish model/EOS, installed cards, forwarding/fabric chip roles and relevant
+interface mappings. Reuse its identity record for this evidence window. Its
+profile restrictions define the in-scope families/cards; unresolved scope stays
+explicit. Identity and command availability are separate observations.
 
-Start with forwarding-chip identity. Select only documented command forms whose
-applicability and scope can be established for the device, release and card.
+Then read [hardware evidence](references/hardware-evidence.md) for the unicast
+resource, MAC, route/FEC and counter checks. Select only documented forms whose
+applicability and scope can be established for the identified device, release
+and card. If the shared skill is unavailable, supplied identity artifacts can
+provide the same context; missing identity leaves the hardware branch unqualified.
 Reuse existing hardware counters only; never enable counters, collision
 tracking or another diagnostic feature to make a view available. Keep unsupported
 per-entry inspection explicit even when identity/resource reads succeed.
@@ -201,8 +205,9 @@ Correlate a reported hardware route with the exact matched prefix and hardware
 VRF, then its FEC/adjacency and egress scope where supported. For L2, correlate
 MAC and effective local VLAN. Establish whether the platform view reads hardware
 or software/agent shadow state before making a programming claim. If chip
-coverage or VRF mapping is ambiguous, do not mark the target entry as verified. Hardware-table or route-counter observations
-still do not select the physical ECMP/LACP member or prove receiver delivery.
+coverage or VRF mapping is ambiguous, do not mark the target entry as verified.
+Hardware-table or route-counter observations still do not select the physical
+ECMP/LACP member or prove receiver delivery.
 
 ## Report one record per direction
 
@@ -217,8 +222,8 @@ or **not applicable** for each dependency, with the command or supplied artifact
 that supports it. Keep observation separate from probable cause. Finish with
 separate conclusions for RIB selection, software FIB, software resolution,
 platform route/FEC state, verified hardware programming/readback/chip coverage,
-existing route-counter activity, physical path and receiver delivery. Include the first
-unresolved dependency and the smallest additional read evidence needed.
+existing route-counter activity, physical path and receiver delivery. Include
+the first unresolved dependency and the smallest additional read evidence needed.
 If the applicable state checks are consistent, report that result while keeping
 receiver delivery unverified. A demonstrated mismatch or an unavailable required
 check prevents an overall consistent-state conclusion. A bidirectional result

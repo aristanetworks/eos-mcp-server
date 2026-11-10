@@ -106,15 +106,17 @@ does not make identical VLAN/VRF operands valid on every device.
 
 ## Hardware evidence
 
-Read [platform hardware evidence](hardware-evidence.md) for the in-scope family
-profiles, exact public command examples, model/card restrictions, required
-prerequisites and scope gaps. Select the hardware branch only after identifying
-the forwarding ASICs. No family name makes a command universally supported.
+First reuse the identity/scope record from
+[identify-eos-forwarding-hardware](../../identify-eos-forwarding-hardware/SKILL.md).
+Its platform profiles own the family/model/card restrictions. Then read
+[platform hardware evidence](hardware-evidence.md) for the exact unicast forms,
+prerequisites and scope gaps. No family name makes a command universally supported.
 
 Hardware identity and capacity are context. A platform-reported entry can be
 software/agent state; verify hardware-source semantics before a programming
 claim. It is not necessarily fresh ASIC readback; an empty exception view does
-not prove an entry exists. Existing hardware-counter activity is not unique-flow or receiver proof.
+not prove an entry exists. Existing hardware-counter activity is not unique-flow
+or receiver proof.
 
 ## Public references
 
