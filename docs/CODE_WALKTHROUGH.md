@@ -45,7 +45,7 @@ Connection resolution is in `src/connection/resolveConnection.ts`. It turns effe
 
 `src/connection/eosDeviceReader.ts` defines the host-oriented `EosDeviceReader` interface. Its `EapiDeviceReader` adapter owns per-host connection resolution and delegates command execution to the low-level eAPI runner.
 
-The username is selected from effective `mcp_user`, then effective `ansible_user`, then `defaultConnection.ansibleUser`. `mcp_user` is validated as a non-empty string by `src/inventory/varValidation.ts` and uses the shared inventory inheritance path.
+For canonical Ansible-style inventories, the username is selected from effective `mcp_user`, then effective `ansible_user`, then `defaultConnection.ansibleUser`. `mcp_user` is validated as a non-empty string by `src/inventory/varValidation.ts` and uses the shared inventory inheritance path. Simplified inventories reject `mcp_user` during validation, so their connection username remains effective `ansible_user` or the server default.
 
 Startup credential validation is in `src/connection/validateStartupConnections.ts`.
 

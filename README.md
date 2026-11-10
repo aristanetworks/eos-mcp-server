@@ -396,7 +396,6 @@ all:
 version: 1
 vars:
   ansible_user: admin
-  mcp_user: eos-mcp
   mcp_password_env: EOS_MCP_PASSWORD
 
 hosts:
@@ -457,7 +456,7 @@ The read path currently uses these effective fields:
 
 - `ansible_host` - device hostname/IP for HTTPS connection
 - `ansible_httpapi_port` - optional eAPI port, default `443`
-- `mcp_user` - optional MCP-specific username, taking precedence over `ansible_user`
+- `mcp_user` - optional MCP-specific username for canonical Ansible-style inventories only, taking precedence over `ansible_user`
 - `ansible_user` - fallback username when `mcp_user` is absent
 - `mcp_password_env` - preferred password source, treated as an **environment variable name**
 - `ansible_password` - literal password source
@@ -465,7 +464,7 @@ The read path currently uses these effective fields:
 
 ### Username resolution
 
-In both inventory formats, the MCP connection username is resolved in this order:
+In canonical Ansible-style inventories, the MCP connection username is resolved in this order:
 
 1. Effective inventory `mcp_user`
 2. Effective inventory `ansible_user`
@@ -477,12 +476,16 @@ values override global values. Conflicting values at the same group depth are
 rejected. Each variable is inherited independently, so an inherited `mcp_user`
 also takes precedence over a host-level `ansible_user`.
 
-The examples above retain `ansible_user: admin` for Ansible and use
+The canonical example above retains `ansible_user: admin` for Ansible and uses
 `mcp_user: eos-mcp` for the MCP server. Export the password for the `eos-mcp`
 account in `EOS_MCP_PASSWORD`. Both username variables must be non-empty strings
 when supplied; invalid values fail inventory validation instead of falling back.
 Inventories without `mcp_user` keep their existing username resolution. The
 account must already exist on each device and have the required eAPI permissions.
+
+Simplified YAML does not support `mcp_user`; supplying it at any scope fails
+inventory validation. Simplified inventories continue to use effective
+`ansible_user`, then `defaultConnection.ansibleUser`.
 
 ### Password source rules
 

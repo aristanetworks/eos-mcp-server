@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Adds optional inventory `mcp_user` in canonical Ansible-style and simplified YAML. The MCP connection username resolves from effective `mcp_user`, then effective `ansible_user`, then `defaultConnection.ansibleUser`, so a shared inventory can keep its Ansible account while using a dedicated MCP account. Existing inventories retain their username behavior; supplied `mcp_user` values must be non-empty strings.
+- Adds optional inventory `mcp_user` in canonical Ansible-style YAML only. Simplified inventories reject `mcp_user` and retain their existing `ansible_user`/server-default username resolution. The MCP connection username resolves from effective `mcp_user`, then effective `ansible_user`, then `defaultConnection.ansibleUser`, so a shared inventory can keep its Ansible account while using a dedicated MCP account. Inventories without `mcp_user` retain their username behavior; supplied `mcp_user` values must be non-empty strings.
 
 ## 0.12.0-beta
 

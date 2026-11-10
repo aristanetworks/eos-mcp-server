@@ -50,8 +50,10 @@ vars:
 ```
 
 `ansible_user: admin` remains the Ansible account; `mcp_user: eos-mcp` selects
-the MCP account in the same inventory. Both formats support inherited `mcp_user`.
-If it is absent, the server uses effective `ansible_user`, then
+the MCP account in the same canonical Ansible-style inventory. `mcp_user` follows
+the existing global/group/host inheritance rules. Simplified inventories reject
+`mcp_user` and continue to use `ansible_user` or the server default.
+When `mcp_user` is absent, the server uses effective `ansible_user`, then
 `defaultConnection.ansibleUser`. Supplied username values must be non-empty
 strings. Use an existing device account with the required eAPI permissions.
 

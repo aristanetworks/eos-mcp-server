@@ -48,7 +48,9 @@ const passwordDefaults = { mcpPasswordEnv: "EOS_MCP_TEST_USER_PASSWORD" };
 beforeEach(() => vi.stubEnv("EOS_MCP_TEST_USER_PASSWORD", "test-password"));
 afterEach(() => vi.unstubAllEnvs());
 
-describe.each<InventorySchemaKind>(["canonical-ansible-yaml", "simplified-yaml"])("mcp_user in %s", (schema) => {
+describe("mcp_user in canonical Ansible inventory", () => {
+  const schema = "canonical-ansible-yaml";
+
   it("inherits global, parent-group and child-group users with a host override", async () => {
     const model = await loadInventoryModel(await writeUserInventory(schema, {
       global: { ansible_user: "admin", mcp_user: "mcp-global" },
@@ -113,15 +115,10 @@ describe.each<InventorySchemaKind>(["canonical-ansible-yaml", "simplified-yaml"]
   });
 
   it("rejects conflicting mcp_user values inherited from groups at the same depth", async () => {
-    const document = schema === "canonical-ansible-yaml"
-      ? { all: { children: {
-        left: { vars: { mcp_user: "left-user" }, hosts: { leaf1: {} } },
-        right: { vars: { mcp_user: "right-user" }, hosts: { leaf1: {} } }
-      } } }
-      : { hosts: { leaf1: {} }, groups: {
-        left: { vars: { mcp_user: "left-user" }, hosts: ["leaf1"] },
-        right: { vars: { mcp_user: "right-user" }, hosts: ["leaf1"] }
-      } };
+    const document = { all: { children: {
+      left: { vars: { mcp_user: "left-user" }, hosts: { leaf1: {} } },
+      right: { vars: { mcp_user: "right-user" }, hosts: { leaf1: {} } }
+    } } };
     const result = await validateInventory(await writeTempInventory([stringify(document)]));
 
     expect(result.ok).toBe(false);
@@ -173,5 +170,64 @@ describe.each<InventorySchemaKind>(["canonical-ansible-yaml", "simplified-yaml"]
     const conflicting = await buildValidateInventoryResult(buildConfig({ inventoryPath: conflictingPath }), { inventoryOnly: false });
     expect(conflicting.ok).toBe(false);
     expect(conflicting.errors).toContainEqual(expect.objectContaining({ code: "connection_password_source_invalid" }));
+  });
+});
+
+describe("simplified inventory username compatibility", () => {
+  it.each(["global", "parent", "child", "host"] as const)("rejects unsupported %s mcp_user", async (scope) => {
+    const inventoryPath = await writeUserInventory("simplified-yaml", {
+      global: { ansible_user: "admin" },
+      [scope]: { mcp_user: "eos-mcp" }
+    });
+    const result = await validateInventory(inventoryPath);
+    const errorPath = scope === "global" ? "vars.mcp_user"
+      : scope === "host" ? "hosts.host1.mcp_user"
+        : `groups.${scope === "parent" ? "fabric" : "leafs"}.vars.mcp_user`;
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContainEqual(expect.objectContaining({
+      code: "inventory_var_unsupported", path: errorPath,
+      message: expect.stringContaining("only in canonical Ansible-style inventories")
+    }));
+    await expect(loadInventoryModel(inventoryPath)).rejects.toMatchObject({ code: "inventory_validation_failed" });
+  });
+
+  it.each(["", null, 0])("rejects unsupported mcp_user=%j regardless of its value", async (mcp_user) => {
+    const result = await validateInventory(await writeUserInventory("simplified-yaml", { host: { mcp_user } }));
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContainEqual(expect.objectContaining({
+      code: "inventory_var_unsupported", path: "hosts.host1.mcp_user"
+    }));
+  });
+
+  it.each([true, false])("rejects mcp_user in CLI validation (inventoryOnly=%s)", async (inventoryOnly) => {
+    const inventoryPath = await writeUserInventory("simplified-yaml", {
+      global: { ansible_user: "admin", mcp_user: "eos-mcp" }
+    });
+    const result = await buildValidateInventoryResult(
+      buildConfig({ inventoryPath, defaultConnection: passwordDefaults }), { inventoryOnly }
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContainEqual(expect.objectContaining({
+      code: "inventory_var_unsupported", path: "vars.mcp_user"
+    }));
+  });
+
+  it.each<{ name: string; vars: InventoryVarSets; username: string }>([
+    { name: "inherited ansible_user", vars: { parent: { ansible_user: "admin" } }, username: "admin" },
+    { name: "host ansible_user", vars: {
+      global: { ansible_user: "admin" }, host: { ansible_user: "operator" }
+    }, username: "operator" },
+    { name: "server default", vars: {}, username: "server-default" }
+  ])("preserves the $name fallback", async ({ vars, username }) => {
+    const inventoryPath = await writeUserInventory("simplified-yaml", vars);
+    const model = await loadInventoryModel(inventoryPath);
+    const host = model.hostMap.get("host1");
+    expect(host).toBeDefined();
+    if (!host) return;
+
+    expect(resolveEapiConnection(
+      buildConfig({ defaultConnection: { ansibleUser: "server-default", ...passwordDefaults } }), host
+    ).username).toBe(username);
   });
 });
