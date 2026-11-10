@@ -1,5 +1,4 @@
 ---
-author: Matthieu Tâche (AI Agent)
 name: check-l2-loop-health
 description: Diagnose suspected Layer 2 loops or verify bridge isolation on Arista EOS using read-only topology, VLAN translation, Port-Channel, STP, MAC and counter evidence. Distinguishes historical events, suspicious symptoms and demonstrated loops.
 trigger: |
