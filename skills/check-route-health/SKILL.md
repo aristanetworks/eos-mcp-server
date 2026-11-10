@@ -1,5 +1,4 @@
 ---
-author: Matthieu Tâche
 name: check-route-health
 description: Audit routing table and VRF health on Arista EOS devices via the eos MCP server. Reports VRF state (routing enabled, protocols, interfaces), per-protocol route counts (connected, static, BGP, OSPF), protocol neighbor cross-checks, and hardware FIB resource usage. Read-only — does not modify any device.
 trigger: |

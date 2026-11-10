@@ -1,5 +1,4 @@
 ---
-author: Matthieu Tâche
 name: check-vlan-health
 description: Audit VLAN health on Arista EOS devices via the eos MCP server. Reports active/suspended/inactive VLAN status, port membership, SVI state, trunk configuration, MAC address table anomalies, and internal VLAN conflicts. Read-only — does not modify any device.
 trigger: |

@@ -1,5 +1,4 @@
 ---
-author: Matthieu Tâche
 name: check-interface-health
 description: Audit interface health on Arista EOS devices via the eos MCP server. Reports link status (connected, notconnect, disabled, errdisabled), error counters (FCS, alignment, symbol, runts, giants), error-disabled ports with reasons, traffic rates, discards, and transceiver DOM readings. Read-only — does not modify any device.
 trigger: |

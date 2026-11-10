@@ -25,8 +25,6 @@ host detection on Arista EOS leaf switches. Uses the `eos` MCP server exclusivel
 ## Reference
 
 - **RFC 9721** — Extended Mobility Procedures for EVPN-IRB
-- Local copy: `/Users/sureshk/.claude/skills/rfc-9721-validation/rfc-9721.txt`
-- Topology context: `/Users/sureshk/.claude/skills/rfc-9721-validation/topology.txt`
 
 ## Key RFC 9721 Concepts
 
