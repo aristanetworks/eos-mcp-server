@@ -1,5 +1,4 @@
 ---
-author: Sakti Arunachalam
 name: multicast-triage
 description: Triage Arista EOS multicast symptoms and route the investigation to IGMP, PIM, EVPN, flow, bandwidth, or controller diagnostics. Read-only.
 trigger: |

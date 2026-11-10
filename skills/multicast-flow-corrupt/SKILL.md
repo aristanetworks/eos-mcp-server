@@ -1,5 +1,4 @@
 ---
-author: Sakti Arunachalam
 name: multicast-flow-corrupt
 description: Diagnose corrupted, duplicated, mixed, or packet-losing EOS multicast flows using interface, hardware, CoPP, MMU, IGMP, PIM, MFIB, RPF, and PTP evidence. Read-only.
 trigger: |

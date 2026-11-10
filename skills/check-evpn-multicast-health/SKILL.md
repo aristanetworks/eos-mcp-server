@@ -1,5 +1,4 @@
 ---
-author: Matthieu Tache
 name: check-evpn-multicast-health
 description: Audit EVPN multicast health on Arista EOS devices via the eos MCP server. Covers Layer 2 optimized multicast with IMET/SMET/IGMP proxy, Layer 3 EVPN multicast IRB/OISM with SBD and S-PMSI, ingress replication versus underlay PIM-SSM, overlay-to-underlay encap/decap mappings, IGMP snooping EVPN groups, and PIM External Gateway DR state. Read-only - does not modify any device.
 trigger: |

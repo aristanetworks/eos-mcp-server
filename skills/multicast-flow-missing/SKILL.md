@@ -1,5 +1,4 @@
 ---
-author: Sakti Arunachalam
 name: multicast-flow-missing
 description: Diagnose an EOS multicast flow that is absent or not reaching a receiver by correlating IGMP, PIM, mroute, MFIB, RPF, and upstream state. Read-only.
 trigger: |

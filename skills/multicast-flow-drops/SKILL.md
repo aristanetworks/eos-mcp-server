@@ -1,5 +1,4 @@
 ---
-author: Sakti Arunachalam
 name: multicast-flow-drops
 description: Diagnose intermittent EOS multicast loss caused by IGMP churn, PIM reconvergence, fastdrops, RPF changes, or forwarding transitions. Read-only.
 trigger: |
