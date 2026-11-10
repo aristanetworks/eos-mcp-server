@@ -1,8 +1,8 @@
 ---
 name: check-unicast-forwarding-health
-description: Trace a specific IPv4 unicast flow through Arista EOS L2 or L3 forwarding state using the eos MCP server. Correlate active routes, ARP, MAC tables, VLANs, VTEPs and candidate egress interfaces while distinguishing software state, ASIC programming and receiver delivery. Read-only.
+description: Trace a specific IPv4 unicast flow through Arista EOS L2 or L3 forwarding state using the eos MCP server. Correlate routes, ARP, MAC tables, VLANs, VTEPs, candidate egress interfaces and scoped hardware evidence while distinguishing software state, platform-reported entries, ASIC readback and receiver delivery. Read-only.
 trigger: |
-  TRIGGER when the user asks to trace or qualify a specific IPv4 unicast flow, investigate unicast reachability, correlate route/ARP/FDB/VTEP resolution, or check both directions of a unicast path.
+  TRIGGER when the user asks to trace or qualify a specific IPv4 unicast flow, investigate unicast reachability, correlate route/ARP/FDB/VTEP resolution, check both directions of a unicast path, or inspect the corresponding hardware route, FEC, MAC or existing route-counter evidence on an in-scope platform profile.
 
   SKIP configuration changes, active traffic tests, multicast, IPv6, non-Arista platforms, and isolated interface/VLAN/route/EVPN audits without a flow to trace (use the corresponding health skill).
 allowed-tools:
@@ -162,7 +162,9 @@ state the missing evidence rather than declaring end-to-end health.
 | RIB best route observed | Best-route marker and resolution in `show rib route ip` in the correct VRF | Protocol advertisement alone; labeling a FIB view as RIB proof |
 | Software resolution consistent | Applicable ARP, FDB, VLAN/VNI/VTEP and interface state agree | Route alone, configured intent alone |
 | Software FIB entry observed | Destination match and action/next hops in the correct VRF's `show ip route` FIB view | RIB best route, route count, ARP alone; this still does not prove hardware programming |
-| ASIC programming observed | Verified SKU/EOS-specific read output matching prefix/VRF and resolved adjacency, with its ASIC scope | Capacity totals, a virtual switch, a generic route/neighbor dump |
+| Platform route/FEC state observed | Exact prefix/hardware-VRF and resolved FEC/adjacency in the documented platform view | Identity or totals; platform output alone does not prove an ASIC entry |
+| Hardware programming observed | Matching prefix/VRF or VLAN/MAC and adjacency in a scoped view with verified hardware-source semantics | Software/agent shadow state, resource totals, an unexplained platform label |
+| ASIC readback observed | Verified fresh hardware read matching prefix/VRF and resolved adjacency on the exact SKU/EOS, with its ASIC scope | Capacity totals, a virtual switch, a generic route/neighbor dump |
 | Physical path observed | Supplied flow-specific packet/path evidence for the interval | ECMP next hops, LACP members, predicted hash result, interface totals |
 | Receiver delivery observed | Supplied receiver evidence tied to this flow, direction and interval | Any control/software/ASIC entry, sender counters or aggregate interface Rx |
 
@@ -172,12 +174,35 @@ not prove loss-free delivery over an interval. A loss-free claim also needs the
 expected receive count and observed count/loss for the same direction, flow and
 interval; aggregate totals across multiple flows or receivers are insufficient.
 
-No generic hardware command is prescribed here. If ASIC proof is required,
-first verify a read-only command for the exact model/ASIC and EOS release and
-its coverage. If unsupported or unverified, report that limitation and keep
-ASIC programming **not proven**. A capacity check in a component skill cannot
-upgrade this claim. Report packet delivery separately even when an ASIC entry
-is observed. Do not expand the task into active tests to fill evidence gaps.
+Use the conditional hardware procedure below when requested or needed to
+resolve a software/hardware discrepancy. Capacity and shadow views cannot
+upgrade a per-entry hardware claim. An entry reported by a platform command is
+**platform-reported state** until its data source is established. A software or
+agent shadow view cannot prove ASIC programming. Call it **ASIC readback** only
+when fresh-read semantics, matching entries and relevant chip coverage are
+established.
+Keep unavailable or unverified checks explicit and receiver delivery separate.
+Do not expand the task into active tests to fill evidence gaps.
+
+## Collect hardware evidence for the selected platform
+
+Use [hardware evidence](references/hardware-evidence.md) for 7050X3, 7050X4,
+7060X5, 7060X6, 7280R3, 7280R3A, 7300 with Trident3 forwarding cards,
+7289, and selected 7500R3/7800R3 chassis with matching forwarding ASICs. Read
+its model/card restrictions before selecting commands. Chassis identity, ASIC generation and command availability are separate observations.
+
+Start with forwarding-chip identity. Select only documented command forms whose
+applicability and scope can be established for the device, release and card.
+Reuse existing hardware counters only; never enable counters, collision
+tracking or another diagnostic feature to make a view available. Keep unsupported
+per-entry inspection explicit even when identity/resource reads succeed.
+
+Correlate a reported hardware route with the exact matched prefix and hardware
+VRF, then its FEC/adjacency and egress scope where supported. For L2, correlate
+MAC and effective local VLAN. Establish whether the platform view reads hardware
+or software/agent shadow state before making a programming claim. If chip
+coverage or VRF mapping is ambiguous, do not mark the target entry as verified. Hardware-table or route-counter observations
+still do not select the physical ECMP/LACP member or prove receiver delivery.
 
 ## Report one record per direction
 
@@ -190,9 +215,12 @@ window, followed by a compact trace:
 Use **consistent**, **demonstrated break**, **indeterminate**, **unsupported**,
 or **not applicable** for each dependency, with the command or supplied artifact
 that supports it. Keep observation separate from probable cause. Finish with
-separate conclusions for RIB selection, software FIB, software resolution, ASIC
-programming, physical path and receiver delivery. Include the first
+separate conclusions for RIB selection, software FIB, software resolution,
+platform route/FEC state, verified hardware programming/readback/chip coverage,
+existing route-counter activity, physical path and receiver delivery. Include the first
 unresolved dependency and the smallest additional read evidence needed.
-When only state was inspected, say that forwarding state is consistent while
-receiver delivery remains unverified. A bidirectional result remains incomplete
-until both independent direction records have sufficient evidence.
+If the applicable state checks are consistent, report that result while keeping
+receiver delivery unverified. A demonstrated mismatch or an unavailable required
+check prevents an overall consistent-state conclusion. A bidirectional result
+remains incomplete until both independent direction records have sufficient
+evidence.

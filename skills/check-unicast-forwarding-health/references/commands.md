@@ -1,7 +1,8 @@
 # IPv4 unicast command registry
 
-Read this before collecting flow evidence. Templates use angle-bracket operands;
-replace them with validated values before calling MCP. Literal angle brackets,
+Read this before collecting flow evidence. Templates use square-bracket operands;
+replace them with validated values before calling MCP. Do not send placeholders
+literally. Angle brackets,
 CLI pipes, shell metacharacters and multiline commands are rejected by
 `eos_run_show`. Send output selection as `output_format`, never as `| json`.
 Use only inventory names for `target`.
@@ -10,8 +11,9 @@ Use only inventory names for `target`.
 
 Reviewed against the public EOS manuals listed below on 2026-10-19. This is
 **documentary syntax validation**, with offline MCP input checks and a source
-review of the output envelope. It is
-not evidence of execution on any EOS release, SKU or ASIC. The public IPv4 page
+review of the output envelope, rechecked against the MCP source on 2026-11-10.
+The hardware reference records its separate review date/version. This is not
+evidence of execution on any EOS release, SKU or ASIC. The public IPv4 page
 was labeled **EOS 4.36.2F** when read. The other linked chapters document generic
 EOS forms; no minimum release or universal platform support is claimed.
 Record the actual version/model and feature availability for each investigation.
@@ -35,17 +37,17 @@ verify its context with C07 or the returned VRF; do not change the CLI context.
 
 | ID | Command template | Relevant text observations | Limits/source |
 | --- | --- | --- | --- |
-| C01 | `show ip route vrf default <destination>` | Matched prefix, source legend, action, preference/metric, next hops and interfaces | Software FIB view; destination host lookup, not `longer-prefixes`; [IPv4] |
-| C02 | `show ip route vrf <vrf> <destination>` | Same observations in the specified tenant, egress or underlay VRF | Follow the explicit resolution context; no ASIC guarantee; [IPv4] |
-| C03 | `show ip arp vrf default <adjacency>` | Address, Age (min), Hardware Addr, Interface | Inspect the resolved on-link next hop or directly connected destination; [IPv4] |
-| C04 | `show ip arp vrf <vrf> <adjacency>` | Same observations in the egress VRF | A remote tenant host need not have a local ARP entry on a routed VXLAN path; [IPv4] |
-| C05 | `show rib route ip vrf default <destination>` | Best-route, unresolved-next-hop and recursive-loop markers; resolution chain | Inspect the actual legend (`>`, `*`, `L` in the documented example); RIB evidence; [IPv4] |
-| C06 | `show rib route ip vrf <vrf> <destination>` | Same RIB selection/resolution in the specified VRF | Conditional on RIB/recursion investigation; not ASIC proof; [IPv4] |
+| C01 | `show ip route vrf default [destination]` | Matched prefix, source legend, action, preference/metric, next hops and interfaces | Software FIB view; destination host lookup, not `longer-prefixes`; [IPv4] |
+| C02 | `show ip route vrf [vrf] [destination]` | Same observations in the specified tenant, egress or underlay VRF | Follow the explicit resolution context; no ASIC guarantee; [IPv4] |
+| C03 | `show ip arp vrf default [adjacency]` | Address, Age (min), Hardware Addr, Interface | Inspect the resolved on-link next hop or directly connected destination; [IPv4] |
+| C04 | `show ip arp vrf [vrf] [adjacency]` | Same observations in the egress VRF | A remote tenant host need not have a local ARP entry on a routed VXLAN path; [IPv4] |
+| C05 | `show rib route ip vrf default [destination]` | Best-route, unresolved-next-hop and recursive-loop markers; resolution chain | Inspect the actual legend (`>`, `*`, `L` in the documented example); RIB evidence; [IPv4] |
+| C06 | `show rib route ip vrf [vrf] [destination]` | Same RIB selection/resolution in the specified VRF | Conditional on RIB/recursion investigation; not ASIC proof; [IPv4] |
 | C07 | `show routing-context vrf` | Current VRF routing-context | Resolves interpretation of unqualified commands; does not change context; [IPv4] |
 | C08 | `show vrf` | VRF, RD, protocols, routing state and interfaces | Establish relevant interface/VRF association; [IPv4] |
 
 For recursive-next-hop or VTEP resolution, use C01/C02 again with the address
-being resolved in place of `<destination>`, then C03/C04 for the final attached
+being resolved in place of `[destination]`, then C03/C04 for the final attached
 adjacency. C05/C06 can inspect a recursive dependency using the same substitution.
 Keep all ECMP paths in the returned prefix block; a prefix printed once can have
 several following next-hop lines. Read the returned route legend rather than
@@ -60,17 +62,17 @@ the baseline contract is the relevant text observations above.
 
 | ID | Command template | Relevant text observations | Limits/source |
 | --- | --- | --- | --- |
-| C10 | `show mac address-table address <mac> vlan <vlan>` | VLAN, MAC, entry type, port; moves/last move if returned | Software MAC state in the effective VLAN; [L2] |
-| C11 | `show vlan <vlan>` | VLAN status and member ports | Membership alone does not establish STP eligibility; [L2] |
-| C12 | `show interfaces <interface> switchport` | Switchport, administrative/operational mode, access/native VLAN, enabled trunk VLANs | Correlate with active VLAN/STP state; [Interfaces] |
-| C13 | `show spanning-tree vlan <vlan>` | Per-port role and forwarding/blocking state | Use only on the applicable bridge domain; [L2] |
+| C10 | `show mac address-table address [mac] vlan [vlan]` | VLAN, MAC, entry type, port; moves/last move if returned | Software MAC state in the effective VLAN; [L2] |
+| C11 | `show vlan [vlan]` | VLAN status and member ports | Membership alone does not establish STP eligibility; [L2] |
+| C12 | `show interfaces [interface] switchport` | Switchport, administrative/operational mode, access/native VLAN, enabled trunk VLANs | Correlate with active VLAN/STP state; [Interfaces] |
+| C13 | `show spanning-tree vlan [vlan]` | Per-port role and forwarding/blocking state | Use only on the applicable bridge domain; [L2] |
 | C14 | `show port-channel dense` | Aggregate, active member interfaces and legend/flags | Candidate member set, not a per-flow member observation; [Interfaces] |
 | C15 | `show lacp peer` | Member port, peer system/port identity and LACP state when returned | LACP state alone does not prove distributing/collecting or packet delivery; [Interfaces] |
-| C16 | `show interfaces <interface>` | Link/line protocol, MTU, packets/errors/discards when returned | Shared counters; compare timestamps/deltas rather than attributing totals to the flow; [Interfaces] |
-| C20 | `show vxlan address-table address <mac> vlan <vlan>` | VLAN, MAC, entry type, interface and VTEP association(s) | Remote software MAC mapping, not hardware installation; [VXLAN] |
-| C21 | `show vxlan vni <vni>` | VLAN or VRF mapping and VNI state/type when returned | Mapping interpretation depends on L2/L3 VNI and supplied IRB model; [VXLAN] |
-| C22 | `show bgp evpn route-type mac-ip <mac>` | Type-2 route, route status, next-hop VTEP; VNI/RT/router-MAC if returned | Control-plane evidence; inspect matching VLAN/VNI/import context; [EVPN] |
-| C23 | `show bgp evpn route-type ip-prefix <prefix> detail` | Type-5 prefix, status, next-hop VTEP, route targets and router-MAC/VNI if returned | Control-plane evidence; correlate with active tenant route; [EVPN] |
+| C16 | `show interfaces [interface]` | Link/line protocol, MTU, packets/errors/discards when returned | Shared counters; compare timestamps/deltas rather than attributing totals to the flow; [Interfaces] |
+| C20 | `show vxlan address-table address [mac] vlan [vlan]` | VLAN, MAC, entry type, interface and VTEP association(s) | Remote software MAC mapping, not hardware installation; [VXLAN] |
+| C21 | `show vxlan vni [vni]` | VLAN or VRF mapping and VNI state/type when returned | Mapping interpretation depends on L2/L3 VNI and supplied IRB model; [VXLAN] |
+| C22 | `show bgp evpn route-type mac-ip [mac]` | Type-2 route, route status, next-hop VTEP; VNI/RT/router-MAC if returned | Control-plane evidence; inspect matching VLAN/VNI/import context; [EVPN] |
+| C23 | `show bgp evpn route-type ip-prefix [prefix] detail` | Type-5 prefix, status, next-hop VTEP, route targets and router-MAC/VNI if returned | Control-plane evidence; correlate with active tenant route; [EVPN] |
 
 MAC and VXLAN address-table filters use the **local VLAN**; establish its wire-tag
 mapping first. `show vxlan address-table` has no verified VNI filter here; use
@@ -104,16 +106,15 @@ does not make identical VLAN/VRF operands valid on every device.
 
 ## Hardware evidence
 
-There is no hardware command template in this registry. A route, neighbor,
-MAC/VXLAN table or capacity total cannot prove a matching ASIC entry. Virtual
-EOS environments cannot validate physical ASIC programming. When hardware
-proof is required, verify read-only syntax, output meaning and entry scope for
-the exact EOS release and SKU/ASIC before requesting it. Unsupported or
-unverified hardware inspection leaves ASIC programming **not proven**.
+Read [platform hardware evidence](hardware-evidence.md) for the in-scope family
+profiles, exact public command examples, model/card restrictions, required
+prerequisites and scope gaps. Select the hardware branch only after identifying
+the forwarding ASICs. No family name makes a command universally supported.
 
-Even an observed hardware entry does not show which ECMP/LACP member carried a
-packet or establish receiver delivery. Those claims require supplied,
-flow-specific observations with a matching time window.
+Hardware identity and capacity are context. A platform-reported entry can be
+software/agent state; verify hardware-source semantics before a programming
+claim. It is not necessarily fresh ASIC readback; an empty exception view does
+not prove an entry exists. Existing hardware-counter activity is not unique-flow or receiver proof.
 
 ## Public references
 
