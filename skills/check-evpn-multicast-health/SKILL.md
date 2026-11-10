@@ -1,5 +1,4 @@
 ---
-author: Matthieu Tache
 name: check-evpn-multicast-health
 description: Audit EVPN multicast health on Arista EOS devices via the eos MCP server. Covers Layer 2 optimized multicast with IMET/SMET/IGMP proxy, Layer 3 EVPN multicast IRB/OISM with SBD and S-PMSI, ingress replication versus underlay PIM-SSM, overlay-to-underlay encap/decap mappings, IGMP snooping EVPN groups, and PIM External Gateway DR state. Read-only - does not modify any device.
 trigger: |
@@ -55,7 +54,9 @@ show multicast ipv4 evpn decap joined
 show bgp evpn sanity detail
 ```
 
-If a command is unsupported on the EOS version or the feature is not configured, record it as "not present" and continue. Do not treat unsupported output as a failure by itself.
+Record unsupported commands, transport failures, empty output, and features
+confirmed not configured separately. An unsupported command is unavailable
+evidence, not proof that the feature is absent; retain its impact on coverage.
 
 ### Parsing the overview
 
@@ -242,7 +243,8 @@ SMET routes for OISM are VRF/SBD-scoped. If SMETs are VLAN-scoped in a design th
 Flags to notice:
 - `S` - shortest path tree.
 - `R` - rendezvous point tree.
-- `P` - programmed.
+- `P` - interpret only from the observed release's flag legend; it is not
+  proof of every replica or receiver delivery.
 - `V` - source reachable via EVPN tenant domain.
 
 **RP and IGMP in the tenant VRF**
@@ -312,21 +314,27 @@ For a given `(S,G)`:
 
 ## Phase 6 - Hardware forwarding checks (only if needed)
 
-Run platform-specific checks only when software/control-plane state looks correct but traffic still fails, or when the user asks for hardware programming validation.
+Use [check-multicast-forwarding-resources](../check-multicast-forwarding-resources/SKILL.md)
+when traffic still fails despite consistent signaling, when an OIF is missing,
+or when resource/programming state is requested. Pass the exact EOS/SKU/ASIC,
+VRF/VNI, role, expected outputs and the mappings established above:
 
-```
-show platform trident vxlan multicast tunnel detail
-show platform trident exact-match multicast vxlan underlay
-show hardware resource vxlanv4UnderlayMcastTable agent *
-show platform fap vxlan vtep encapsulation multicast
-```
+- Tenant `(S,G,VRF,VNI)` and underlay `(source VTEP, encap group, VRF)` remain
+  separate. State ingress replication versus underlay multicast explicitly.
+- Compare complete expected/MRIB/MFIB outputs after SBD/tunnel, Port-Channel
+  and DR/pruning normalization. A route reported as programmed does not resolve
+  a missing output or prove receiver delivery.
+- Use the new skill's [public command matrix](../check-multicast-forwarding-resources/references/commands.md)
+  for applicable resource and counter views. This workflow establishes no
+  dedicated VXLAN multicast ASIC-table command or universal effective-profile
+  view. Keep that gap visible rather than selecting an uncorroborated command
+  from a platform name.
+- Qualify every SKU/release separately, including 7050X3/Trident3 versus
+  7050X4/Trident4. Do not inherit capacity values, table names, or JSON fields.
 
-Use the command that matches the platform family:
-- Trident3 / 7050X3 / CCS-720XP: `show platform trident ...`
-- Trident4 / 7050X4 variants: `show hardware resource vxlanv4UnderlayMcastTable agent *`
-- Jericho / 7280R2: `show platform fap vxlan vtep encapsulation multicast`
-
-Do not run all platform commands blindly across a large group. Unsupported platform commands are noisy and can distract from the operational finding.
+Keep IMET/SMET/S-PMSI/OISM/PEG and encap/decap conclusions in this skill; report
+node resource alarms, flow-attributable mismatches and measured delivery as
+separate findings.
 
 ## Quick decision tree
 

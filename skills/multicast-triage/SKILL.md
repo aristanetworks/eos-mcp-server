@@ -1,5 +1,4 @@
 ---
-author: Sakti Arunachalam
 name: multicast-triage
 description: Triage Arista EOS multicast symptoms and route the investigation to IGMP, PIM, EVPN, flow, bandwidth, or controller diagnostics. Read-only.
 trigger: |
@@ -42,12 +41,14 @@ IGMP/IPv4 PIM/MFIB are not interchangeable with MLD/IPv6 multicast views.
 ## Initial evidence
 
 On the receiver switch, use one `eos_run_show` call with the commands relevant
-to the symptom:
+to the symptom. For the group-scoped IPv4 MRIB example, substitute `[group]`
+from runtime scope and select the source row locally; verify other VRF selectors
+independently:
 
 ```text
 show ip igmp membership
 show ip igmp snooping groups
-show ip mroute <group> <source>
+show ip mroute [group]
 show ip pim neighbor
 show ip pim rp
 show multicast fib ipv4 summary
@@ -57,7 +58,8 @@ show multicast fib ipv4 summary
 | --- | --- |
 | No IGMP membership or wrong receiver port | `check-igmp-health` or `multicast-flow-missing` |
 | Missing PIM neighbor, RP, or RPF path | `check-pim-health` or `multicast-routing` |
-| Mroute exists but MFIB/OIF is absent | `multicast-flow-missing` or `multicast-flow-drops` |
+| Mroute exists but MFIB/OIF is absent or incomplete, even if reported programmed | [multicast-flow-missing](../multicast-flow-missing/SKILL.md), then [check-multicast-forwarding-resources](../check-multicast-forwarding-resources/SKILL.md) |
+| IPMC/replication capacity alarm, profile uncertainty, or unavailable counters | [check-multicast-forwarding-resources](../check-multicast-forwarding-resources/SKILL.md) |
 | Intermittent loss, leave/query churn, or fastdrops | `multicast-flow-drops` |
 | Corruption, hardware/MMU/CoPP drops, or duplicate traffic | `multicast-flow-corrupt` |
 | Double or reduced bandwidth | `multicast-bandwidth` when available |
@@ -71,10 +73,15 @@ dependent (`show ip mfib` versus `show multicast fib ipv4` variants). Keep
 IGMP snooping, PIM/MRIB, MFIB, and ASIC forwarding as separate evidence planes.
 CoPP drops primarily explain control-plane packet loss; they do not by
 themselves prove that programmed multicast data is being dropped.
-For hardware investigation, also capture forwarding/UFT profile, effective
-mroute/IPMC limits, hardware-resource and counter-engine availability, fastdrop
-state, and counter polling age. A missing or zero counter can mean unsupported
-route type, unavailable resources, stale polling, or fastdrop.
+For hardware investigation, use
+[check-multicast-forwarding-resources](../check-multicast-forwarding-resources/SKILL.md)
+to separate configured intent, reported allocation and effective profile, inspect
+IPMC/replication resources, compare complete normalized OIF sets, and qualify
+counters. A global resource alarm does not identify the failing flow; a false
+full flag does not prove complete replication. Missing/N/A counters or
+`Activity never` leave traffic evidence unknown until support, allocation and
+polling are established. Keep node resource state, flow anomalies and receiver
+delivery evidence separate.
 
 Report observed facts, hypotheses, selected route, missing evidence, and
 severity. Do not call an empty MFIB or IGMP table a forwarding failure without

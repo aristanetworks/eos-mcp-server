@@ -1,5 +1,4 @@
 ---
-author: Sakti Arunachalam
 name: multicast-flow-drops
 description: Diagnose intermittent EOS multicast loss caused by IGMP churn, PIM reconvergence, fastdrops, RPF changes, or forwarding transitions. Read-only.
 trigger: |
@@ -34,15 +33,22 @@ Also record EOS version, platform/SKU, ASIC family, VRF, and multicast model.
 Use `eos_list_inventory` when targets are unclear. Collect:
 
 Establish IPv4 versus IPv6 and L2 snooping versus L3 routed multicast first.
-For hardware counters, record forwarding/UFT profile, effective mroute/IPMC
-limits, resource/counter-engine availability, fastdrop state, and polling age.
+Use [check-multicast-forwarding-resources](../check-multicast-forwarding-resources/SKILL.md)
+for profile versus allocation evidence, IPMC/replication resources, complete
+normalized OIF comparisons, and counter support/allocation/polling checks.
+Keep resource alarms on the node separate from anomalies attributable to the
+selected flow; missing/N/A counters and `Activity never` are not zero traffic.
+
+Use text output for these applicable IPv4 views. Substitute square-bracket
+placeholders from runtime scope; select the source locally from the group-scoped
+MRIB response and verify non-default VRF selectors before comparing views.
 
 ```text
 show ip igmp snooping counters
 show ip igmp snooping groups detail
 show igmp snooping querier
-show ip mroute <group> <source>
-show multicast fib ipv4 <group> <source>
+show ip mroute [group]
+show multicast fib ipv4 [group] [source]
 show multicast fib ipv4 summary
 show ip pim neighbor
 show ip pim upstream joins
@@ -66,9 +72,11 @@ already available; do not enable monitoring or tracing automatically.
   snooping issues to `check-igmp-health`.
 - PIM neighbor expiry, join/prune cycling, or changing RPF/IIF indicates a
   control-plane or routing event; route to `check-pim-health` as appropriate.
-- MFIB fastdrops, interface/hardware drops, or replication drops indicate a
-  forwarding/resource issue only when correlated to the affected interface,
-  VLAN/VRF, `(S,G)`, and time window.
+- Correlate selected-route fastdrops, interface/hardware drops, replication
+  drops or partial OIF mismatches with the interface, VLAN/VRF, `(S,G)` and
+  time window. A global resource warning or route programming status alone
+  does not attribute loss. Consistent software state still needs receiver
+  evidence to establish delivery during the interval.
 - CoPP drops primarily indicate loss of IGMP/PIM/PTP control packets; they do
   not automatically prove that already-programmed multicast data is dropping.
 - Some hardware/resource views are platform and release dependent; verify that
