@@ -11,6 +11,7 @@ const BOOLEAN_VAR_KEYS = new Set([
 const NON_EMPTY_STRING_VAR_KEYS = new Set([
   "ansible_host",
   "ansible_user",
+  "mcp_user",
   "ansible_network_os",
   "mcp_platform",
   "mcp_password_env",

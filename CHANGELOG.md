@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Adds optional inventory `mcp_user` in canonical Ansible-style and simplified YAML. The MCP connection username resolves from effective `mcp_user`, then effective `ansible_user`, then `defaultConnection.ansibleUser`, so a shared inventory can keep its Ansible account while using a dedicated MCP account. Existing inventories retain their username behavior; supplied `mcp_user` values must be non-empty strings.
+
 ## 0.12.0-beta
 
 - **Behaviour change:** `eos_ping` and `eos_packet_capture` are now enabled by default. `mcp_diagnostics_allowed` and `mcp_packet_capture_allowed` default to `true` for read-allowed EOS hosts; set either to `false` (on a host, group or globally) to opt out. `mcp_read_allowed: false` and `mcp_diagnostics_allowed: false` still deny capture. Packet captures can reveal cleartext secrets, so disable `mcp_packet_capture_allowed` where that matters.

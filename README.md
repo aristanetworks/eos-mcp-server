@@ -380,6 +380,7 @@ all:
     eos:
       vars:
         ansible_user: admin
+        mcp_user: eos-mcp
         ansible_network_os: eos
         mcp_password_env: EOS_MCP_PASSWORD
       hosts:
@@ -395,6 +396,7 @@ all:
 version: 1
 vars:
   ansible_user: admin
+  mcp_user: eos-mcp
   mcp_password_env: EOS_MCP_PASSWORD
 
 hosts:
@@ -455,10 +457,32 @@ The read path currently uses these effective fields:
 
 - `ansible_host` - device hostname/IP for HTTPS connection
 - `ansible_httpapi_port` - optional eAPI port, default `443`
-- `ansible_user` - username
+- `mcp_user` - optional MCP-specific username, taking precedence over `ansible_user`
+- `ansible_user` - fallback username when `mcp_user` is absent
 - `mcp_password_env` - preferred password source, treated as an **environment variable name**
 - `ansible_password` - literal password source
 - `mcp_validate_certs` - optional boolean to disable TLS validation for a lab target; `ansible_httpapi_validate_certs` is also accepted as a fallback
+
+### Username resolution
+
+In both inventory formats, the MCP connection username is resolved in this order:
+
+1. Effective inventory `mcp_user`
+2. Effective inventory `ansible_user`
+3. Server config `defaultConnection.ansibleUser`
+
+`mcp_user` follows the existing inventory inheritance rules: host values override
+child-group values, child-group values override parent-group values, and group
+values override global values. Conflicting values at the same group depth are
+rejected. Each variable is inherited independently, so an inherited `mcp_user`
+also takes precedence over a host-level `ansible_user`.
+
+The examples above retain `ansible_user: admin` for Ansible and use
+`mcp_user: eos-mcp` for the MCP server. Export the password for the `eos-mcp`
+account in `EOS_MCP_PASSWORD`. Both username variables must be non-empty strings
+when supplied; invalid values fail inventory validation instead of falling back.
+Inventories without `mcp_user` keep their existing username resolution. The
+account must already exist on each device and have the required eAPI permissions.
 
 ### Password source rules
 
@@ -508,6 +532,7 @@ all:
     eos:
       vars:
         ansible_user: admin
+        mcp_user: eos-mcp
         ansible_network_os: eos
         mcp_password_env: EOS_MCP_PASSWORD
         mcp_validate_certs: false

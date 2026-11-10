@@ -14,7 +14,9 @@ export function resolveEapiConnection(
   const port =
     readPositiveInteger(effectiveVars.ansible_httpapi_port) ?? config.defaultConnection.ansibleHttpapiPort ?? 443;
   const username =
-    readNonEmptyString(effectiveVars.ansible_user) ?? config.defaultConnection.ansibleUser;
+    readNonEmptyString(effectiveVars.mcp_user) ??
+    readNonEmptyString(effectiveVars.ansible_user) ??
+    config.defaultConnection.ansibleUser;
 
   if (!username) {
     throw new AppError("connection_username_missing", `Missing effective username for host ${host.inventoryHostname}`);

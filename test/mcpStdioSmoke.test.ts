@@ -11,7 +11,7 @@ describe("stdio MCP smoke test", () => {
     async () => {
       const inventoryPath = await writeTempInventory([
         "vars:",
-        "  ansible_user: admin",
+        "  mcp_user: eos-mcp",
         "  ansible_password: secret",
         "hosts:",
         "  leaf1:",
