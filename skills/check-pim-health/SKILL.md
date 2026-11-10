@@ -119,7 +119,7 @@ For each entry, extract:
 4. **No mroute entries at all**: PIM joins aren't propagating — check RP reachability and neighbor adjacencies along the path
 5. **Persistent Z flags**: entries stuck in deletion — indicates a software state issue
 6. **Persistent T flags**: incoming interface keeps switching — indicates unicast route flapping affecting multicast
-7. **`show ip mroute count` — packet counts**: if receiver counts are exactly 2x sender counts, double delivery is occurring (common MLAG issue)
+7. **`show ip mroute count` — table statistics**: groups, sources and routes, not packets or hardware IPMC occupancy. Use valid per-flow packet counter deltas and receiver evidence to investigate duplicate delivery; table counts cannot establish it. See the [public command reference](https://www.arista.com/en/um-eos/eos-multicast-architecture#xx1151823).
 
 ## Phase 3 — Deep diagnostics (conditional)
 
@@ -195,11 +195,24 @@ BFD flags per neighbor:
 
 ### Hardware forwarding cross-check
 
-```
-show ip mfib
+For IPv4 in the default VRF, substitute runtime values for square-bracket
+placeholders, use text output, and select the source row from the MRIB response:
+
+```eos
+show ip mroute [group]
+show multicast fib ipv4 [group] [source]
 ```
 
-Compare with `show ip mroute` to detect software/hardware state divergence. If mroute shows an (S,G) entry with an oif list but mfib doesn't have it programmed, traffic will be software-forwarded (slow path) or silently dropped.
+The [public MFIB reference](https://www.arista.com/en/um-eos/eos-multicast-architecture#xx1209301)
+documents group then source. Verify other VRF selectors independently.
+Compare complete expected/MRIB/MFIB IIF/OIF sets, including partial omissions
+when the route exists or reports programmed. Normalize Port-Channel members,
+SVI/tunnel mappings and DR/pruning behavior; recheck possible convergence.
+A stable unexplained mismatch warrants investigation but does not alone prove
+ASIC contents, a software-forwarding fallback, resource causality, or delivery
+loss. Use [check-multicast-forwarding-resources](../check-multicast-forwarding-resources/SKILL.md)
+for profile/allocation, IPMC/replication capacity, counter validity, and separate
+node versus flow conclusions. Preserve PIM/RPF findings here.
 
 ### MLAG-specific checks
 
@@ -304,5 +317,6 @@ End with a one-line summary even when everything is healthy.
 - Don't call `mcp__eos__eos_run_show` once per device; use a group target
 - Don't dump the full mroute table by default — only inspect it when PIM adjacencies and RP are healthy but traffic isn't flowing
 - Don't confuse PIM health (L3 multicast routing) with IGMP snooping health (L2) — they're complementary; use check-igmp-health for L2
-- Don't treat "PIM not configured" errors as failures — not all devices run PIM; just omit them silently
+- Record confirmed PIM inapplicability separately from unsupported commands,
+  transport failures and missing expected state; retain each check in coverage.
 - Don't run `show ip mroute` on devices with very large multicast tables without warning — it can trigger lock contention on large-scale deployments

@@ -34,19 +34,23 @@ record EOS version, platform/SKU, ASIC family, and multicast model. Call
 `eos_list_inventory` if targets are unclear.
 
 Establish IPv4 versus IPv6 and L2 snooping versus L3 routed multicast before
-interpreting output. Capture forwarding/UFT profile, effective mroute/IPMC
-limits, hardware-resource availability, and counter age when hardware state is
-part of the diagnosis.
+interpreting output. When hardware state is part of the diagnosis, use
+[check-multicast-forwarding-resources](../check-multicast-forwarding-resources/SKILL.md)
+for configured versus effective profile evidence, IPMC/replication resources,
+complete OIF comparison, and counter validity. Retain unavailable limits.
 
-On the receiver, collect:
+On the receiver, collect applicable IPv4 views in text mode. Substitute square-
+bracket placeholders from runtime scope and select the source row locally from
+the group-scoped MRIB response. These examples use the default VRF; verify
+non-default VRF selectors independently before comparing views:
 
 ```text
 show ip igmp membership
 show ip igmp snooping groups
 show ip igmp snooping mrouter detail
-show ip mroute <group> <source>
+show ip mroute [group]
 show ip mroute count
-show multicast fib ipv4 <group> <source>
+show multicast fib ipv4 [group] [source]
 show multicast fib ipv4 summary
 ```
 
@@ -60,14 +64,18 @@ config only when configuration evidence is needed.
 2. Membership exists but no `(*,G)` or `(S,G)`: inspect PIM neighbors and
    `show ip pim config-sanity`. Check RP only for ASM or bidirectional PIM;
    SSM-only underlays do not require an RP. Then inspect the upstream path.
-3. Mroute has the wrong IIF/RPF: compare `show ip route <source>` with the
+3. Mroute has the wrong IIF/RPF: compare `show ip route [source]` with the
    mroute IIF and inspect PIM/RPF state.
 4. Mroute has an empty OIF: correlate membership, IGMP leave state, and
    PIM joins/prunes.
-5. Mroute has OIF but MFIB is absent or fastdrops are present: use the
-   platform/EOS-supported MFIB view (`show ip mfib` or a supported
-   `show multicast fib ipv4` form), correlate route counters and resources,
-   then escalate as a forwarding issue.
+5. Mroute has expected OIFs but MFIB is absent, has fewer/different outputs,
+   or the selected route is in fastdrop: compare complete expected/MRIB/MFIB
+   IIF/OIF sets in the same VRF and tuple. Normalize Port-Channel/member,
+   SVI/tunnel and DR/pruning differences, then recheck possible convergence.
+   Use [check-multicast-forwarding-resources](../check-multicast-forwarding-resources/SKILL.md)
+   for the resource and programming investigation. Route presence or a reported
+   `programmed=true` does not resolve a partial OIF mismatch. A stable mismatch
+   does not by itself prove an ASIC defect, resource causality, or receiver loss.
 6. Only some receivers fail: compare working and failing receivers and walk
    the shared upstream path.
 
@@ -75,4 +83,7 @@ For EVPN/VXLAN, route SMET/IMET/S-PMSI, EVPN proxy, VTEP, or OISM/SBD issues to
 `check-evpn-multicast-health`. For MCS flows, use the MCS skills.
 
 Report `(S,G)`, membership, mroute flags/IIF/OIF, RPF route, MFIB state,
-upstream evidence, the missing link in the chain, and safe next steps.
+upstream evidence, complete OIF differences, the missing link in the chain, and
+safe next steps. State node resource alarms separately from flow-attributable
+anomalies. Consistent software state leaves delivery unproven without receiver
+evidence.
