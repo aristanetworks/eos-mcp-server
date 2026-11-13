@@ -1,6 +1,7 @@
 import { AppError } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { normalizeShowCommand } from "../eapi/commands.js";
+import { normalizeEventMonitorSqlCommand } from "./eventMonitorSql.js";
 import { isPrivilegedShowCommand } from "./privilegedShow.js";
 import type { EosCommandResult } from "../eapi/types.js";
 import type { EosDeviceReader } from "../connection/eosDeviceReader.js";
@@ -41,6 +42,8 @@ export async function runShow(
   const commands = normalizeShowCommands(options.commands);
   enforceShowCommandLimit(config, commands.length);
   const runPrivileged = resolvePrivilegedRequest(config, commands);
+  // EOS serves no JSON for Privileged Show Commands, so `auto` would only waste a privileged JSON attempt per host.
+  const deviceOutputFormat = runPrivileged && options.outputFormat === "auto" ? "text" : options.outputFormat;
 
   return runTargetOperation<RunShowResult["results"][number], { requested_output_format: RunShowOptions["outputFormat"] }>(model, config, {
     target: options.target,
@@ -48,7 +51,7 @@ export async function runShow(
     ...readOperationLimits(config),
     ...(signal !== undefined ? { signal } : {}),
     run: async (host, signal) => {
-      const deviceResults = await reader.runShowCommands(host, commands, options.outputFormat, {
+      const deviceResults = await reader.runShowCommands(host, commands, deviceOutputFormat, {
         signal,
         includeRawEntries: options.includeRaw === true,
         ...(runPrivileged ? { enable: true } : {})
@@ -99,5 +102,5 @@ function normalizeShowCommands(commands: string[]): string[] {
     throw new AppError("show_commands_missing", "runShow requires at least one command");
   }
 
-  return commands.map((command) => normalizeShowCommand(command));
+  return commands.map((command) => normalizeEventMonitorSqlCommand(command) ?? normalizeShowCommand(command));
 }

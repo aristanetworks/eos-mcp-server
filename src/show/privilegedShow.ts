@@ -13,14 +13,7 @@ export type PrivilegedShowCommand = (typeof PRIVILEGED_SHOW_COMMANDS)[number];
  * Abbreviations such as `sh ev` never match, so they run unprivileged and fail on the device.
  */
 export function isPrivilegedShowCommand(command: string, allowedCommands: readonly PrivilegedShowCommand[]): boolean {
-  const commandWords = splitWords(command);
-
-  return allowedCommands.some((allowedCommand) => {
-    const allowedWords = splitWords(allowedCommand);
-    return allowedWords.every((allowedWord, wordIndex) => commandWords[wordIndex] === allowedWord);
-  });
-}
-
-function splitWords(text: string): string[] {
-  return text.trim().toLowerCase().split(/\s+/).filter((word) => word.length > 0);
+  const normalizedCommand = command.trim().toLowerCase().replace(/\s+/g, " ");
+  // Entries are lowercase with single spaces, so a string prefix plus a word boundary is a whole-word match.
+  return allowedCommands.some((allowedCommand) => normalizedCommand === allowedCommand || normalizedCommand.startsWith(`${allowedCommand} `));
 }

@@ -279,6 +279,78 @@ describe.runIf(INTEGRATION)("integration: EOS read-path tools", () => {
     ).rejects.toThrow(/section/i);
   }, 5_000);
 
+  describe("event monitor (ADR 0011)", () => {
+    async function eventMonitorRunning(): Promise<boolean> {
+      const statusResult = await runShow(
+        model,
+        config,
+        { target: SINGLE_HOST, commands: ["show event-monitor status route"], outputFormat: "auto" },
+        runner
+      );
+      const statusText = statusResult.results[0]?.command_results?.[0]?.output;
+      if (typeof statusText !== "string") {
+        throw new Error("expected text output from show event-monitor status");
+      }
+      return !statusText.includes("event-monitor not running");
+    }
+
+    it("runs event monitor status privileged as text across the group", async () => {
+      const result = await runShow(
+        model,
+        config,
+        { target: GROUP_NAME, commands: ["show event-monitor status"], outputFormat: "auto" },
+        runner
+      );
+
+      expect(result.summary.success_count).toBe(TOTAL_HOSTS);
+      for (const deviceResult of result.results) {
+        expect(deviceResult.actual_output_format).toBe("text");
+        expect(deviceResult.command_results?.[0]).toMatchObject({ privileged: true });
+        expect(deviceResult.command_results?.[0]?.output).toEqual(expect.stringContaining("Event Name"));
+      }
+    }, 60_000);
+
+    it("returns events when the monitor runs, or event_monitor_not_running when it is stopped", async () => {
+      const monitorRunning = await eventMonitorRunning();
+      const result = await runShow(
+        model,
+        config,
+        { target: SINGLE_HOST, commands: ["show event-monitor route match-time last-day limit 5"], outputFormat: "auto" },
+        runner
+      );
+
+      expect(result.results[0]).toMatchObject(
+        monitorRunning
+          ? { status: "success", command_results: [{ privileged: true }] }
+          : { status: "failed", error_code: "event_monitor_not_running" }
+      );
+    }, 30_000);
+
+    it("fails on the device without privileged mode when operators empty privilegedShowCommands", async () => {
+      const unprivilegedConfig = buildConfig({ privilegedShowCommands: [] });
+      const unprivilegedReader = new EapiDeviceReader(unprivilegedConfig, new EapiClient(), buildEapiSlots(unprivilegedConfig));
+      const result = await runShow(
+        model,
+        unprivilegedConfig,
+        { target: SINGLE_HOST, commands: ["show event-monitor status"], outputFormat: "text" },
+        unprivilegedReader
+      );
+
+      expect(result.results[0]?.status).toBe("failed");
+      expect(result.results[0]?.message).toMatch(/privileged mode required/);
+    }, 30_000);
+
+    it.each([
+      ["show event-monitor sqlite attach database '/mnt/flash/mcp_integration.db' as probe", "event_monitor_sqlite_rejected"],
+      ["show event-monitor sqlite vacuum into '/mnt/flash/mcp_integration.db'", "event_monitor_sqlite_rejected"],
+      ["show event-monitor route limit 2 | tee flash:mcp_integration.txt", "eos_input_invalid"]
+    ])("rejects %j before contacting the device", async (command, expectedCode) => {
+      await expect(
+        runShow(model, config, { target: SINGLE_HOST, commands: [command], outputFormat: "text" }, runner)
+      ).rejects.toMatchObject({ code: expectedCode });
+    }, 5_000);
+  });
+
   it("rejects non-show commands", async () => {
     await expect(
       runShow(

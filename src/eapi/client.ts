@@ -214,42 +214,41 @@ function throwIfJsonRpcError(payload: unknown): void {
   const code = typeof payload.error.code === "number" || typeof payload.error.code === "string" ? payload.error.code : "unknown";
   const data = payload.error.data;
   const details = data === undefined ? "" : `; data=${JSON.stringify(data)}`;
-  const errorCode = classifyJsonRpcErrorCode(message, data, code);
+  const { errorCode, hint } = classifyJsonRpcError(message, data, code);
   const jsonRpcText = `EOS eAPI JSON-RPC error ${String(code)}: ${message}${details}`;
-  const fullMessage = errorCode === "event_monitor_not_running" ? `${EVENT_MONITOR_NOT_RUNNING_SENTENCE} ${jsonRpcText}` : jsonRpcText;
-  throw new AppError(errorCode, fullMessage, {
+  throw new AppError(errorCode, hint === undefined ? jsonRpcText : `${hint} ${jsonRpcText}`, {
     jsonRpcCode: code,
     ...(data !== undefined ? { data } : {})
   });
 }
 
-function classifyJsonRpcErrorCode(message: string, data: unknown, code: number | string): string {
+export const EVENT_MONITOR_NOT_RUNNING_HINT =
+  "EOS Event Monitor is not running; an operator must enable it with the 'event-monitor' configuration command (this server never changes configuration).";
+
+/** EOS conditions named for every tool, matched (case-insensitively) against the per-command `errors` strings in JSON-RPC error data. */
+const KNOWN_EOS_ERRORS: ReadonlyArray<{ errorCode: string; signature: string; hint: string }> = [
+  { errorCode: "event_monitor_not_running", signature: "event-monitor not running", hint: EVENT_MONITOR_NOT_RUNNING_HINT }
+];
+
+function classifyJsonRpcError(message: string, data: unknown, code: number | string): { errorCode: string; hint?: string } {
   const haystacks = [message, ...(Array.isArray(data) ? data.filter((entry): entry is string => typeof entry === "string") : [])]
     .join(" ")
     .toLowerCase();
 
   if (haystacks.includes("json") || (code === 1003 && message.toLowerCase().includes("unconverted command"))) {
-    return "json_output_unavailable";
+    return { errorCode: "json_output_unavailable" };
   }
 
-  if (hasEventMonitorNotRunningError(data)) {
-    return "event_monitor_not_running";
-  }
-
-  return "eapi_json_rpc_error";
+  const commandErrorText = collectCommandErrors(data).join("\n").toLowerCase();
+  const knownError = KNOWN_EOS_ERRORS.find((candidate) => commandErrorText.includes(candidate.signature));
+  return knownError === undefined ? { errorCode: "eapi_json_rpc_error" } : { errorCode: knownError.errorCode, hint: knownError.hint };
 }
 
-function hasEventMonitorNotRunningError(data: unknown): boolean {
+function collectCommandErrors(data: unknown): string[] {
   if (!Array.isArray(data)) {
-    return false;
+    return [];
   }
-  return data.some((entry) => {
-    if (!isObject(entry) || !Array.isArray(entry.errors)) {
-      return false;
-    }
-    return entry.errors.some((errorText) => typeof errorText === "string" && errorText.toLowerCase().includes("event-monitor not running"));
-  });
+  return data.flatMap((entry) =>
+    isObject(entry) && Array.isArray(entry.errors) ? entry.errors.filter((errorText): errorText is string => typeof errorText === "string") : []
+  );
 }
-
-const EVENT_MONITOR_NOT_RUNNING_SENTENCE =
-  "EOS Event Monitor is not running; an operator must enable it with the 'event-monitor' configuration command (this server never changes configuration).";

@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import { isPrivilegedShowCommand, PRIVILEGED_SHOW_COMMANDS } from "../src/show/privilegedShow.js";
 
 describe("isPrivilegedShowCommand", () => {
-  const builtInCommands = PRIVILEGED_SHOW_COMMANDS;
-
   it.each([
     "show event-monitor",
     "show event-monitor route limit 5",
@@ -11,7 +9,7 @@ describe("isPrivilegedShowCommand", () => {
     "  show   event-monitor   status  ",
     "show event-monitor sqlite select * from route"
   ])("matches %j", (command) => {
-    expect(isPrivilegedShowCommand(command, builtInCommands)).toBe(true);
+    expect(isPrivilegedShowCommand(command, PRIVILEGED_SHOW_COMMANDS)).toBe(true);
   });
 
   it.each([
@@ -24,7 +22,7 @@ describe("isPrivilegedShowCommand", () => {
     "show",
     ""
   ])("does not match %j", (command) => {
-    expect(isPrivilegedShowCommand(command, builtInCommands)).toBe(false);
+    expect(isPrivilegedShowCommand(command, PRIVILEGED_SHOW_COMMANDS)).toBe(false);
   });
 
   it("matches nothing when operators narrow the list to empty", () => {
