@@ -1,7 +1,12 @@
 import { z } from "zod";
+import { PRIVILEGED_SHOW_COMMANDS } from "../show/privilegedShow.js";
 import { diagnosticsConfigSchema } from "./diagnostics.js";
 
 const eapiVersionSchema = z.union([z.literal(1), z.literal("latest")]);
+/** A subset of the built-in Privileged Show Commands: operators may narrow the list, never widen it (ADR 0011). */
+const privilegedShowCommandsSchema = z
+  .array(z.enum(PRIVILEGED_SHOW_COMMANDS))
+  .refine((commands) => new Set(commands).size === commands.length, { message: "Duplicate privileged show commands are not allowed" });
 
 export const serverConfigFileSchema = z
   .object({
@@ -21,6 +26,7 @@ export const serverConfigFileSchema = z
     maxResponseSizeBytes: z.number().int().positive().optional(),
     eapiVersion: eapiVersionSchema.optional(),
     secretEnvPrefixes: z.array(z.string().min(1)).optional(),
+    privilegedShowCommands: privilegedShowCommandsSchema.optional(),
     defaultConnection: z
       .object({
         ansibleUser: z.string().min(1).optional(),
@@ -52,6 +58,8 @@ export const resolvedServerConfigSchema = z
     maxResponseSizeBytes: z.number().int().positive().default(1_048_576),
     eapiVersion: eapiVersionSchema.default("latest"),
     secretEnvPrefixes: z.array(z.string().min(1)).default(["EOS_MCP_"]),
+    /** Built-in privileged show commands eos_run_show may run in privileged mode; operators may narrow, never widen (ADR 0011). */
+    privilegedShowCommands: privilegedShowCommandsSchema.default([...PRIVILEGED_SHOW_COMMANDS]),
     defaultConnection: z
       .object({
         ansibleUser: z.string().min(1).optional(),

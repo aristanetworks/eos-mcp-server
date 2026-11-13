@@ -214,20 +214,64 @@ function throwIfJsonRpcError(payload: unknown): void {
   const code = typeof payload.error.code === "number" || typeof payload.error.code === "string" ? payload.error.code : "unknown";
   const data = payload.error.data;
   const details = data === undefined ? "" : `; data=${JSON.stringify(data)}`;
-  throw new AppError(classifyJsonRpcErrorCode(message, data, code), `EOS eAPI JSON-RPC error ${String(code)}: ${message}${details}`, {
+  const { errorCode, hint } = classifyJsonRpcError(message, data, code);
+  const jsonRpcText = `EOS eAPI JSON-RPC error ${String(code)}: ${message}${details}`;
+  throw new AppError(errorCode, hint === undefined ? jsonRpcText : `${hint} ${jsonRpcText}`, {
     jsonRpcCode: code,
     ...(data !== undefined ? { data } : {})
   });
 }
 
-function classifyJsonRpcErrorCode(message: string, data: unknown, code: number | string): string {
-  const haystacks = [message, ...(Array.isArray(data) ? data.filter((entry): entry is string => typeof entry === "string") : [])]
-    .join(" ")
-    .toLowerCase();
+export const EVENT_MONITOR_NOT_RUNNING_HINT =
+  "EOS Event Monitor is not running; an operator must start it with the 'event-monitor' configuration command (this server never changes configuration).";
 
-  if (haystacks.includes("json") || (code === 1003 && message.toLowerCase().includes("unconverted command"))) {
-    return "json_output_unavailable";
+/**
+ * EOS conditions named for every tool. An entry matches when the JSON-RPC error code equals `jsonRpcCode` and its
+ * `signature` appears (case-insensitively) in the per-command `errors` strings of the JSON-RPC error data.
+ */
+const KNOWN_EOS_ERRORS: ReadonlyArray<{ errorCode: string; jsonRpcCode: number; signature: string; hint: string }> = [
+  {
+    errorCode: "event_monitor_not_running",
+    jsonRpcCode: 1000,
+    signature: "event-monitor not running",
+    hint: EVENT_MONITOR_NOT_RUNNING_HINT
+  }
+];
+
+function classifyJsonRpcError(message: string, data: unknown, code: number | string): { errorCode: string; hint?: string } {
+  const { topLevelStrings, commandErrorStrings } = extractJsonRpcErrorDataStrings(data);
+  const messageAndTopLevelText = [message, ...topLevelStrings].join(" ").toLowerCase();
+
+  if (messageAndTopLevelText.includes("json") || (code === 1003 && message.toLowerCase().includes("unconverted command"))) {
+    return { errorCode: "json_output_unavailable" };
   }
 
-  return "eapi_json_rpc_error";
+  const commandErrorText = commandErrorStrings.join("\n").toLowerCase();
+  const knownError = KNOWN_EOS_ERRORS.find(
+    (candidate) => code === candidate.jsonRpcCode && commandErrorText.includes(candidate.signature)
+  );
+  return knownError === undefined ? { errorCode: "eapi_json_rpc_error" } : { errorCode: knownError.errorCode, hint: knownError.hint };
+}
+
+/**
+ * Walks JSON-RPC error `data` once, separating bare string entries from the strings in each per-command entry's `errors` array.
+ */
+function extractJsonRpcErrorDataStrings(data: unknown): { topLevelStrings: string[]; commandErrorStrings: string[] } {
+  const topLevelStrings: string[] = [];
+  const commandErrorStrings: string[] = [];
+  if (!Array.isArray(data)) {
+    return { topLevelStrings, commandErrorStrings };
+  }
+  for (const dataEntry of data) {
+    if (typeof dataEntry === "string") {
+      topLevelStrings.push(dataEntry);
+    } else if (isObject(dataEntry) && Array.isArray(dataEntry.errors)) {
+      for (const errorText of dataEntry.errors) {
+        if (typeof errorText === "string") {
+          commandErrorStrings.push(errorText);
+        }
+      }
+    }
+  }
+  return { topLevelStrings, commandErrorStrings };
 }

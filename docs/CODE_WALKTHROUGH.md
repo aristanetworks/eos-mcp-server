@@ -61,6 +61,8 @@ The core read behavior is implemented as service modules:
 - `src/probe/probeDevices.ts`: runs `show version` to verify readiness.
 - `src/eapi/commands.ts`: normalizes single-line EOS command inputs, rejects risky CLI modifiers/metacharacters, and validates `show` command boundaries.
 - `src/show/runShow.ts`: validates strict `show` commands and runs them with `auto`, `json`, or `text` behavior.
+- `src/show/privilegedShow.ts`: the built-in Privileged Show Command list and whole-word matching; `src/show/runShow.ts` makes the all-or-nothing privilege decision ([ADR 0011](adr/0011-event-monitor-queries.md)).
+- `src/show/eventMonitorSql.ts`: the guard for `show event-monitor sqlite` statements, which replaces the generic metacharacter check for that command only.
 - `src/logging/loggingQuery.ts`: validates Log Severity and message-count inputs, applies logging defaults/limits, and builds the EOS logging command.
 - `src/logging/showLogging.ts`: executes the bounded Logging Query and returns unparsed log text.
 - `src/facts/getFacts.ts`: collects fixed facts from `show version`.

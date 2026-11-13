@@ -1,6 +1,6 @@
 import { AppError } from "../core/errors.js";
 
-const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
+export const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
 const RISKY_CLI_META_PATTERN = /[|><;&`$]/;
 
 export function normalizeSingleLineEosInput(value: string, label: string): string {

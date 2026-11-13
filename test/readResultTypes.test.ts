@@ -9,7 +9,7 @@ import type { RunShowResult } from "../src/show/runShow.js";
 type Entry = RunShowResult["results"][number];
 
 it("requires read payload fields on success and error details on failure", () => {
-  expectTypeOf<Extract<Entry, { status: "success" }>["command_results"]>().toEqualTypeOf<EosCommandResult[]>();
+  expectTypeOf<Extract<Entry, { status: "success" }>["command_results"]>().toEqualTypeOf<Array<EosCommandResult & { privileged?: true }>>();
   expectTypeOf<Extract<Entry, { status: "success" }>["actual_output_format"]>().toEqualTypeOf<"json" | "text">();
   expectTypeOf<Extract<Entry, { status: "failed" }>["command_results"]>().toEqualTypeOf<undefined>();
   expectTypeOf<Extract<Entry, { status: "failed" }>["error_code"]>().toEqualTypeOf<string>();

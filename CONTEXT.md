@@ -64,6 +64,34 @@ _Avoid_: Severity class, exact severity
 A bounded request for EOS log messages, defined by a minimum **Log Severity** and a message-count limit.
 _Avoid_: Log search, logging command
 
+**Event Monitor**:
+The EOS facility that records changes to device tables, such as routes, MAC addresses and ARP entries, in an on-device event database. It is stopped by default, and starting it is configuration.
+_Avoid_: Event log, logging
+
+**Event Type**:
+One kind of change the **Event Monitor** records, each kept in its own table, such as route, mac or lacp. An Event Type can be disabled while the **Event Monitor** runs.
+_Avoid_: Log type, event table
+
+**Event Filter**:
+A pattern that one field of a recorded event must match, where `%` matches any run of characters and `_` matches any single character.
+_Avoid_: Regex, match expression
+
+**Event Query**:
+A bounded read of recorded events of one **Event Type**, narrowed by **Event Filters**, a recent time window and a row limit.
+_Avoid_: Event search, event log query
+
+**Event SQL Query**:
+A single read-only SQL statement evaluated against the **Event Monitor**'s event database, for questions an **Event Query** cannot express, such as joins across **Event Types**.
+_Avoid_: Raw SQL, sqlite command
+
+**Privileged Show Command**:
+A show command that EOS runs only in privileged mode and that the server has vetted to run that way on a caller's behalf. The server, never the caller, decides which commands qualify.
+_Avoid_: Enable command, elevated show
+
+**Event Monitor Status**:
+Whether the **Event Monitor** is running and, for each **Event Type**, whether it is enabled and how many events it holds.
+_Avoid_: Event monitor health
+
 **EOS Command Runner**:
 The module that executes validated EOS commands through eAPI and returns command-aligned results to read-only tools.
 _Avoid_: eAPI helper, command service
@@ -80,6 +108,11 @@ _Avoid_: Raw result, raw output
 - An unfilled **Capture Finding** says fewer matching packets arrived than requested; it does not say none arrived.
 - A **Log Severity** filter includes messages at that severity and more urgent severities.
 - A **Logging Query** has exactly one minimum **Log Severity** and one message-count limit.
+- An **Event Query** reads exactly one **Event Type**; an **Event SQL Query** may read several.
+- When the **Event Monitor** is stopped, every **Event Query** and **Event SQL Query** fails, but **Event Monitor Status** still answers and reports it stopped.
+- Every **Event Query** and **Event SQL Query** is a **Privileged Show Command**. A request either consists only of **Privileged Show Commands** or contains none.
+- Operators can narrow the set of **Privileged Show Commands** but never extend it.
+- **Event Monitor** records and **Logging Query** results are distinct: one records table changes, the other returns syslog messages.
 - The **EOS Command Runner** returns command-aligned results: one result for each requested EOS command.
 - When requested, **Raw eAPI Payload** detail is attached to each command-aligned result rather than returned as an undifferentiated device-level blob.
 
@@ -91,3 +124,5 @@ _Avoid_: Raw result, raw output
 ## Flagged ambiguities
 
 - "severity" could mean exact severity or minimum threshold — resolved: logging tool filters use **Log Severity** as a minimum threshold.
+- EOS help calls **Event Filter** values "regular expressions", but they behave as SQL `LIKE` patterns (`10.10.10.%`) — resolved: the glossary uses **Event Filter**, defined by `%` and `_` wildcards.
+- "event-monitor disabled" could mean the **Event Monitor** is stopped or that one **Event Type** is disabled while it runs — resolved: say "stopped" for the **Event Monitor** and "disabled" for an **Event Type**.

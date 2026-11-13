@@ -150,6 +150,8 @@ maxShowCommandsPerRequest: 5
 maxLoggingMessagesPerRequest: 1000
 maxResponseSizeBytes: 1048576
 eapiVersion: latest
+privilegedShowCommands:
+  - show event-monitor
 diagnostics:
   defaultPingCount: 3
   maxPingCount: 10
@@ -192,6 +194,7 @@ Supported config fields:
 - `maxLoggingMessagesPerRequest`
 - `maxResponseSizeBytes`
 - `eapiVersion`
+- `privilegedShowCommands` — Privileged Show Commands `eos_run_show` may run with `enable` (default `["show event-monitor"]`); may only be narrowed, `[]` disables, other entries fail config loading
 - `diagnostics` — optional limits/timeouts mapping; see [Network diagnostics](docs/DIAGNOSTICS.md#settings-and-defaults)
 - `secretEnvPrefixes`
 - `defaultConnection.ansibleUser`
@@ -200,6 +203,8 @@ Supported config fields:
 - `defaultConnection.mcpPasswordEnv`
 
 For read tools, `readTimeoutMs` applies to each device eAPI request. `overallOperationTimeoutMs`, when set, bounds the whole read-tool call and aborts in-flight device requests once the limit is reached. `maxLoggingMessagesPerRequest` caps `eos_show_logging.message_count` and defaults to 1000. `maxResponseSizeBytes` limits both the buffered HTTP response from each device and the final serialized result of device read operations. `eapiVersion` selects the eAPI JSON output schema sent as the `runCmds` `version` parameter: `latest` (the default) returns the current schema for each command, and `1` pins the original schema for consumers that depend on it. It only affects JSON output, so `eos_get_running_config` and `eos_show_logging` are unchanged.
+
+`eos_run_show` runs unprivileged, except for a request made up entirely of Privileged Show Commands, which runs with `enable`. The server alone holds that list (currently `show event-monitor`, matched on whole words, case-insensitively), and `privilegedShowCommands` can only narrow it. Each result in a privileged request carries `privileged: true`, and `eos_get_server_info` reports the setting under `capabilities.privileged_show_commands`. See [ADR 0011](docs/adr/0011-event-monitor-queries.md).
 
 `eos_ping` and `eos_packet_capture` use their own configurable `diagnostics` timeouts and concurrency (per device, under a per-server ceiling), while sharing `maxReadTargets` and `maxResponseSizeBytes`. Omitted diagnostic settings retain the defaults shown above; invalid or contradictory settings fail validation. Ping is enabled by default for read-allowed EOS hosts; `mcp_diagnostics_allowed: false` denies it. Ping has no automatic retries. Response IDs and protocol envelopes are validated before output is accepted. When a ping's remote completion is unknown (timeout, cancellation, lost connection), its slot is held for `commandTimeoutMs` and then freed automatically; inspect the running server's `eos_get_server_info.diagnostics.capacity`. Capacity lives in memory, so several MCP servers can use the same inventory at once. An uncertain packet capture is held for its own window plus 2 s instead. See [Network diagnostics](docs/DIAGNOSTICS.md), including the distinction between a reply timeout, command budget, and remote process termination.
 
@@ -659,6 +664,8 @@ Rules:
 - exactly one of `command` or `commands`
 - every command is trimmed, must be a single line, and must be `show` or begin with `show`
 - commands with CLI output modifiers or shell metacharacters such as `|`, `>`, `<`, `;`, `&`, backticks, or `$` are rejected before device contact
+- `show event-monitor ...` commands run in privileged mode; a request must contain only such commands or none (`show_command_privilege_mixed` otherwise), and callers cannot request privileged mode
+- `show event-monitor sqlite <statement>` (or any abbreviation of `sqlite`, such as `sq`) accepts one `SELECT` or `WITH` statement (one trailing `;` allowed); anything else is rejected with `event_monitor_sqlite_rejected`
 - `output_format` is one of `auto`, `json`, `text`
 - `include_raw` optionally attaches each command's raw eAPI result entry as `raw_entry` inside `command_results`
 
@@ -678,6 +685,15 @@ Input examples:
   "commands": ["show version", "show interfaces status"],
   "output_format": "json",
   "include_raw": false
+}
+```
+
+Event Monitor example. The monitor is stopped by default on EOS and the server never starts it, so an operator must start it first; until then these fail with `event_monitor_not_running`. Output is text only, has no default row limit (add `limit N`, `match-time last-hour` or SQL `LIMIT`), and filters are `%`-wildcard patterns:
+
+```json
+{
+  "target": "leaf1",
+  "command": "show event-monitor route match-ip 10.1.% limit 50"
 }
 ```
 
@@ -759,6 +775,10 @@ For `eos_get_running_config`, group targets require a `section` value.
 ### Command or section rejected as invalid
 
 `eos_run_show` accepts only single-line `show` commands. `eos_get_running_config.section` must also be a single-line selector. Newlines, other control characters, CLI output modifiers, and shell metacharacters are rejected before any device contact.
+
+### `event_monitor_not_running`
+
+The EOS **Event Monitor** is stopped by default and this server never starts it. An operator must start it with `event-monitor` in config mode before `show event-monitor` queries return events.
 
 ### Response too large
 
