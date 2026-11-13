@@ -1,5 +1,4 @@
 ---
-author: Matthieu Tâche
 name: check-evpn-health
 description: Audit EVPN health on Arista EOS devices via the eos MCP server. Covers BGP EVPN sessions, VXLAN data plane, VNI mappings, remote MAC/VTEP tables, EVPN multihoming (ethernet-segment, DF election), EVPN multicast (IMET, SMET, ingress replication vs underlay PIM-SSM), EVPN gateway (type-5 IP prefix, symmetric/asymmetric IRB, inter-VRF routing), ARP suppression, MAC mobility, and host-flap detection. Read-only — does not modify any device.
 trigger: |

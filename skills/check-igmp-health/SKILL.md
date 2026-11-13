@@ -1,5 +1,4 @@
 ---
-author: Matthieu Tâche
 name: check-igmp-health
 description: Audit IGMP snooping health on Arista EOS devices via the eos MCP server. Reports global snooping state, per-VLAN status, querier election, group membership, multicast router ports, IGMP counters, and flags common failures including MLAG sync issues, VXLAN/EVPN multicast edge cases, and missing queriers. Read-only — does not modify any device.
 trigger: |
