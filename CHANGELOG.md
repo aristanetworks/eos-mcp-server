@@ -2,7 +2,10 @@
 
 ## Unreleased
 
+## 0.13.1-beta
+
 - Adds optional inventory `mcp_user` in canonical Ansible-style YAML only. Simplified inventories reject `mcp_user` and retain their existing `ansible_user`/server-default username resolution. The MCP connection username resolves from effective `mcp_user`, then effective `ansible_user`, then `defaultConnection.ansibleUser`, so a shared inventory can keep its Ansible account while using a dedicated MCP account. Inventories without `mcp_user` retain their username behavior; supplied `mcp_user` values must be non-empty strings.
+
 ## 0.13.0-beta
 
 - `eos_run_show` now runs `show event-monitor` commands (**Event Queries**, **Event SQL Queries** and **Event Monitor Status**) in EOS privileged mode, closing issue #20. No new tool. The server alone decides: a built-in list of **Privileged Show Commands**, currently `show event-monitor`, in `src/show/privilegedShow.ts`, matched on whole words case-insensitively (abbreviations do not match). A request runs with `enable` only when every command is on the list; a mix is rejected with `show_command_privilege_mixed`. Callers have no input that requests privileged mode, and each command result in a privileged request carries `privileged: true`. See [ADR 0011](docs/adr/0011-event-monitor-queries.md).
