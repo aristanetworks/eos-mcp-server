@@ -13,7 +13,7 @@ EOS MCP Server is an ESM TypeScript MCP server that provides inventory-scoped, r
 | `eos_probe_devices` | Connectivity, authentication, and harmless command check |
 | `eos_ping` | Bounded active ping diagnostics on EOS to one or more destinations, enabled by default with inventory opt-out |
 | `eos_packet_capture` | Bounded control-plane packet capture on one interface, enabled by default with inventory opt-out, returning tcpdump's line per packet |
-| `eos_run_show` | Validated single-line `show` commands |
+| `eos_run_show` | Validated single-line `show` commands, including `show event-monitor` queries |
 | `eos_show_logging` | Bounded logging retrieval |
 | `eos_get_facts` | Fixed device facts |
 | `eos_get_running_config` | Running configuration retrieval, with a required section selector for groups |
@@ -48,7 +48,9 @@ Canonical Ansible-style YAML and simplified YAML are supported. Structural keys 
 
 ## Command safety
 
-`eos_run_show` accepts only trimmed, single-line commands beginning with `show`. It rejects control characters, shell metacharacters, and CLI output modifiers. `eos_get_running_config.section` uses the same single-line restrictions. Enable mode is used only for operations that need it, currently running configuration and ping. Diagnostics accept typed, validated arguments, not arbitrary command strings; the show-only validator is not relaxed.
+`eos_run_show` accepts only trimmed, single-line commands beginning with `show`. It rejects control characters, shell metacharacters, and CLI output modifiers. `eos_get_running_config.section` uses the same single-line restrictions. Enable mode is used only for operations that need it, currently running configuration, ping, and `eos_run_show` requests made up entirely of Privileged Show Commands. Diagnostics accept typed, validated arguments, not arbitrary command strings; the show-only validator is not relaxed.
+
+Privileged Show Commands are a built-in list in the server, currently `show event-monitor`, matched on whole words case-insensitively. A request runs with `enable` only when every command is on the list; a mix is rejected with `show_command_privilege_mixed`, and callers cannot request privileged mode. The `privilegedShowCommands` setting can narrow the list (`[]` disables) but never widen it, and `eos_get_server_info` reports it. `show event-monitor sqlite <statement>` uses an SQL guard (one `SELECT` or `WITH` statement) instead of the metacharacter check, because `ATTACH` and `VACUUM INTO` write files even on the read-only event database; the Event Monitor is never started by the server ([ADR 0011](adr/0011-event-monitor-queries.md)).
 
 ## Runtime controls
 

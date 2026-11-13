@@ -13,7 +13,7 @@ The server is a test-backed, read-only MCP service for Arista EOS eAPI. The prod
 - `eos_probe_devices`
 - `eos_ping` (bounded active diagnostics to one or more destinations, enabled by default, inventory opt-out)
 - `eos_packet_capture` (bounded control-plane capture on one interface, enabled by default, inventory opt-out)
-- `eos_run_show`
+- `eos_run_show` (also runs `show event-monitor` queries in privileged mode via a server-controlled list, ADR 0011)
 - `eos_show_logging`
 - `eos_get_facts`
 - `eos_get_running_config`
@@ -32,6 +32,7 @@ The server is a test-backed, read-only MCP service for Arista EOS eAPI. The prod
 - Fail-closed groups containing ineligible or read-denied hosts.
 - Strict password-source and environment-prefix checks.
 - HTTPS with certificate validation by default and optional custom CA support.
+- Privileged Show Commands limited to a built-in list that operators can only narrow, never mixed with other commands; guarded Event SQL Queries (ADR 0011).
 - Validated show commands and bounded logging/running-configuration queries.
 - Read-operation concurrency, target, response-size, and timeout controls.
 - Configurable diagnostic budgets, in-memory per-server admission, independent timeouts, and uncertain reservations held for the command budget after unknown remote completion (ADR 0006).

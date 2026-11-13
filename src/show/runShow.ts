@@ -1,6 +1,8 @@
 import { AppError } from "../core/errors.js";
 import type { ResolvedServerConfig } from "../config/schema.js";
 import { normalizeShowCommand } from "../eapi/commands.js";
+import { normalizeEventMonitorSqlCommand } from "./eventMonitorSql.js";
+import { isPrivilegedShowCommand } from "./privilegedShow.js";
 import type { EosCommandResult } from "../eapi/types.js";
 import type { EosDeviceReader } from "../connection/eosDeviceReader.js";
 import type { InventoryModel } from "../inventory/types.js";
@@ -19,7 +21,7 @@ export interface RunShowOptions {
   includeRaw?: boolean;
 }
 
-export type NormalizedCommandResult = EosCommandResult;
+export type NormalizedCommandResult = EosCommandResult & { privileged?: true };
 
 export type RunShowDeviceResult = DeviceResult<{
   actual_output_format: EosCommandResult["output_format"];
@@ -30,6 +32,9 @@ export type RunShowResult = TargetOperationResult<RunShowDeviceResult> & {
   requested_output_format: RunShowOptions["outputFormat"];
 };
 
+const SHOW_NARROWING_GUIDANCE = "Reduce the number of target devices, use fewer commands per request, or request text format for more concise output.";
+const PRIVILEGED_NARROWING_GUIDANCE = "Reduce the number of target devices, use fewer commands per request, or add `limit N` or `match-time` to event-monitor commands (or SQL LIMIT).";
+
 export async function runShow(
   model: InventoryModel,
   config: ResolvedServerConfig,
@@ -39,6 +44,9 @@ export async function runShow(
 ): Promise<RunShowResult> {
   const commands = normalizeShowCommands(options.commands);
   enforceShowCommandLimit(config, commands.length);
+  const isPrivilegedRequest = isPrivilegedShowRequest(config, commands);
+  // EOS serves no JSON for Privileged Show Commands, so `auto` would only waste a privileged JSON attempt per host.
+  const deviceOutputFormat = isPrivilegedRequest && options.outputFormat === "auto" ? "text" : options.outputFormat;
 
   return runTargetOperation<RunShowResult["results"][number], { requested_output_format: RunShowOptions["outputFormat"] }>(model, config, {
     target: options.target,
@@ -46,10 +54,14 @@ export async function runShow(
     ...readOperationLimits(config),
     ...(signal !== undefined ? { signal } : {}),
     run: async (host, signal) => {
-      const commandResults = await reader.runShowCommands(host, commands, options.outputFormat, {
+      const deviceResults = await reader.runShowCommands(host, commands, deviceOutputFormat, {
         signal,
-        includeRawEntries: options.includeRaw === true
+        includeRawEntries: options.includeRaw === true,
+        ...(isPrivilegedRequest ? { enable: true } : {})
       });
+      const commandResults: NormalizedCommandResult[] = isPrivilegedRequest
+        ? deviceResults.map((deviceResult) => ({ ...deviceResult, privileged: true as const }))
+        : deviceResults;
       const firstResult = commandResults[0];
 
       return [buildDeviceSuccess(host, {
@@ -61,8 +73,22 @@ export async function runShow(
     extra: {
       requested_output_format: options.outputFormat
     },
-    narrowingGuidance: "Reduce the number of target devices, use fewer commands per request, or request text format for more concise output."
+    narrowingGuidance: isPrivilegedRequest ? PRIVILEGED_NARROWING_GUIDANCE : SHOW_NARROWING_GUIDANCE
   });
+}
+
+function isPrivilegedShowRequest(config: ResolvedServerConfig, commands: string[]): boolean {
+  const privilegedCommandCount = commands.filter((command) => isPrivilegedShowCommand(command, config.privilegedShowCommands)).length;
+  if (privilegedCommandCount === 0) {
+    return false;
+  }
+  if (privilegedCommandCount < commands.length) {
+    throw new AppError(
+      "show_command_privilege_mixed",
+      `Privileged show commands (${config.privilegedShowCommands.join(", ")}) must be sent in their own request, not mixed with other commands`
+    );
+  }
+  return true;
 }
 
 function enforceShowCommandLimit(config: ResolvedServerConfig, commandCount: number): void {
@@ -79,5 +105,5 @@ function normalizeShowCommands(commands: string[]): string[] {
     throw new AppError("show_commands_missing", "runShow requires at least one command");
   }
 
-  return commands.map((command) => normalizeShowCommand(command));
+  return commands.map((command) => normalizeEventMonitorSqlCommand(command) ?? normalizeShowCommand(command));
 }

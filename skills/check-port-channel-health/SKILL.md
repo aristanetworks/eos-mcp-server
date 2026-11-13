@@ -1,5 +1,4 @@
 ---
-author: Matthieu Tache
 name: check-port-channel-health
 description: Audit Port-Channel and LACP health on Arista EOS devices via the eos MCP server. Reports bundled member ports, LACP aggregate state, switchport mode, access VLAN, trunk VLANs, and dot1q-tunnel status. Read-only — does not modify any device.
 trigger: |
@@ -28,7 +27,7 @@ You are auditing Port-Channel and LACP state on Arista EOS devices via the `eos`
 
 Targets must be inventory host or group names (the eos server rejects raw IPs).
 
-1. If the user named a target explicitly (`leaf1`, `HARNESS`, `all`), use it directly.
+1. If the user named a target explicitly (`leaf1`, `SPINES`, `all`), use it directly.
 2. If the target is unclear or missing, first call `mcp__eos__eos_list_inventory` and ask the user which host or group they want.
 3. Prefer group targets over per-host loops — the MCP server fans out concurrently and returns one consolidated response.
 

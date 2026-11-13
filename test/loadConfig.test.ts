@@ -58,6 +58,41 @@ describe("loadServerConfig", () => {
     } satisfies Partial<AppError>);
   });
 
+  it("defaults privileged show commands to the built-in list", async () => {
+    const configPath = await writeTempConfig(["readTimeoutMs: 5000"]);
+
+    const config = await loadServerConfig({ command: "serve", configPath });
+
+    expect(config.privilegedShowCommands).toEqual(["show event-monitor"]);
+  });
+
+  it("preserves an explicit empty privileged show command list", async () => {
+    const configPath = await writeTempConfig(["privilegedShowCommands: []"]);
+
+    const config = await loadServerConfig({ command: "serve", configPath });
+
+    expect(config.privilegedShowCommands).toEqual([]);
+  });
+
+  it("accepts a built-in privileged show command", async () => {
+    const configPath = await writeTempConfig(["privilegedShowCommands:", "  - show event-monitor"]);
+
+    const config = await loadServerConfig({ command: "serve", configPath });
+
+    expect(config.privilegedShowCommands).toEqual(["show event-monitor"]);
+  });
+
+  it.each([
+    ["a command outside the built-in list", ["privilegedShowCommands:", "  - show running-config"]],
+    ["duplicate entries", ["privilegedShowCommands:", "  - show event-monitor", "  - show event-monitor"]]
+  ])("rejects privileged show commands with %s", async (_label, configLines) => {
+    const configPath = await writeTempConfig(configLines);
+
+    await expect(loadServerConfig({ command: "serve", configPath })).rejects.toMatchObject({
+      code: "config_schema_invalid"
+    } satisfies Partial<AppError>);
+  });
+
   it("rejects unknown config keys", async () => {
     const configPath = await writeTempConfig(["unknownKey: true"]);
 

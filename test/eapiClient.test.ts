@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { resolveEapiConnection } from "../src/connection/resolveConnection.js";
-import { EapiClient } from "../src/eapi/client.js";
+import { EapiClient, EVENT_MONITOR_NOT_RUNNING_HINT } from "../src/eapi/client.js";
 import { FetchEapiTransport, type FetchLike } from "../src/eapi/transport.js";
 import { buildConfig, buildConnection, buildHost, setTestPasswordEnv, echoRpcTransport } from "./helpers.js";
 
@@ -334,6 +334,67 @@ describe("EapiClient", () => {
     const result = await client.runShowCommands(buildConnection(), ["show logging threshold warnings 10"], "auto");
     expect(result[0]).toMatchObject({ output_format: "text", output: "bounded log output" });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  describe("event monitor not running classification", () => {
+    const startHint = "event-monitor not running. It can be started by running 'event-monitor' command in config mode";
+
+    async function runWithJsonRpcError(jsonRpcError: unknown, format: "json" | "text" = "text"): Promise<unknown> {
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ error: jsonRpcError }),
+        text: async () => ""
+      }));
+      const client = new EapiClient(echoRpcTransport(new FetchEapiTransport(fetchMock)));
+      return client.runShowCommands(buildConnection(), ["show event-monitor route limit 5"], format).catch((error: unknown) => error);
+    }
+
+    it.each([
+      ["route", [startHint]],
+      ["sqlite", ["event-monitor not running", startHint]]
+    ])("classifies the stopped %s event monitor error", async (commandKind, commandErrors) => {
+      const jsonRpcError = {
+        code: 1000,
+        message: `CLI command 2 of 2 'show event-monitor ${commandKind} limit 5' failed: could not run command`,
+        data: [{ output: "" }, { output: `% ${startHint}\n`, errors: commandErrors }]
+      };
+      const caught = await runWithJsonRpcError(jsonRpcError);
+      expect(caught).toMatchObject({
+        code: "event_monitor_not_running",
+        details: { jsonRpcCode: 1000, data: jsonRpcError.data }
+      });
+      expect((caught as Error).message.startsWith(`${EVENT_MONITOR_NOT_RUNNING_HINT} EOS eAPI JSON-RPC error 1000:`)).toBe(true);
+    });
+
+    it("keeps other 1000 errors as generic JSON-RPC errors", async () => {
+      const caught = await runWithJsonRpcError({
+        code: 1000,
+        message: "CLI command 2 of 2 'show event-monitor route limit 5' failed: could not run command",
+        data: [{ output: "" }, { output: "% Invalid input\n", errors: ["Invalid input"] }]
+      });
+      expect(caught).toMatchObject({ code: "eapi_json_rpc_error" });
+      expect((caught as Error).message.startsWith("EOS eAPI JSON-RPC error 1000:")).toBe(true);
+    });
+
+    it("does not classify the event-monitor signature under a different JSON-RPC code", async () => {
+      const caught = await runWithJsonRpcError({
+        code: 1002,
+        message: "CLI command 2 of 2 'show event-monitor route limit 5' failed: invalid command",
+        data: [{ output: "" }, { output: `% ${startHint}\n`, errors: [startHint] }]
+      });
+      expect(caught).toMatchObject({ code: "eapi_json_rpc_error" });
+      expect((caught as Error).message.startsWith("EOS eAPI JSON-RPC error 1002:")).toBe(true);
+    });
+
+    it("keeps 1003 unconverted-command errors as json_output_unavailable", async () => {
+      const caught = await runWithJsonRpcError({
+        code: 1003,
+        message: "CLI command 2 of 2 'show event-monitor route limit 5' failed: unconverted command",
+        data: [{ output: "" }, { errors: [startHint] }]
+      }, "json");
+      expect(caught).toMatchObject({ code: "json_output_unavailable" });
+    });
   });
 
   it("rejects unexpected text output payloads", async () => {

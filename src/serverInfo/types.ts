@@ -2,6 +2,7 @@ import type { ResolvedServerConfig } from "../config/schema.js";
 import type { DiagnosticCapacitySnapshot } from "../operations/eapiSlots.js";
 import type { EapiVersion } from "../eapi/types.js";
 import type { InventorySummary } from "../inventory/types.js";
+import type { PrivilegedShowCommand } from "../show/privilegedShow.js";
 
 export interface ServerRuntimeContext {
   instanceId: string;
@@ -29,6 +30,7 @@ export interface ServerInfo {
     supported_inventory_schemas: string[];
     output_modes: Array<"auto" | "json" | "text">;
     eapi_version: EapiVersion;
+    privileged_show_commands: PrivilegedShowCommand[];
   };
   limits: {
     read_timeout_ms: number;

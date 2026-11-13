@@ -1,5 +1,4 @@
 ---
-author: Matthieu Tâche
 name: check-pim-health
 description: Audit PIM sparse-mode health on Arista EOS devices via the eos MCP server. Reports PIM neighbor adjacencies, interface state, RP election, multicast routing table with flag interpretation, and flags common failures including RPF errors, MLAG dual-PIM issues, VXLAN/EVPN overlay multicast, and anycast-RP. Read-only — does not modify any device.
 trigger: |

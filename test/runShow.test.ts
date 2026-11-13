@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { ResolvedServerConfig } from "../src/config/schema.js";
 import { AppError } from "../src/core/errors.js";
 import { loadInventoryModel } from "../src/inventory/loadInventory.js";
 import { runShow } from "../src/show/runShow.js";
@@ -474,5 +475,98 @@ describe("runShow", () => {
         runner
       )
     ).rejects.toThrow(/maxShowCommandsPerRequest/);
+  });
+  describe("privileged show commands", () => {
+    async function runWith(commands: string[], options: { outputFormat?: "auto" | "json" | "text"; configOverrides?: Partial<ResolvedServerConfig> } = {}) {
+      const { model } = await buildSingleHostRunShowFixture();
+      const config = buildConfig({
+        defaultConnection: { ansibleUser: "admin", mcpPasswordEnv: "EOS_MCP_PASSWORD" },
+        ...options.configOverrides
+      });
+      const reader = {
+        runShowCommands: mockRunShowCommands(async (_host, requestedCommands) =>
+          requestedCommands.map((command) => ({ command, output_format: "text" as const, output: "ok" }))
+        )
+      };
+      const run = runShow(model, config, { target: "leaf1", commands, outputFormat: options.outputFormat ?? "text" }, reader);
+      const [result, error] = await run.then((value) => [value, undefined] as const, (caught: unknown) => [undefined, caught] as const);
+      return { reader, result, error, readerOptions: reader.runShowCommands.mock.calls[0]?.[3] };
+    }
+
+    it.each([
+      [["show event-monitor route limit 5", "show event-monitor arp limit 5"]],
+      [["show event-monitor sqlite select * from route limit 3"]]
+    ])("runs %j with enable and marks every result privileged", async (commands) => {
+      const { result, readerOptions } = await runWith(commands);
+
+      expect(readerOptions).toMatchObject({ enable: true });
+      const commandResults = result?.results[0]?.command_results ?? [];
+      expect(commandResults).toHaveLength(commands.length);
+      for (const commandResult of commandResults) {
+        expect(commandResult).toHaveProperty("privileged", true);
+      }
+    });
+
+    it("requests text directly for privileged commands in auto mode", async () => {
+      const { reader } = await runWith(["show event-monitor route limit 5"], { outputFormat: "auto" });
+      expect(reader.runShowCommands.mock.calls[0]?.[2]).toBe("text");
+    });
+
+    it("omits enable and privileged for ordinary show commands", async () => {
+      const { reader, result, readerOptions } = await runWith(["show version"], { outputFormat: "auto" });
+
+      expect(reader.runShowCommands.mock.calls[0]?.[2]).toBe("auto");
+      expect(readerOptions).not.toHaveProperty("enable");
+      expect(result?.results[0]?.command_results?.[0]).not.toHaveProperty("privileged");
+    });
+
+    it("rejects mixed privileged and ordinary commands before contacting the device", async () => {
+      const { reader, error } = await runWith(["show event-monitor route limit 5", "show version"]);
+      expect(error).toMatchObject({ code: "show_command_privilege_mixed" });
+      expect(reader.runShowCommands).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      "show event-monitor sq attach database '/mnt/flash/x.db' as p",
+      "show event-monitor sq vacuum into '/mnt/flash/x.db'",
+      "show event-monitor s vacuum into '/mnt/flash/x.db'"
+    ])("rejects the abbreviated-keyword SQL %j before contacting the device", async (command) => {
+      const { reader, error } = await runWith([command]);
+      expect(error).toMatchObject({ code: "event_monitor_sqlite_rejected" });
+      expect(reader.runShowCommands).not.toHaveBeenCalled();
+    });
+
+    it("dispatches an abbreviated sqlite keyword as the full keyword with enable", async () => {
+      const { reader, readerOptions } = await runWith(["show event-monitor sq select 1"]);
+      expect(reader.runShowCommands.mock.calls[0]?.[1]).toEqual(["show event-monitor sqlite select 1"]);
+      expect(readerOptions).toMatchObject({ enable: true });
+    });
+
+    it.each([
+      [["show event-monitor route"], /limit N/],
+      [["show version"], /request text format/]
+    ])("scopes response-size guidance for %j", async (commands, expectedGuidance) => {
+      const { error } = await runWith(commands, { configOverrides: { maxResponseSizeBytes: 10 } });
+      expect(error).toMatchObject({ code: "response_size_exceeded", details: { guidance: expect.stringMatching(expectedGuidance) } });
+      const guidance = (error as { details: { guidance: string } }).details.guidance;
+      expect(guidance.includes("event-monitor")).toBe(commands[0]?.startsWith("show event-monitor"));
+    });
+
+    it("does not treat abbreviated event-monitor commands as privileged", async () => {
+      const { reader, error } = await runWith(["sh ev route"]);
+      expect(error).toBeInstanceOf(AppError);
+      expect(reader.runShowCommands).not.toHaveBeenCalled();
+      const { readerOptions } = await runWith(["show ev route"]);
+      expect(readerOptions).not.toHaveProperty("enable");
+    });
+
+    it("runs event-monitor unprivileged and allows mixing when privilegedShowCommands is empty", async () => {
+      const configOverrides = { privilegedShowCommands: [] };
+      const { readerOptions } = await runWith(["show event-monitor route"], { configOverrides });
+      expect(readerOptions).not.toHaveProperty("enable");
+
+      const { reader } = await runWith(["show event-monitor route", "show version"], { configOverrides });
+      expect(reader.runShowCommands).toHaveBeenCalledTimes(1);
+    });
   });
 });
