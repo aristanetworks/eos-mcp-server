@@ -343,6 +343,7 @@ describe.runIf(INTEGRATION)("integration: EOS read-path tools", () => {
     it.each([
       ["show event-monitor sqlite attach database '/mnt/flash/mcp_integration.db' as probe", "event_monitor_sqlite_rejected"],
       ["show event-monitor sqlite vacuum into '/mnt/flash/mcp_integration.db'", "event_monitor_sqlite_rejected"],
+      ["show event-monitor sq vacuum into '/mnt/flash/mcp_integration.db'", "event_monitor_sqlite_rejected"],
       ["show event-monitor route limit 2 | tee flash:mcp_integration.txt", "eos_input_invalid"]
     ])("rejects %j before contacting the device", async (command, expectedCode) => {
       await expect(

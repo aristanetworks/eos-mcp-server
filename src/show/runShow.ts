@@ -32,6 +32,9 @@ export type RunShowResult = TargetOperationResult<RunShowDeviceResult> & {
   requested_output_format: RunShowOptions["outputFormat"];
 };
 
+const SHOW_NARROWING_GUIDANCE = "Reduce the number of target devices, use fewer commands per request, or request text format for more concise output.";
+const PRIVILEGED_NARROWING_GUIDANCE = "Reduce the number of target devices, use fewer commands per request, or add `limit N` or `match-time` to event-monitor commands (or SQL LIMIT).";
+
 export async function runShow(
   model: InventoryModel,
   config: ResolvedServerConfig,
@@ -41,9 +44,9 @@ export async function runShow(
 ): Promise<RunShowResult> {
   const commands = normalizeShowCommands(options.commands);
   enforceShowCommandLimit(config, commands.length);
-  const runPrivileged = resolvePrivilegedRequest(config, commands);
+  const isPrivilegedRequest = isPrivilegedShowRequest(config, commands);
   // EOS serves no JSON for Privileged Show Commands, so `auto` would only waste a privileged JSON attempt per host.
-  const deviceOutputFormat = runPrivileged && options.outputFormat === "auto" ? "text" : options.outputFormat;
+  const deviceOutputFormat = isPrivilegedRequest && options.outputFormat === "auto" ? "text" : options.outputFormat;
 
   return runTargetOperation<RunShowResult["results"][number], { requested_output_format: RunShowOptions["outputFormat"] }>(model, config, {
     target: options.target,
@@ -54,9 +57,9 @@ export async function runShow(
       const deviceResults = await reader.runShowCommands(host, commands, deviceOutputFormat, {
         signal,
         includeRawEntries: options.includeRaw === true,
-        ...(runPrivileged ? { enable: true } : {})
+        ...(isPrivilegedRequest ? { enable: true } : {})
       });
-      const commandResults: NormalizedCommandResult[] = runPrivileged
+      const commandResults: NormalizedCommandResult[] = isPrivilegedRequest
         ? deviceResults.map((deviceResult) => ({ ...deviceResult, privileged: true as const }))
         : deviceResults;
       const firstResult = commandResults[0];
@@ -70,11 +73,11 @@ export async function runShow(
     extra: {
       requested_output_format: options.outputFormat
     },
-    narrowingGuidance: "Reduce the number of target devices, use fewer commands per request, request text format for more concise output, or add `limit N` or `match-time` to event-monitor commands (or SQL LIMIT)."
+    narrowingGuidance: isPrivilegedRequest ? PRIVILEGED_NARROWING_GUIDANCE : SHOW_NARROWING_GUIDANCE
   });
 }
 
-function resolvePrivilegedRequest(config: ResolvedServerConfig, commands: string[]): boolean {
+function isPrivilegedShowRequest(config: ResolvedServerConfig, commands: string[]): boolean {
   const privilegedCommandCount = commands.filter((command) => isPrivilegedShowCommand(command, config.privilegedShowCommands)).length;
   if (privilegedCommandCount === 0) {
     return false;

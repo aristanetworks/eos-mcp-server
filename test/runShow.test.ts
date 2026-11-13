@@ -526,6 +526,32 @@ describe("runShow", () => {
       expect(reader.runShowCommands).not.toHaveBeenCalled();
     });
 
+    it.each([
+      "show event-monitor sq attach database '/mnt/flash/x.db' as p",
+      "show event-monitor sq vacuum into '/mnt/flash/x.db'",
+      "show event-monitor s vacuum into '/mnt/flash/x.db'"
+    ])("rejects the abbreviated-keyword SQL %j before contacting the device", async (command) => {
+      const { reader, error } = await runWith([command]);
+      expect(error).toMatchObject({ code: "event_monitor_sqlite_rejected" });
+      expect(reader.runShowCommands).not.toHaveBeenCalled();
+    });
+
+    it("dispatches an abbreviated sqlite keyword as the full keyword with enable", async () => {
+      const { reader, readerOptions } = await runWith(["show event-monitor sq select 1"]);
+      expect(reader.runShowCommands.mock.calls[0]?.[1]).toEqual(["show event-monitor sqlite select 1"]);
+      expect(readerOptions).toMatchObject({ enable: true });
+    });
+
+    it.each([
+      [["show event-monitor route"], /limit N/],
+      [["show version"], /request text format/]
+    ])("scopes response-size guidance for %j", async (commands, expectedGuidance) => {
+      const { error } = await runWith(commands, { configOverrides: { maxResponseSizeBytes: 10 } });
+      expect(error).toMatchObject({ code: "response_size_exceeded", details: { guidance: expect.stringMatching(expectedGuidance) } });
+      const guidance = (error as { details: { guidance: string } }).details.guidance;
+      expect(guidance.includes("event-monitor")).toBe(commands[0]?.startsWith("show event-monitor"));
+    });
+
     it("does not treat abbreviated event-monitor commands as privileged", async () => {
       const { reader, error } = await runWith(["sh ev route"]);
       expect(error).toBeInstanceOf(AppError);

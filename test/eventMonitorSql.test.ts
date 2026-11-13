@@ -66,8 +66,32 @@ describe("event monitor SQL guard", () => {
     expect(() => normalizeEventMonitorSqlCommand(command)).toThrow(sqlRejection);
   });
 
+  it.each([
+    ["attach x; select 1", "statement must not contain ';' other than one trailing ';'"],
+    ["select 1\n;", "statement must be a single line without control characters"],
+    ["   ;", "statement must not be empty"],
+    ["attach database 'x' as p", "statement must start with SELECT or WITH"],
+    ["select 1 | include 1", "statement must not contain a single '|' (only '||' concatenation is allowed)"]
+  ])("rejects %j with a stable reason", (statement, reason) => {
+    expect(() => normalizeEventMonitorSqlStatement(statement)).toThrow(
+      expect.objectContaining({ message: `Event monitor SQL rejected: ${reason}; only one read-only SELECT or WITH statement is allowed` })
+    );
+  });
+
+  it.each(["sq", "sqli", "SQLite", "s", "SQ"])("guards the abbreviated %j keyword", (keyword) => {
+    for (const statement of ["attach database '/mnt/flash/x.db' as p", "vacuum into '/mnt/flash/x.db'"]) {
+      expect(() => normalizeEventMonitorSqlCommand(`show event-monitor ${keyword} ${statement}`)).toThrow(sqlRejection);
+    }
+    expect(() => normalizeEventMonitorSqlCommand(`show event-monitor ${keyword}`)).toThrow(sqlRejection);
+  });
+
+  it("normalizes an abbreviated keyword to the full sqlite keyword", () => {
+    expect(normalizeEventMonitorSqlCommand("show event-monitor sq select 1")).toBe(`${SQLITE_PREFIX} select 1`);
+    expect(normalizeEventMonitorSqlCommand("SHOW event-monitor  Sqli\tselect 1;")).toBe(`${SQLITE_PREFIX} select 1`);
+  });
+
   it("leaves other commands to the generic metacharacter check", () => {
-    for (const command of ["show event-monitor route limit 2 | tee flash:x", "show event-monitor sqlitex select 1; x", "show version"]) {
+    for (const command of ["show event-monitor route limit 2 | tee flash:x", "show event-monitor sqlitex select 1; x", "show event-monitor sqlx select 1", "show event-monitor sq-x select 1", "show event-monitor route", "show version"]) {
       expect(normalizeEventMonitorSqlCommand(command)).toBeUndefined();
     }
     expect(() => normalizeShowCommand("show event-monitor route limit 2 | tee flash:x")).toThrow(expect.objectContaining({ code: "eos_input_invalid" }));

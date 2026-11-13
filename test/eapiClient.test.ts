@@ -377,6 +377,16 @@ describe("EapiClient", () => {
       expect((caught as Error).message.startsWith("EOS eAPI JSON-RPC error 1000:")).toBe(true);
     });
 
+    it("does not classify the event-monitor signature under a different JSON-RPC code", async () => {
+      const caught = await runWithJsonRpcError({
+        code: 1002,
+        message: "CLI command 2 of 2 'show event-monitor route limit 5' failed: invalid command",
+        data: [{ output: "" }, { output: `% ${startHint}\n`, errors: [startHint] }]
+      });
+      expect(caught).toMatchObject({ code: "eapi_json_rpc_error" });
+      expect((caught as Error).message.startsWith("EOS eAPI JSON-RPC error 1002:")).toBe(true);
+    });
+
     it("keeps 1003 unconverted-command errors as json_output_unavailable", async () => {
       const caught = await runWithJsonRpcError({
         code: 1003,

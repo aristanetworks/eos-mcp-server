@@ -1,4 +1,5 @@
 import { AppError } from "../core/errors.js";
+import { CONTROL_CHARACTER_PATTERN } from "../eapi/commands.js";
 
 /**
  * Guard for Event SQL Queries (`show event-monitor sqlite <statement>`, ADR 0011). EOS opens the
@@ -6,39 +7,57 @@ import { AppError } from "../core/errors.js";
  * only one SELECT or WITH statement is accepted. The statement takes the rest of the line on EOS, so
  * it replaces the generic metacharacter check; the rules below still stop a pipe or redirect.
  */
-const EVENT_MONITOR_SQLITE_COMMAND_PATTERN = /^show\s+event-monitor\s+sqlite\b\s*([\s\S]*)$/i;
+const EVENT_MONITOR_SUBCOMMAND_PATTERN = /^show\s+event-monitor\s+([a-z]+)(?![\w-])\s*([\s\S]*)$/i;
+const SQLITE_KEYWORD = "sqlite";
 const SQL_STATEMENT_START_PATTERN = /^(?:select|with)(?![\w$])/i;
+const SQL_FORBIDDEN_CHARACTER_PATTERN = /[`$&]/;
+const SQL_SINGLE_PIPE_PATTERN = /(?<!\|)\|(?!\|)|\|{3,}/;
+const SQL_REDIRECT_TO_LOCATION_PATTERN = />\s*[A-Za-z][\w-]*:/;
 
-const SQL_FORBIDDEN_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
-  [/[\u0000-\u001f\u007f]/, "statement must be a single line without control characters"],
-  [/;/, "statement must not contain ';' other than one trailing ';'"],
-  [/[`$&]/, "statement must not contain '`', '$' or '&'"],
-  [/(?<!\|)\|(?!\|)|\|{3,}/, "statement must not contain a single '|' (only '||' concatenation is allowed)"],
-  [/>\s*[A-Za-z][\w-]*:/, "statement must not contain '>' followed by a file location"]
+/** Checked in order after control characters, the trailing ';' and emptiness, so each input keeps one stable message. */
+const SQL_STATEMENT_RULES: ReadonlyArray<readonly [isViolation: (statement: string) => boolean, reason: string]> = [
+  [(statement) => statement.includes(";"), "statement must not contain ';' other than one trailing ';'"],
+  [(statement) => !SQL_STATEMENT_START_PATTERN.test(statement), "statement must start with SELECT or WITH"],
+  [(statement) => SQL_FORBIDDEN_CHARACTER_PATTERN.test(statement), "statement must not contain '`', '$' or '&'"],
+  [(statement) => SQL_SINGLE_PIPE_PATTERN.test(statement), "statement must not contain a single '|' (only '||' concatenation is allowed)"],
+  [(statement) => SQL_REDIRECT_TO_LOCATION_PATTERN.test(statement), "statement must not contain '>' followed by a file location"]
 ];
 
-/** The normalized command when `command` is an Event SQL Query, otherwise undefined. */
+/**
+ * The normalized command when `command` is an Event SQL Query, otherwise undefined. The interactive
+ * CLI accepts keyword prefixes; eAPI on cEOS 4.34.3M rejects them ("Incomplete token"), but other
+ * releases may not, so every prefix of `sqlite` (down to a lone `s`) counts, failing closed, and is
+ * rewritten to the full keyword.
+ */
 export function normalizeEventMonitorSqlCommand(command: string): string | undefined {
-  const sqliteMatch = EVENT_MONITOR_SQLITE_COMMAND_PATTERN.exec(command.trim());
-  return sqliteMatch === null ? undefined : `show event-monitor sqlite ${normalizeEventMonitorSqlStatement(sqliteMatch[1] ?? "")}`;
+  const subcommandMatch = EVENT_MONITOR_SUBCOMMAND_PATTERN.exec(command.trim());
+  const subcommandKeyword = subcommandMatch?.[1]?.toLowerCase();
+  if (subcommandKeyword === undefined || !SQLITE_KEYWORD.startsWith(subcommandKeyword)) {
+    return undefined;
+  }
+  return `show event-monitor ${SQLITE_KEYWORD} ${normalizeEventMonitorSqlStatement(subcommandMatch?.[2] ?? "")}`;
 }
 
 export function normalizeEventMonitorSqlStatement(statement: string): string {
-  const normalized = statement.trim().replace(/\s*;$/, "");
+  let normalizedStatement = statement.trim();
 
-  if (normalized.length === 0) {
+  // Checked before the trailing ';' is stripped so a control character always reports the same reason.
+  if (CONTROL_CHARACTER_PATTERN.test(normalizedStatement)) {
+    rejectEventMonitorSql("statement must be a single line without control characters");
+  }
+  if (normalizedStatement.endsWith(";")) {
+    normalizedStatement = normalizedStatement.slice(0, -1).trimEnd();
+  }
+  if (normalizedStatement.length === 0) {
     rejectEventMonitorSql("statement must not be empty");
   }
-  if (!SQL_STATEMENT_START_PATTERN.test(normalized)) {
-    rejectEventMonitorSql("statement must start with SELECT or WITH");
-  }
-  for (const [forbiddenPattern, reason] of SQL_FORBIDDEN_PATTERNS) {
-    if (forbiddenPattern.test(normalized)) {
+  for (const [isViolation, reason] of SQL_STATEMENT_RULES) {
+    if (isViolation(normalizedStatement)) {
       rejectEventMonitorSql(reason);
     }
   }
 
-  return normalized;
+  return normalizedStatement;
 }
 
 function rejectEventMonitorSql(reason: string): never {

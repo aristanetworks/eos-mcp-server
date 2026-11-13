@@ -665,7 +665,7 @@ Rules:
 - every command is trimmed, must be a single line, and must be `show` or begin with `show`
 - commands with CLI output modifiers or shell metacharacters such as `|`, `>`, `<`, `;`, `&`, backticks, or `$` are rejected before device contact
 - `show event-monitor ...` commands run in privileged mode; a request must contain only such commands or none (`show_command_privilege_mixed` otherwise), and callers cannot request privileged mode
-- `show event-monitor sqlite <statement>` accepts one `SELECT` or `WITH` statement (one trailing `;` allowed); anything else is rejected with `event_monitor_sqlite_rejected`
+- `show event-monitor sqlite <statement>` (or any abbreviation of `sqlite`, such as `sq`) accepts one `SELECT` or `WITH` statement (one trailing `;` allowed); anything else is rejected with `event_monitor_sqlite_rejected`
 - `output_format` is one of `auto`, `json`, `text`
 - `include_raw` optionally attaches each command's raw eAPI result entry as `raw_entry` inside `command_results`
 
@@ -688,7 +688,7 @@ Input examples:
 }
 ```
 
-Event Monitor example. The monitor is stopped by default on EOS and the server never starts it, so an operator must enable it first; until then these fail with `event_monitor_not_running`. Output is text only, has no default row limit (add `limit N`, `match-time last-hour` or SQL `LIMIT`), and filters are `%`-wildcard patterns:
+Event Monitor example. The monitor is stopped by default on EOS and the server never starts it, so an operator must start it first; until then these fail with `event_monitor_not_running`. Output is text only, has no default row limit (add `limit N`, `match-time last-hour` or SQL `LIMIT`), and filters are `%`-wildcard patterns:
 
 ```json
 {
@@ -778,7 +778,7 @@ For `eos_get_running_config`, group targets require a `section` value.
 
 ### `event_monitor_not_running`
 
-The EOS **Event Monitor** is stopped by default and this server never starts it. An operator must enable it with `event-monitor` in config mode before `show event-monitor` queries return events.
+The EOS **Event Monitor** is stopped by default and this server never starts it. An operator must start it with `event-monitor` in config mode before `show event-monitor` queries return events.
 
 ### Response too large
 

@@ -167,7 +167,7 @@ VLAN 100 (`VLAN100`) active on all leaves, member of `Vx1` only, empty MAC table
 
 ## Event Monitor
 
-Requires an operator to enable `event-monitor` on the switch (it is stopped by default and the server never starts it); until then queries fail with `event_monitor_not_running`. `eos_run_show` runs `show event-monitor` commands in privileged mode, as the only commands in the request. There is no default row limit, so keep queries narrow. Filters are `%`-wildcard patterns.
+Requires an operator to start the Event Monitor with `event-monitor` in config mode on the switch (it is stopped by default and the server never starts it); until then queries fail with `event_monitor_not_running`. `eos_run_show` runs `show event-monitor` commands in privileged mode, as the only commands in the request. There is no default row limit, so keep queries narrow. Filters are `%`-wildcard patterns.
 
 ### When did a prefix last change?
 
