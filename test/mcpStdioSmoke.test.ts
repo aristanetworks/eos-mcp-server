@@ -10,15 +10,16 @@ describe("stdio MCP smoke test", () => {
     "launches the server, lists tools, and calls read-only tools over stdio",
     async () => {
       const inventoryPath = await writeTempInventory([
-        "vars:",
-        "  ansible_user: admin",
-        "  ansible_password: secret",
-        "hosts:",
-        "  leaf1:",
-        "    ansible_host: 10.0.0.11",
-        "    ansible_network_os: eos",
-        "    mcp_diagnostics_allowed: false",
-        "    mcp_packet_capture_allowed: false"
+        "all:",
+        "  vars:",
+        "    mcp_user: eos-mcp",
+        "    ansible_password: secret",
+        "  hosts:",
+        "    leaf1:",
+        "      ansible_host: 10.0.0.11",
+        "      ansible_network_os: eos",
+        "      mcp_diagnostics_allowed: false",
+        "      mcp_packet_capture_allowed: false"
       ]);
 
       const client = new Client(

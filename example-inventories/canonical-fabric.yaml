@@ -1,12 +1,15 @@
 # Canonical Ansible-style inventory for eos-mcp-server.
 #
 # The addresses below use RFC 5737 TEST-NET space and are placeholders.
+# ansible_user is for Ansible; mcp_user selects an existing MCP device account.
+# EOS_MCP_PASSWORD must contain the password for the mcp_user account.
 # Replace hostnames, addresses, and certificate policy for your environment.
 all:
   children:
     FABRIC:
       vars:
         ansible_user: admin
+        mcp_user: eos-mcp
         ansible_network_os: eos
         mcp_password_env: EOS_MCP_PASSWORD
         # Useful for labs with self-signed eAPI certificates. Prefer a CA bundle

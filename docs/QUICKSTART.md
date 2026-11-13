@@ -28,6 +28,7 @@ all:
     eos:
       vars:
         ansible_user: admin
+        mcp_user: eos-mcp
         ansible_network_os: eos
         mcp_password_env: EOS_MCP_PASSWORD
       hosts:
@@ -42,14 +43,23 @@ If your devices use self-signed certificates, add `mcp_validate_certs: false` (o
 ```yaml
 vars:
   ansible_user: admin
+  mcp_user: eos-mcp
   ansible_network_os: eos
   mcp_password_env: EOS_MCP_PASSWORD
   mcp_validate_certs: false
 ```
 
+`ansible_user: admin` remains the Ansible account; `mcp_user: eos-mcp` selects
+the MCP account in the same canonical Ansible-style inventory. `mcp_user` follows
+the existing global/group/host inheritance rules. Simplified inventories reject
+`mcp_user` and continue to use `ansible_user` or the server default.
+When `mcp_user` is absent, the server uses effective `ansible_user`, then
+`defaultConnection.ansibleUser`. Supplied username values must be non-empty
+strings. Use an existing device account with the required eAPI permissions.
+
 ## 3. Export the password
 
-The `mcp_password_env` value is an environment variable **name**, not the password itself. Export the actual password:
+The `mcp_password_env` value is an environment variable **name**, not the password itself. Export the password for the selected MCP account (`eos-mcp` in this example):
 
 ```bash
 export EOS_MCP_PASSWORD='your-device-password'

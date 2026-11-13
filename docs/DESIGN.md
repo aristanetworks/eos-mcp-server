@@ -41,6 +41,7 @@ Canonical Ansible-style YAML and simplified YAML are supported. Structural keys 
 ## Connection security
 
 - HTTPS is required.
+- In canonical Ansible-style inventories, the connection username resolves from effective `mcp_user`, then effective `ansible_user`, then `defaultConnection.ansibleUser`. Both inventory variables must be non-empty strings when supplied and follow the same global/group/host inheritance rules independently. This lets Ansible and MCP use separate accounts in one inventory. Simplified inventories reject `mcp_user` and continue resolving effective `ansible_user`, then the server default.
 - Certificate validation defaults to enabled; inventory may set an explicit lab override and server config may provide a CA bundle.
 - A host resolves exactly one password source: `mcp_password_env` or `ansible_password`. The environment reference is preferred and must match a configured prefix (`EOS_MCP_` by default).
 - Startup validation verifies connection data for all eligible hosts.

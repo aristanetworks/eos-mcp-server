@@ -1,4 +1,5 @@
 import type { InventoryVars, NormalizedInventory, ValidationContext } from "./internalTypes.js";
+import type { InventorySchemaKind } from "./types.js";
 
 const BOOLEAN_VAR_KEYS = new Set([
   "mcp_read_allowed",
@@ -11,6 +12,7 @@ const BOOLEAN_VAR_KEYS = new Set([
 const NON_EMPTY_STRING_VAR_KEYS = new Set([
   "ansible_host",
   "ansible_user",
+  "mcp_user",
   "ansible_network_os",
   "mcp_platform",
   "mcp_password_env",
@@ -20,20 +22,34 @@ const NON_EMPTY_STRING_VAR_KEYS = new Set([
 const POSITIVE_INTEGER_VAR_KEYS = new Set(["ansible_httpapi_port"]);
 
 export function validateKnownInventoryVarTypes(inventory: NormalizedInventory, context: ValidationContext): void {
-  validateVarSet(inventory.globalVars, "vars", context);
+  validateVarSet(inventory.globalVars, "vars", context, inventory.schemaKind);
 
   for (const group of inventory.groups.values()) {
-    validateVarSet(group.vars, `groups.${group.name}.vars`, context);
+    validateVarSet(group.vars, `groups.${group.name}.vars`, context, inventory.schemaKind);
   }
 
   for (const [hostName, hostVars] of inventory.hosts.entries()) {
-    validateVarSet(hostVars, `hosts.${hostName}`, context);
+    validateVarSet(hostVars, `hosts.${hostName}`, context, inventory.schemaKind);
   }
 }
 
-function validateVarSet(vars: InventoryVars, pathLabel: string, context: ValidationContext): void {
+function validateVarSet(
+  vars: InventoryVars,
+  pathLabel: string,
+  context: ValidationContext,
+  schemaKind: InventorySchemaKind
+): void {
   for (const [key, value] of Object.entries(vars)) {
     const valuePath = `${pathLabel}.${key}`;
+
+    if (key === "mcp_user" && schemaKind === "simplified-yaml") {
+      context.errors.push({
+        code: "inventory_var_unsupported",
+        message: `${valuePath} is supported only in canonical Ansible-style inventories`,
+        path: valuePath
+      });
+      continue;
+    }
 
     if (BOOLEAN_VAR_KEYS.has(key) && typeof value !== "boolean") {
       addTypeError(context, valuePath, key, value, "a boolean");
