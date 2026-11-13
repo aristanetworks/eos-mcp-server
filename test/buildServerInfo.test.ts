@@ -26,6 +26,18 @@ describe("buildServerInfo", () => {
     expect(info.capabilities.eapi_version).toBe(1);
   });
 
+  it("reports the effective privileged show commands", () => {
+    const info = buildServerInfo({
+      instanceId: "instance-1",
+      startedAt: "2026-04-23T00:00:00.000Z",
+      config: buildConfig({ privilegedShowCommands: [] })
+    });
+    const defaultInfo = buildServerInfo({ instanceId: "instance-1", startedAt: "2026-04-23T00:00:00.000Z", config: buildConfig() });
+
+    expect(info.capabilities.privileged_show_commands).toEqual([]);
+    expect(defaultInfo.capabilities.privileged_show_commands).toEqual(["show event-monitor"]);
+  });
+
   it("reports packet capture limits under limits.diagnostics", () => {
     const info = buildServerInfo({ instanceId: "instance-1", startedAt: "2026-04-23T00:00:00.000Z", config: buildConfig() });
 

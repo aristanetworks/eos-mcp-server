@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { vi, type Mock } from "vitest";
 import type { ResolvedServerConfig } from "../src/config/schema.js";
+import { PRIVILEGED_SHOW_COMMANDS } from "../src/show/privilegedShow.js";
 import { diagnosticsConfigSchema } from "../src/config/diagnostics.js";
 import type { EosDeviceReader } from "../src/connection/eosDeviceReader.js";
 import type { DiagnosticDeviceRunner, DiagnosticObservation, PreparedDiagnostic } from "../src/diagnostics/types.js";
@@ -58,6 +59,7 @@ export function buildConfig(overrides: Partial<ResolvedServerConfig> = {}): Reso
     maxResponseSizeBytes: 1_048_576,
     eapiVersion: "latest",
     secretEnvPrefixes: ["EOS_MCP_"],
+    privilegedShowCommands: [...PRIVILEGED_SHOW_COMMANDS],
     defaultConnection: {},
     ...overrides
   };

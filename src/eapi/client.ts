@@ -214,7 +214,10 @@ function throwIfJsonRpcError(payload: unknown): void {
   const code = typeof payload.error.code === "number" || typeof payload.error.code === "string" ? payload.error.code : "unknown";
   const data = payload.error.data;
   const details = data === undefined ? "" : `; data=${JSON.stringify(data)}`;
-  throw new AppError(classifyJsonRpcErrorCode(message, data, code), `EOS eAPI JSON-RPC error ${String(code)}: ${message}${details}`, {
+  const errorCode = classifyJsonRpcErrorCode(message, data, code);
+  const jsonRpcText = `EOS eAPI JSON-RPC error ${String(code)}: ${message}${details}`;
+  const fullMessage = errorCode === "event_monitor_not_running" ? `${EVENT_MONITOR_NOT_RUNNING_SENTENCE} ${jsonRpcText}` : jsonRpcText;
+  throw new AppError(errorCode, fullMessage, {
     jsonRpcCode: code,
     ...(data !== undefined ? { data } : {})
   });
@@ -229,5 +232,24 @@ function classifyJsonRpcErrorCode(message: string, data: unknown, code: number |
     return "json_output_unavailable";
   }
 
+  if (hasEventMonitorNotRunningError(data)) {
+    return "event_monitor_not_running";
+  }
+
   return "eapi_json_rpc_error";
 }
+
+function hasEventMonitorNotRunningError(data: unknown): boolean {
+  if (!Array.isArray(data)) {
+    return false;
+  }
+  return data.some((entry) => {
+    if (!isObject(entry) || !Array.isArray(entry.errors)) {
+      return false;
+    }
+    return entry.errors.some((errorText) => typeof errorText === "string" && errorText.toLowerCase().includes("event-monitor not running"));
+  });
+}
+
+const EVENT_MONITOR_NOT_RUNNING_SENTENCE =
+  "EOS Event Monitor is not running; an operator must enable it with the 'event-monitor' configuration command (this server never changes configuration).";

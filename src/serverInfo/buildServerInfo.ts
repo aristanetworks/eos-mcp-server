@@ -24,7 +24,8 @@ export function buildServerInfo(context: ServerRuntimeContext, diagnosticCapacit
       tool_prefix: "eos_",
       supported_inventory_schemas: ["canonical-ansible-yaml", "simplified-yaml"],
       output_modes: ["auto", "json", "text"],
-      eapi_version: context.config.eapiVersion
+      eapi_version: context.config.eapiVersion,
+      privileged_show_commands: [...context.config.privilegedShowCommands]
     },
     limits: {
       read_timeout_ms: context.config.readTimeoutMs,

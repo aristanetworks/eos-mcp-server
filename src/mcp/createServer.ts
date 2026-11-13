@@ -78,7 +78,7 @@ function buildToolDefinitions(deps: McpRuntimeDependencies) {
     },
     {
       name: "eos_run_show",
-      description: "Run one or more EOS show commands against a host or group target. Supports auto/json/text output modes with strict show-only validation.",
+      description: "Run one or more EOS show commands against a host or group target. Supports auto/json/text output modes with strict show-only validation. `show event-monitor` commands run in EOS privileged mode, decided by the server, and must be sent in a request containing only event-monitor commands. Event Monitor output is text. Filters such as match-ip take `%` wildcards (e.g. `show event-monitor route match-ip 10.1.% limit 50`). `show event-monitor sqlite` accepts a single read-only SELECT or WITH statement. If the device's Event Monitor is stopped the result fails with event_monitor_not_running, and this server never starts it.",
       inputSchema: runShowInputSchema,
       annotations: closedWorldReadOnly,
       handler: async (args: z.infer<typeof runShowInputSchema>, extra: { signal: AbortSignal }) => buildRunShowToolResult(deps.inventoryModel, deps.config, args, deps.deviceReader, extra.signal)

@@ -165,6 +165,24 @@ VLAN 100 (`VLAN100`) active on all leaves, member of `Vx1` only, empty MAC table
 
 ---
 
+## Event Monitor
+
+Requires an operator to enable `event-monitor` on the switch (it is stopped by default and the server never starts it); until then queries fail with `event_monitor_not_running`. `eos_run_show` runs `show event-monitor` commands in privileged mode, as the only commands in the request. There is no default row limit, so keep queries narrow. Filters are `%`-wildcard patterns.
+
+### When did a prefix last change?
+
+> When did 10.1.0.0/24 last change on leaf1?
+
+Claude runs `show event-monitor route match-ip 10.1.0.% limit 50` on leaf1 and reads the text rows (output has no JSON form).
+
+### Join across event types with SQL
+
+> Which MACs moved in the last hour?
+
+Claude runs a single `show event-monitor sqlite select ... limit 50` statement. Only one `SELECT` or `WITH` statement is accepted; anything else is rejected with `event_monitor_sqlite_rejected`.
+
+---
+
 ## Packet Capture
 
 Enabled by default; denied on hosts that set `mcp_diagnostics_allowed: false` or `mcp_packet_capture_allowed: false`. A capture sees only traffic the switch's control plane sends or receives, never hardware-forwarded transit traffic.
@@ -194,7 +212,7 @@ A complete capture of 2 packets: a 19-byte BGP message (a keepalive) from node1-
 | `eos_list_inventory` | Show eligible hosts and groups from the loaded inventory |
 | `eos_get_facts` | Collect model, version, serial, uptime, system MAC |
 | `eos_get_running_config` | Retrieve running config (full for hosts, section for groups) |
-| `eos_run_show` | Run arbitrary `show ...` commands; returns JSON or text |
+| `eos_run_show` | Run arbitrary `show ...` commands, including `show event-monitor` queries; returns JSON or text |
 | `eos_show_logging` | Retrieve bounded logging output with minimum severity threshold |
 | `eos_get_server_info` | Show server capabilities, runtime mode, inventory summary |
 | `eos_ping` | Ping one or more destinations from a host or group (disable with `mcp_diagnostics_allowed: false`) |

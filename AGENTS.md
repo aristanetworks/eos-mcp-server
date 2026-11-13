@@ -67,7 +67,8 @@ This is a TypeScript ESM-only Node 20+ MCP server that exposes Arista EOS networ
 - Canonical groups merge: a group referenced under multiple parents has hosts and children unioned and vars merged, with later vars winning, matching Ansible semantics.
 - Fail closed: mixed eligibility in a group target is an error, not a partial success.
 - Password source: exactly one of `mcp_password_env` or `ansible_password` must resolve per host. Prefer `mcp_password_env`; env var names must match the configured allowed prefix, `EOS_MCP_` by default.
-- `eos_run_show` only accepts single-line `show` commands, validated and trimmed before dispatch.
+- `eos_run_show` only accepts single-line `show` commands, validated and trimmed before dispatch. It runs unprivileged, except for requests made up entirely of Privileged Show Commands (built-in list in `src/show/privilegedShow.ts`, currently `show event-monitor`; operators may narrow it with `privilegedShowCommands` but never widen it). Mixed requests are rejected, and callers cannot request privileged mode ([ADR 0011](docs/adr/0011-event-monitor-queries.md)).
+- `show event-monitor sqlite <statement>` is checked by an SQL guard instead of the metacharacter check: one `SELECT`/`WITH` statement only. Never relax it; `ATTACH` and `VACUUM INTO` write files on flash even on the read-only event database.
 - `eos_get_running_config` group targets require an explicit single-line `section` string; it enters eAPI enable mode because `show running-config` requires privileged access.
 - Enable mode is opt-in on the eAPI client via `{ enable: true }` on `runShowCommands` and `runCommands`; it prepends `enable` and strips the extra response entry transparently.
 - `overallOperationTimeoutMs` aborts in-flight read eAPI requests and stops scheduling new devices.
