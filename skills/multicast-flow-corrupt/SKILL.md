@@ -1,5 +1,4 @@
 ---
-author: Sakti Arunachalam
 name: multicast-flow-corrupt
 description: Diagnose corrupted, duplicated, mixed, or packet-losing EOS multicast flows using interface, hardware, CoPP, MMU, IGMP, PIM, MFIB, RPF, and PTP evidence. Read-only.
 trigger: |
@@ -38,20 +37,27 @@ record EOS version, platform/SKU, ASIC family, VRF, and multicast model. Call
 comparison devices:
 
 Establish IPv4 versus IPv6 and L2 snooping versus L3 routed multicast first.
-For hardware evidence, capture forwarding/UFT profile, effective mroute/IPMC
-limits, resource/counter-engine availability, fastdrop state, and counter age.
+Use [check-multicast-forwarding-resources](../check-multicast-forwarding-resources/SKILL.md)
+for profile versus allocation evidence, IPMC/replication resources, complete
+normalized OIF comparisons, and counter support/allocation/polling checks.
+Keep resource alarms on the node separate from anomalies attributable to the
+selected flow; missing/N/A counters and `Activity never` are not zero traffic.
+
+Use text output for these applicable IPv4 views. Substitute square-bracket
+placeholders from runtime scope; select the source locally from the group-scoped
+MRIB response and verify non-default VRF selectors before comparing views.
 
 ```text
 show interfaces counters discards
 show hardware counter drops
 show policy-map copp
-show multicast fib ipv4 <group> <source>
+show multicast fib ipv4 [group] [source]
 show multicast fib ipv4 summary
-show ip mroute <group> <source>
+show ip mroute [group]
 show ip mroute count
 show ip igmp snooping groups detail
 show ip pim neighbor
-show ip pim interface <interface> detail
+show ip pim interface [interface] detail
 ```
 
 Use platform-specific MMU or multicast-resource commands only when the
@@ -81,8 +87,12 @@ record support, route state, and polling/transition history.
   claiming aliasing.
 - `Cpu` alongside hardware OIFs may indicate duplicate L2/L3 delivery; verify
   with MFIB and platform evidence.
-- Wrong IIF/RPF, fastdrops, or MFIB/mroute disagreement indicates routing or
-  hardware-programming trouble; route to `check-pim-health` as appropriate.
+- Wrong IIF/RPF, selected-route fastdrops, or MFIB/mroute disagreement warrants
+  routing/forwarding investigation. Preserve partial OIF omissions even if the
+  route reports programmed. Use `check-pim-health` for PIM/RPF and the resource
+  skill for allocation/programming correlation; disagreement alone does not
+  prove an ASIC defect or resource-caused loss. Consistent software views do
+  not prove per-receiver delivery.
 
 Report corruption type, affected `(S,G)`, hop/interface, drops, CoPP/MMU
 evidence, duplicate sources or aliasing, RPF/MFIB state, PTP status when
