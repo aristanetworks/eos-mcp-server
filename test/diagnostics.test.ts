@@ -9,7 +9,7 @@ import { buildListInventoryView } from "../src/inventory/listInventoryView.js";
 import { buildPingToolResult, pingInputSchema } from "../src/mcp/tools/ping.js";
 import { buildConfig, buildEapiSlots, buildInventoryModel, loadSwitchesModel, stubDiagnosticRunner, unansweredDiagnosticRunner, writeTempInventory } from "./helpers.js";
 
-const output = "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\nrtt min/avg/max/mdev = 0.020/0.025/0.030/0.001 ms\n";
+const output = "PING 127.0.0.1 (127.0.0.1) 72(100) bytes of data.\n\n3 packets transmitted, 3 received, 0% packet loss, time 2000ms\nrtt min/avg/max/mdev = 0.020/0.025/0.030/0.001 ms\n";
 const observation: DiagnosticObservation = { end: "output", output };
 const call = { target: "leaf1", request: { kind: "ping" as const, destinations: ["127.0.0.1"] } };
 
@@ -94,7 +94,7 @@ describe("diagnostic policy and fan-out", () => {
   });
 
   it("treats zero replies as a finding, not an execution error", async () => {
-    const device = { execute: vi.fn(async () => ({ end: "output" as const, output: "3 packets transmitted, 0 received, 100% packet loss, time 2000ms\n" })) };
+    const device = { execute: vi.fn(async () => ({ end: "output" as const, output: "PING 127.0.0.1 (127.0.0.1) 72(100) bytes of data.\n\n3 packets transmitted, 0 received, 100% packet loss, time 2000ms\n" })) };
     const result = await new DiagnosticExecutor(await loadSwitchesModel(), buildConfig(), device, buildEapiSlots()).execute(call);
     expect(result.summary.success_count).toBe(1);
     expect(result.results[0]?.finding).toMatchObject({ reachability: "unreachable" });
@@ -387,7 +387,7 @@ describe("multi-destination ping", () => {
     expect(parsed.success).toBe(false);
     expect(parsed.error?.issues).toEqual(expect.arrayContaining([
       expect.objectContaining({ path: ["destinations"] }),
-      expect.objectContaining({ code: "unrecognized_keys", message: expect.stringContaining("destinations: [\"<ip>\"]") })
+      expect.objectContaining({ code: "unrecognized_keys", message: expect.stringContaining("destinations: [\"<ip or name>\"]") })
     ]));
     expect(pingInputSchema.safeParse({ target: "leaf1", destinations: [] }).success).toBe(false);
   });

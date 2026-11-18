@@ -4,7 +4,7 @@ import { DiagnosticExecutor } from "../src/diagnostics/executor.js";
 import { EapiDiagnosticRunner } from "../src/diagnostics/eapiRunner.js";
 import { buildConfig, buildEapiSlots, buildInventoryModel, buildConnection } from "./helpers.js";
 
-const result = [{ output: "" }, { output: "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n" }];
+const result = [{ output: "" }, { output: "PING 127.0.0.1 (127.0.0.1) 72(100) bytes of data.\n\n3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n" }];
 const call = { target: "leaf1", request: { kind: "ping" as const, destinations: ["127.0.0.1"] } };
 
 describe("diagnostic completion response correlation", () => {

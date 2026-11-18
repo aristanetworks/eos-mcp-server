@@ -9,7 +9,7 @@ import { preparePing } from "../src/diagnostics/ping.js";
 import { buildConfig, buildEapiSlots, buildHost, buildInventoryModel, echoRpcTransport } from "./helpers.js";
 
 const context = () => ({ shutdownSignal: new AbortController().signal, requestId: "unit-rpc-id" });
-const output = "1 packets transmitted, 1 received, 0% packet loss, time 0ms\n";
+const output = "PING 127.0.0.1 (127.0.0.1) 72(100) bytes of data.\n\n1 packets transmitted, 1 received, 0% packet loss, time 0ms\n";
 const host = buildHost({ effectiveVars: { ansible_user: "admin", ansible_password: "test-password" } });
 const call = { target: "leaf1", request: { kind: "ping" as const, destinations: ["::1"] } };
 

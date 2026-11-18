@@ -1,6 +1,6 @@
 # Allow explicitly authorized, non-configuring diagnostics on EOS
 
-Packet capture decided in [ADR 0010](0010-bounded-synchronous-packet-capture.md).
+Packet capture decided in [ADR 0010](0010-bounded-synchronous-packet-capture.md). [ADR 0012](0012-dns-name-destinations.md) amends the destination rule below: destinations may also be DNS names resolved by the device.
 
 Extend operational inspection with bounded diagnostics executed on inventory-selected EOS devices, starting with ping and leaving traceroute and packet capture for later design. Preserve the permanent prohibition on configuration changes, but do not equate non-configuring diagnostics with passive or harmless reads: probes generate traffic, while packet capture can expose sensitive data. Require explicit, inherited diagnostic authorization in inventory, denied by default and always vetoed by read denial; reject a whole group before execution if any member is unauthorized. Diagnostic destinations may be literal IP addresses outside inventory, because inventory identifies where operations execute rather than every address they may test.
 

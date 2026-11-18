@@ -50,6 +50,18 @@ describe.runIf(process.env.INTEGRATION === "1")("integration: bounded EOS ping (
     expect(missingSource.results[0]).toMatchObject({ status: "failed", error_code: "diagnostic_command_failed" });
   }, 15_000);
 
+  it("resolves a name on the device and reports the resolved address", async () => {
+    // localhost resolves through the device's /etc/hosts, so no DNS server is needed.
+    const result = await (await executor()).execute({ target: "ping1", request: { kind: "ping", destinations: ["localhost"], count: 1 } });
+    expect(result.results[0]).toMatchObject({ status: "success", finding: { reachability: "reachable", resolved_address: "127.0.0.1" } });
+  }, 30_000);
+
+  it("fails an unresolvable name as an execution failure, not an unreachable finding", async () => {
+    // A lookup against an unanswering name server can take about 10 s on the lab devices.
+    const result = await (await executor()).execute({ target: "ping1", request: { kind: "ping", destinations: ["nosuch.invalid"], count: 1 } });
+    expect(result.results[0]).toMatchObject({ status: "failed", error_code: "diagnostic_destination_unresolved" });
+  }, 45_000);
+
   it("aborts HTTP work at the configured overall deadline", async () => {
     await expect((await executor(100)).execute({ target: "switches", request: { kind: "ping", destinations: ["127.0.0.1"], count: 3 } }))
       .rejects.toMatchObject({ code: "operation_timeout" });

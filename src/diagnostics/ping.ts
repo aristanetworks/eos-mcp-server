@@ -2,6 +2,7 @@ import { isIP } from "node:net";
 import type { DiagnosticsConfig } from "../config/diagnostics.js";
 import { pingExecutionBoundMs } from "../config/diagnostics.js";
 import { AppError } from "../core/errors.js";
+import { destinationKey, throwOnDestinationFailure, parseDestination, resolveDestinationFamily, validateAddress, validateAddressFamilyAgainstSource } from "./destination.js";
 import { resolveBoundedInteger, validateVrf } from "./validation.js";
 import type { DiagnosticDefinition, PingExecutionRequest, PingFinding, PingRequest, PreparedPing } from "./types.js";
 
@@ -18,8 +19,8 @@ export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing> = {
     }
     // Every destination is validated before any is dispatched.
     const executions = destinations.map((destination) => preparePing({ ...shared, destination }, config));
-    // Compare canonical forms so alternate IPv6 spellings of one address are caught.
-    if (new Set(executions.map((execution) => canonicalAddress(execution.destination, execution.addressFamily))).size !== executions.length) {
+    // Literals compare canonically (alternate IPv6 spellings); names ignore case and a trailing dot.
+    if (new Set(executions.map((execution) => destinationKey(parseDestination(execution.destination)))).size !== executions.length) {
       throw new AppError("diagnostic_destination_duplicate", "Each destination may appear only once per request");
     }
     const count = executions[0]?.count ?? config.defaultPingCount;
@@ -52,56 +53,19 @@ export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing> = {
 };
 
 export function preparePing(request: PingExecutionRequest, config: DiagnosticsConfig): PreparedPing {
-  const addressFamily = validateAddress(request.destination);
+  const destination = parseDestination(request.destination);
+  const sourceFamily = request.source === undefined ? undefined : validateAddress(request.source);
+  validateAddressFamilyAgainstSource(request.address_family, sourceFamily);
+  const addressFamily = resolveDestinationFamily(destination, { sourceFamily, addressFamily: request.address_family });
   const count = resolveBoundedInteger(request.count, config.defaultPingCount, config.maxPingCount, { code: "diagnostic_count_invalid", label: "Ping count" });
   if (pingExecutionBoundMs(count, config.pingReplyTimeoutMs) > config.commandTimeoutMs) {
     throw new AppError("diagnostic_command_budget_exceeded", "Ping exceeds the configured device command budget");
   }
   if (request.vrf !== undefined) validateVrf(request.vrf);
-  if (request.source !== undefined && validateAddress(request.source) !== addressFamily) {
+  if (sourceFamily !== undefined && sourceFamily !== addressFamily) {
     throw new AppError("diagnostic_source_invalid", "Source and destination must use the same IP address family");
   }
   return { ...request, count, addressFamily, replyTimeoutSeconds: config.pingReplyTimeoutMs / 1000 };
-}
-
-function validateAddress(address: string): 4 | 6 {
-  const family = isIP(address);
-  if (family === 0 || address.includes("%")) {
-    throw new AppError("diagnostic_address_invalid", "Use an IPv4 or IPv6 literal without interface scoping");
-  }
-  if (family === 4) {
-    validateIpv4(address.split(".").map(Number));
-    return 4;
-  }
-  const halves = canonicalAddress(address, 6).split("::");
-  const left = halves[0]?.split(":").filter(Boolean) ?? [];
-  const right = halves[1]?.split(":").filter(Boolean) ?? [];
-  const words = halves.length === 1
-    ? left.map((word) => Number.parseInt(word, 16))
-    : [...left, ...Array<string>(8 - left.length - right.length).fill("0"), ...right].map((word) => Number.parseInt(word, 16));
-  const first = words[0] ?? 0;
-  if (words.every((word) => word === 0) || (first & 0xff00) === 0xff00 || (first & 0xffc0) === 0xfe80) {
-    throw new AppError("diagnostic_address_invalid", "Unspecified, multicast, and IPv6 link-local addresses are not supported");
-  }
-  if (words.slice(0, 5).every((word) => word === 0) && words[5] === 0xffff) {
-    // Prevent mapped addresses from bypassing IPv4 destination restrictions.
-    const high = words[6] ?? 0;
-    const low = words[7] ?? 0;
-    validateIpv4([high >> 8, high & 255, low >> 8, low & 255]);
-  }
-  return 6;
-}
-
-/** Expects a literal already accepted by `isIP`, which only admits canonical dotted-decimal IPv4. */
-function canonicalAddress(address: string, addressFamily: 4 | 6): string {
-  // WHATWG URL canonicalization compresses zeros, lowercases, and expands dotted IPv4-mapped IPv6 into hex words.
-  return addressFamily === 6 ? new URL(`http://[${address}]/`).hostname.slice(1, -1) : address;
-}
-
-function validateIpv4(octets: number[]): void {
-  if ((octets[0] ?? 0) === 0 || (octets[0] ?? 0) >= 224) {
-    throw new AppError("diagnostic_address_invalid", "Unspecified, multicast, reserved, and limited broadcast addresses are not supported");
-  }
 }
 
 /** Verified on cEOS 4.34.3M. `timeout` is per-reply, not a wall-clock deadline. */
@@ -121,9 +85,11 @@ export function buildPingCommand(request: PreparedPing): string {
 
 export function parsePingOutput(output: string, expectedCount: number): PingFinding {
   const normalized = output.replace(/\r\n/g, "\n");
+  throwOnDestinationFailure(normalized, "ping6?: ");
   if (/^(?:ping6?:|%)/m.test(normalized)) {
     throw new AppError("diagnostic_command_failed", "EOS could not execute the requested ping");
   }
+  const resolvedAddress = parseResolvedAddress(normalized);
   const matches = [...normalized.matchAll(/^(\d+) packets transmitted, (\d+)(?: packets)? received,(?: \+\d+ (?:errors|duplicates),)* ([\d.]+)% packet loss[^\r\n]*$/gm)];
   const stats = matches.length === 1 ? matches[0] : undefined;
   if (!stats) {
@@ -153,10 +119,26 @@ export function parsePingOutput(output: string, expectedCount: number): PingFind
   }
   return {
     kind: "ping",
+    resolved_address: resolvedAddress,
     reachability: received === 0 ? "unreachable" : received === sent ? "reachable" : "partial",
     packets_sent: sent,
     packets_received: received,
     packet_loss_percent: Number(loss.toFixed(4)),
     rtt_ms: rtt
   };
+}
+
+/** The Resolved Address from EOS's header. Measured on cEOS 4.34.3M:
+ * `PING 10.255.0.4 (10.255.0.4) from 10.255.0.3 : 72(100) bytes of data.`,
+ * `PING localhost.localdomain (127.0.0.1) 72(100) bytes of data.` and `PING ::1(::1) 52 data bytes`.
+ * The name shown may be the canonical name rather than the one requested, so only the parenthesized address is used.
+ * A name-bearing IPv6 header is expected to nest it, as `PING name(name (addr)) ...`, so the innermost group wins.
+ */
+function parseResolvedAddress(normalizedOutput: string): string {
+  const header = /^PING [^\n]*$/m.exec(normalizedOutput)?.[0];
+  const candidate = header === undefined ? undefined : /\(([^()\s]+)\)/.exec(header)?.[1];
+  if (candidate === undefined || isIP(candidate) === 0) {
+    throw new AppError("diagnostic_output_unrecognized", "EOS ping output did not contain a recognized resolved address");
+  }
+  return candidate;
 }

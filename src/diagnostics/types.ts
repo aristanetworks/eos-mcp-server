@@ -10,6 +10,8 @@ export interface PingRequest {
   count?: number;
   vrf?: string;
   source?: string;
+  /** Applies only to name destinations; literals keep their own family. */
+  address_family?: "ipv4" | "ipv6";
 }
 
 /** Field names follow the tool input, because the resolved request is echoed in results. */
@@ -60,6 +62,8 @@ export type DiagnosticOutcome =
 
 export interface PingFinding {
   kind: "ping";
+  /** The address EOS used, from its ping header; for a name destination, what the device resolved it to. */
+  resolved_address: string;
   reachability: "reachable" | "partial" | "unreachable";
   packets_sent: number;
   packets_received: number;

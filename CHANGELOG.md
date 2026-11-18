@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `eos_ping` destinations may now be DNS host names as well as IP literals, resolved by the executing device's own resolver and never by the server. Names are syntax-checked as RFC 1123 host names (`diagnostic_address_invalid` otherwise); the unspecified/multicast/reserved/link-local restrictions apply only to literals. New optional `address_family` (`ipv4` | `ipv6`) selects the family for names: it defaults to the `source` family, else IPv4, and a value contradicting `source` is rejected with `diagnostic_address_family_conflict`. Every ping finding gains `resolved_address`, parsed from EOS's ping header (a missing or invalid address is `diagnostic_output_unrecognized`). A name the device cannot resolve, or one without an address of the requested family, fails with the new `diagnostic_destination_unresolved`, and a device with no route (`connect: Network is unreachable`) fails with the new `diagnostic_destination_no_route` instead of `diagnostic_command_failed`. Names are duplicates when equal ignoring case and a trailing dot. See [ADR 0012](docs/adr/0012-dns-name-destinations.md).
+
 ## 0.13.1-beta
 
 - Adds optional inventory `mcp_user` in canonical Ansible-style YAML only. Simplified inventories reject `mcp_user` and retain their existing `ansible_user`/server-default username resolution. The MCP connection username resolves from effective `mcp_user`, then effective `ansible_user`, then `defaultConnection.ansibleUser`, so a shared inventory can keep its Ansible account while using a dedicated MCP account. Inventories without `mcp_user` retain their username behavior; supplied `mcp_user` values must be non-empty strings.

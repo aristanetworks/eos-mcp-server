@@ -1,0 +1,14 @@
+# Accept DNS names as diagnostic Destinations, resolved by the executing device
+
+**Status: accepted; implemented for ping (traceroute pending).** Amends [ADR 0001](0001-non-configuring-diagnostics.md), which allowed only literal IP addresses as destinations. Applies to ping and to traceroute.
+
+A **Destination** may now be a DNS name as well as an IP literal. The executing EOS device resolves it with its own resolver, because the point of a diagnostic is the device's view of the network: split-horizon DNS, per-VRF name servers and the device's cache can all differ from the server's. The server never resolves names, not even to pre-check the address, since a server-side answer can disagree with the one the device then uses. Inventory host names are never turned into Destinations: inventory does not know hosts' data-plane addresses, and doing so would blur **Target** and **Destination**.
+
+Consequences:
+
+- **Address restrictions apply only to literals.** The server's rejection of unspecified, multicast, reserved, limited-broadcast, link-local and IPv4-mapped-bypass addresses cannot see what a name resolves to. This is a deliberate relaxation; probe counts and budgets still bound the traffic. Each result reports the **Resolved Address** parsed from EOS's output header (for literals too), so a name resolving to an unexpected address is visible.
+- **Names are syntax-checked as RFC 1123 host names** (LDH labels of 1–63 characters, at most 253 in total, optional trailing dot, at least one letter), because the name is placed in the EOS command line. Anything that is neither a valid literal nor a valid name is `diagnostic_address_invalid`.
+- **Address family.** EOS needs `ip` or `ipv6` and fails a name of the wrong family. An optional request-wide `address_family` (`ipv4` | `ipv6`) applies only to names; literals keep their own family. When `source` is set, names take its family and a conflicting `address_family` is rejected. Otherwise names default to IPv4.
+- **Unresolvable names** (`Name or service not known`) are an execution failure, `diagnostic_destination_unresolved`, never an unreachable finding: nothing was sent. By the same rule, a device with no route (`connect: Network is unreachable`) fails with `diagnostic_destination_no_route` instead of the generic `diagnostic_command_failed`; ping changes with this decision.
+- **Duplicates.** Names are duplicates only when equal ignoring case and a trailing dot; literals keep canonical comparison. Different names, or a name and a literal, that resolve to the same address are distinct Destinations.
+- **Resolution time is not budgeted.** With an unanswering name server, a failed lookup took about 10 s on cEOS 4.34.3M. A lookup that pushes an execution past its device timer surfaces as the existing device-time-limit failure.

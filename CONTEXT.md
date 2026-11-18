@@ -13,8 +13,12 @@ An operational test or observation performed on an EOS device without changing i
 _Avoid_: Passive read, harmless command
 
 **Destination**:
-The IPv4 or IPv6 address tested by a diagnostic, which need not belong to an inventory host and is distinct from the **Target** executing the diagnostic.
-_Avoid_: Target, device endpoint
+What a diagnostic tests: an IPv4 or IPv6 address, or a DNS name that the executing device resolves with its own resolver. It need not belong to an inventory host and is distinct from the **Target** executing the diagnostic.
+_Avoid_: Target, device endpoint, hostname (ambiguous with inventory host names)
+
+**Resolved Address**:
+The IP address an executing device actually tested for a **Destination**, as the device reports it: the literal itself, or what the device's resolver returned for a DNS name.
+_Avoid_: Destination, target address
 
 **Diagnostic Execution**:
 One run of a diagnostic on one inventory host; for ping, against one **Destination**. Each execution holds its own reservation and yields its own result.
@@ -25,11 +29,11 @@ Authorization for an inventory host to perform diagnostics, additional to read a
 _Avoid_: Read permission
 
 **Uncertain Execution Reservation**:
-Diagnostic capacity held because an EOS execution's remote completion cannot be confirmed. It is held for that execution's own budget (for ping, `commandTimeoutMs`; for a **Packet Capture**, its window plus a margin) and then frees itself; a late confirmed response frees it sooner. It lives only in the server process that made it. A **Device Time Limit** reply is confirmed completion, so it never leaves one.
+Diagnostic capacity held because an EOS execution's remote completion cannot be confirmed. It is held for that execution's own budget (for ping, `commandTimeoutMs`; for traceroute, `tracerouteTimeoutMs`; for a **Packet Capture**, its window plus a margin) and then frees itself; a late confirmed response frees it sooner. It lives only in the server process that made it. A **Device Time Limit** reply is confirmed completion, so it never leaves one.
 _Avoid_: Permanent hold, completed job
 
 **Device Time Limit**:
-EOS's own per-request timer (`runCmds.requestTimeout`) stopping a diagnostic command once it has started. EOS returns none of the command's output, but its reply confirms the execution has ended, so the reservation is freed at once. What it means depends on the diagnostic: the expected end of an unfilled **Packet Capture**, but a failure for a ping, which then has no **Reachability Finding**.
+EOS's own per-request timer (`runCmds.requestTimeout`) stopping a diagnostic command once it has started. EOS returns none of the command's output, but its reply confirms the execution has ended, so the reservation is freed at once. What it means depends on the diagnostic: the expected end of an unfilled **Packet Capture**, but a failure for a ping or a traceroute, which then has no **Reachability Finding** or **Path Finding**.
 _Avoid_: Timeout, HTTP timeout, uncertain completion
 
 **Source Address**:
@@ -39,6 +43,10 @@ _Avoid_: Target address, destination address
 **Reachability Finding**:
 The conclusion of a completed ping diagnostic: reachable when all probes receive replies, partial when only some do, or unreachable when none do. An unreachable finding does not establish why replies were absent and is distinct from a failure to execute the diagnostic.
 _Avoid_: Tool failure, confirmed network outage
+
+**Path Finding**:
+The conclusion of a completed traceroute: reached when the **Resolved Address** answered, unreached otherwise. It always carries the hops observed. An unreached finding does not establish why the destination never answered and is distinct from a failure to execute the diagnostic.
+_Avoid_: Route, path failure, confirmed outage
 
 **Packet Capture**:
 A **Non-configuring Diagnostic** that observes packets sent or received by an EOS device's control plane, up to a requested packet count within a bounded window. It never observes hardware-forwarded transit traffic.
@@ -103,6 +111,9 @@ _Avoid_: Raw result, raw output
 ## Relationships
 
 - A ping request names one or more **Destinations** and a **Target**; it performs one **Diagnostic Execution** per resolved host and **Destination**, each producing its own **Reachability Finding** or execution failure.
+- A diagnostic that sends no probe, because the executing device cannot resolve the **Destination** or has no route to it, yields an execution failure, never an unreachable **Reachability Finding** or unreached **Path Finding**.
+- A **Path Finding** is reached when the **Resolved Address** answered, even if that answer was an unreachable or prohibited marker.
+- Two different DNS names, or a DNS name and an address, are distinct **Destinations** even if they share a **Resolved Address**.
 - Permissions form a ladder: read access ⊂ **Diagnostic Permission** ⊂ **Packet Capture Permission**.
 - A **Packet Capture** has at most one **Capture Filter** and performs one **Diagnostic Execution** per resolved host, each yielding its own **Capture Finding** or execution failure.
 - An unfilled **Capture Finding** says fewer matching packets arrived than requested; it does not say none arrived.
@@ -122,6 +133,8 @@ _Avoid_: Raw result, raw output
 > **Domain expert:** "Yes — the **Logging Query** uses **Log Severity** as a minimum threshold, so warnings include errors, critical, alerts, and emergencies."
 
 ## Flagged ambiguities
+
+- "hostname" as a **Destination** could mean a DNS name or an inventory host name — resolved: a **Destination** may be a DNS name resolved by the executing device; inventory host names are never resolved into **Destinations**.
 
 - "severity" could mean exact severity or minimum threshold — resolved: logging tool filters use **Log Severity** as a minimum threshold.
 - EOS help calls **Event Filter** values "regular expressions", but they behave as SQL `LIKE` patterns (`10.10.10.%`) — resolved: the glossary uses **Event Filter**, defined by `%` and `_` wildcards.
