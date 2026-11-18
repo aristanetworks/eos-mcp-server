@@ -80,6 +80,9 @@ export function buildTracerouteCommand(request: PreparedTraceroute): string {
 }
 
 // Measured on cEOS 4.34.3M, plus Linux traceroute's marker set (!H !N !P !S !F-<n> !X !V !C !<num>).
+const HEADER_PATTERN = /^traceroute to \S+ \(([^()\s]+)\), (\d{1,3}) hops max,/;
+// EOS sends three probes per hop and offers no option to change it (ADR 0013).
+const PROBES_PER_HOP = 3;
 const HOP_LINE_PATTERN = /^\s*(\d{1,3})\s+(\S.*)$/;
 const PROBE_PATTERN = /\s*(?:(\*)|(\S+) \(([^()\s]+)\)\s+(\d+(?:\.\d+)?) ms|(\d+(?:\.\d+)?) ms)(?:\s+(![A-Za-z0-9<>-]*))?/y;
 
@@ -90,23 +93,29 @@ export function parseTracerouteOutput(output: string): TracerouteFinding {
   }
   throwOnDestinationFailure(normalized, "");
   const lines = normalized.split("\n").filter((line) => line.trim() !== "");
-  const resolvedAddress = parseResolvedAddress(lines[0]);
+  const { resolvedAddress, maxHops } = parseHeader(lines[0]);
   const hops = lines.slice(1).map(parseHopLine);
   if (hops.length === 0) {
     throw new AppError("diagnostic_output_unrecognized", "EOS traceroute output contained no hops");
+  }
+  // The path is judged by the last hop, so hops out of order or past the header's limit must never be classified.
+  if (hops.length > maxHops || hops.some((hop, index) => hop.hop !== index + 1)) {
+    throw new AppError("diagnostic_output_unrecognized", `EOS traceroute output did not number its hops 1, 2, 3, ... up to at most ${maxHops}`);
   }
   const lastHop = hops[hops.length - 1];
   const reached = lastHop?.responses.some((response) => response !== null && sameAddress(response.address, resolvedAddress)) === true;
   return { kind: "traceroute", path: reached ? "reached" : "unreached", resolved_address: resolvedAddress, hops };
 }
 
-/** `traceroute to <name> (<address>), 30 hops max, 60 byte packets`; only the parenthesized address is used. */
-function parseResolvedAddress(headerLine: string | undefined): string {
-  const candidate = headerLine === undefined ? undefined : /^traceroute to \S+ \(([^()\s]+)\),/.exec(headerLine)?.[1];
-  if (candidate === undefined || addressComparisonKey(candidate) === undefined) {
-    throw new AppError("diagnostic_output_unrecognized", "EOS traceroute output did not contain a recognized resolved address");
+/** `traceroute to <name> (<address>), 30 hops max, 60 byte packets`: the parenthesized address and the hop limit. */
+function parseHeader(headerLine: string | undefined): { resolvedAddress: string; maxHops: number } {
+  const header = headerLine === undefined ? null : HEADER_PATTERN.exec(headerLine);
+  const resolvedAddress = header?.[1];
+  const maxHops = Number(header?.[2]);
+  if (resolvedAddress === undefined || addressComparisonKey(resolvedAddress) === undefined || !(maxHops >= 1)) {
+    throw new AppError("diagnostic_output_unrecognized", "EOS traceroute output did not contain a recognized header");
   }
-  return candidate;
+  return { resolvedAddress, maxHops };
 }
 
 /** A probe with no new responder prints only its RTT, meaning the previous responder answered again. */
@@ -144,10 +153,15 @@ function parseHopLine(line: string): TracerouteHop {
     if (previous === undefined) {
       throw new AppError("diagnostic_output_unrecognized", "EOS traceroute output had a probe time before any responder");
     }
-    responses.push({ ...previous, rtt_ms: Number(newResponderRtt ?? repeatRtt), ...(marker === undefined ? {} : { marker }) });
+    const rttMs = Number(newResponderRtt ?? repeatRtt);
+    // A digit run too long for a double becomes Infinity, which JSON would carry as null.
+    if (!Number.isFinite(rttMs)) {
+      throw new AppError("diagnostic_output_unrecognized", "EOS traceroute output contained an unrecognized probe time");
+    }
+    responses.push({ ...previous, rtt_ms: rttMs, ...(marker === undefined ? {} : { marker }) });
   }
-  if (responses.length === 0) {
-    throw new AppError("diagnostic_output_unrecognized", "EOS traceroute output contained a hop without probes");
+  if (responses.length === 0 || responses.length > PROBES_PER_HOP) {
+    throw new AppError("diagnostic_output_unrecognized", `EOS traceroute output contained a hop without 1 to ${PROBES_PER_HOP} probes`);
   }
   return { hop: hopNumber, responses };
 }

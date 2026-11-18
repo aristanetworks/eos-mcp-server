@@ -113,9 +113,9 @@ export interface TracerouteResponse {
   marker?: string;
 }
 
-/** `responses` holds one entry per probe in EOS's order: null for a probe with no answer (`*`), and different
- * addresses within one hop when the path load-balances. Hop numbers need not be consecutive in the output
- * EOS prints, so they are kept as printed.
+/** `responses` holds one entry per probe in EOS's order, at most three: null for a probe with no answer (`*`), and
+ * different addresses within one hop when the path load-balances. Hops are numbered from 1 without gaps, up to
+ * the header's hop limit; output that is not is rejected as unrecognized.
  */
 export interface TracerouteHop {
   hop: number;

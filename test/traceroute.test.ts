@@ -23,6 +23,8 @@ const internetPath = `traceroute to 192.0.2.1 (192.0.2.1), 30 hops max, 60 byte 
  1  _gateway (172.20.20.1)  0.060 ms  0.011 ms  0.009 ms
  2  192.168.68.1 (192.168.68.1)  0.359 ms  0.335 ms  0.361 ms
  3  10.112.235.250 (10.112.235.250)  12.277 ms 10.112.235.251 (10.112.235.251)  12.175 ms 10.112.235.250 (10.112.235.250)  12.428 ms
+ 4  68.86.142.245 (68.86.142.245)  12.194 ms  12.090 ms  12.124 ms
+ 5  96.216.230.93 (96.216.230.93)  13.982 ms 96.216.230.97 (96.216.230.97)  12.242 ms 96.216.230.93 (96.216.230.93)  12.378 ms
  6  96.108.99.245 (96.108.99.245)  15.190 ms 96.108.99.249 (96.108.99.249)  15.291 ms  15.260 ms
  7  96.110.41.73 (96.110.41.73)  15.205 ms !N 68.86.93.137 (68.86.93.137)  16.886 ms !N *
 `;
@@ -125,14 +127,14 @@ describe("traceroute output interpretation", () => {
     const finding = parse(internetPath);
     expect(finding.path).toBe("unreached");
     expect(finding.resolved_address).toBe("192.0.2.1");
-    expect(finding.hops.map((hop) => hop.hop)).toEqual([1, 2, 3, 6, 7]);
+    expect(finding.hops.map((hop) => hop.hop)).toEqual([1, 2, 3, 4, 5, 6, 7]);
     expect(finding.hops[0]?.responses[0]).toEqual({ address: "172.20.20.1", name: "_gateway", rtt_ms: 0.06 });
     expect(finding.hops[2]?.responses.map((response) => response?.address)).toEqual(["10.112.235.250", "10.112.235.251", "10.112.235.250"]);
     // A probe with only an RTT repeats the previous responder.
-    expect(finding.hops[3]?.responses).toEqual([
+    expect(finding.hops[5]?.responses).toEqual([
       { address: "96.108.99.245", rtt_ms: 15.19 }, { address: "96.108.99.249", rtt_ms: 15.291 }, { address: "96.108.99.249", rtt_ms: 15.26 }
     ]);
-    expect(finding.hops[4]?.responses).toEqual([
+    expect(finding.hops[6]?.responses).toEqual([
       { address: "96.110.41.73", rtt_ms: 15.205, marker: "!N" }, { address: "68.86.93.137", rtt_ms: 16.886, marker: "!N" }, null
     ]);
   });
@@ -193,6 +195,33 @@ describe("traceroute output interpretation", () => {
       .toBe("reached");
     expect(parse("traceroute to fe80::9%Ethernet1 (fe80::9%Ethernet1), 30 hops max, 80 byte packets\n 1  fe80::9%Ethernet2 (fe80::9%Ethernet2)  1 ms\n").path)
       .toBe("unreached");
+  });
+
+  const header = "traceroute to 10.0.0.9 (10.0.0.9), 30 hops max, 60 byte packets\n";
+  const answeredHop = (hopNumber: number, address = "10.0.0.1") => ` ${hopNumber}  ${address} (${address})  1 ms  1 ms  1 ms\n`;
+
+  it.each([
+    ["descending, so an earlier hop would decide the path", `${header}${answeredHop(2)}${answeredHop(1, "10.0.0.9")}`],
+    ["not starting at 1", `${header}${answeredHop(2, "10.0.0.9")}`],
+    ["with a gap", `${header}${answeredHop(1)}${answeredHop(3, "10.0.0.9")}`],
+    ["repeated", `${header}${answeredHop(1)}${answeredHop(1, "10.0.0.9")}`],
+    ["beyond the header's hop limit", `traceroute to 10.0.0.9 (10.0.0.9), 2 hops max, 60 byte packets\n${answeredHop(1)}${answeredHop(2)}${answeredHop(3, "10.0.0.9")}`],
+    ["numbered 0", `${header} 0  * * *\n`]
+  ])("fails hops %s as unrecognized, never as a finding", (_case, output) => {
+    expect(failureOf(output)).toMatchObject({ code: "diagnostic_output_unrecognized" });
+  });
+
+  it("accepts a trace that uses every hop up to the header's limit", () => {
+    expect(parse(`traceroute to 10.0.0.9 (10.0.0.9), 2 hops max, 60 byte packets\n${answeredHop(1)}${answeredHop(2, "10.0.0.9")}`).path).toBe("reached");
+  });
+
+  it.each([
+    ["four probes", `${header} 1  10.0.0.9 (10.0.0.9)  1 ms  1 ms  1 ms  1 ms\n`],
+    ["four silent probes", `${header} 1  * * * *\n`],
+    ["a probe time too large for a finite number", `${header} 1  10.0.0.9 (10.0.0.9)  ${"9".repeat(400)} ms\n`],
+    ["a header without a hop limit", "traceroute to 10.0.0.9 (10.0.0.9), 60 byte packets\n 1  10.0.0.9 (10.0.0.9)  1 ms\n"]
+  ])("fails %s as unrecognized", (_case, output) => {
+    expect(failureOf(output)).toMatchObject({ code: "diagnostic_output_unrecognized" });
   });
 
   it("accepts CRLF output", () => {

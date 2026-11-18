@@ -80,10 +80,12 @@ Shared type-narrowing utilities (`isObject`, `readString`, `readBoolean`, `readN
 
 - `src/diagnostics/executor.ts`: typed diagnostic orchestration, the per-kind inventory permission and aggregate budget checks, existing result envelopes, and cancellation. One executor is created per server instance.
 - `src/operations/eapiSlots.ts`: in-memory admission shared by every eAPI request in one server process. Reads and diagnostics share each device's slots; diagnostics also have a per-device share and a server-wide ceiling, and a kind may bring its own per-device limit with each request. Slots count diagnostics by the kind name the executor passes and attach no other meaning to it. It also owns the capacity snapshot types reported by server info. `EapiDeviceReader` holds a read slot per request. Waiters are served oldest first, skipping those that cannot run yet. Unknown completion holds a slot for that execution's own budget (`commandTimeoutMs` for ping, `tracerouteTimeoutMs` for traceroute, window plus 2 s for a packet capture), then a timer frees it; a late confirmed response frees it sooner. Shutdown rejects queued work; cancelled waiters are removed.
-- `src/diagnostics/eapiRunner.ts`: connection resolution followed by one text eAPI attempt in enable mode, sending the command, HTTP timeout, and EOS request timer from the kind's `eapiExecution` plan. Separate error paths distinguish local rejection before dispatch from uncertain RPC, transport, or malformed-result failures after dispatch; there is no mutable dispatch flag or retry.
+- `src/diagnostics/eapiRunner.ts`: connection resolution followed by one text eAPI attempt, sending the command, whether `enable` precedes it, the HTTP timeout, and the EOS request timer from the kind's `eapiExecution` plan. Ping and packet capture run in enable mode; traceroute runs unprivileged. The device-time-limit reply is recognized for the command sequence actually sent. Separate error paths distinguish local rejection before dispatch from uncertain RPC, transport, or malformed-result failures after dispatch; there is no mutable dispatch flag or retry.
 - `src/diagnostics/definitions.ts`: the table of `DiagnosticDefinition`s by kind, shared by the executor and the eAPI runner.
 - `src/diagnostics/validation.ts`: validation shared by diagnostic kinds: the VRF identifier check and bounded integer settings.
-- `src/diagnostics/ping.ts`: literal-address/VRF/source/count validation, finite ping command construction, and loss/RTT interpretation. A no-reply finding is not an execution failure.
+- `src/diagnostics/destination.ts`: Destination preparation shared by ping and traceroute. A destination is an IP literal, checked against the address restrictions, or an RFC 1123 host name resolved later by the device; legacy numeric IPv4 forms are rejected. It also checks `source` and `address_family`, picks the address family, rejects duplicates by canonical key, and maps EOS's unresolved-name and no-route output to their error codes.
+- `src/diagnostics/ping.ts`: VRF/count validation on top of the shared destination preparation, finite ping command construction, and resolved-address/loss/RTT interpretation. A no-reply finding is not an execution failure.
+- `src/diagnostics/traceroute.ts`: VRF validation on top of the shared destination preparation, the fixed-shape command, the always-sent EOS request timer (`tracerouteTimeoutMs`), and the **Path Finding**: per-probe hop parsing (responder address, reverse name, RTT, marker) that rejects unrecognized output rather than classifying it.
 - `src/diagnostics/packetCapture.ts`: interface/VRF/filter/count/window validation, `tcpdump` command construction with the filter last, the packet budget, the window-based uncertain hold, and the complete **Capture Finding** carrying tcpdump's lines verbatim.
 - `src/diagnostics/types.ts`: request, prepared intent, and finding types discriminated by diagnostic kind (`ping`, `packet_capture`, `traceroute`), the kind-free observation (command output, or the device time limit), the `DiagnosticDefinition` seam, and the `DiagnosticDeviceRunner` seam. There are no capture sessions.
 
@@ -101,6 +103,7 @@ Tool adapters live under `src/mcp/tools/`:
 - `listInventory.ts`
 - `probeDevices.ts`
 - `ping.ts`
+- `traceroute.ts`
 - `packetCapture.ts`
 - `runShow.ts`
 - `showLogging.ts`
@@ -129,10 +132,10 @@ Tests mirror the source layout:
 - Inventory and target behavior: `inventory.test.ts`, `targetResolution.test.ts`
 - eAPI and connection behavior: `eapiClient.test.ts`, `eosDeviceReader.test.ts`, `startupValidation.test.ts`, `responseSize.test.ts`
 - Read services and orchestration: `probeDevices.test.ts`, `runShow.test.ts`, `loggingQuery.test.ts`, `showLogging.test.ts`, `getFacts.test.ts`, `getRunningConfig.test.ts`, `targetOperation.test.ts`
-- Diagnostics: `ping.test.ts`, `diagnosticConfig.test.ts`, `diagnostics.test.ts`, `diagnosticEapi.test.ts`, `diagnosticReservations.test.ts` (timed release, cancellation, late responses and visibility), `packetCapture.test.ts` (capture validation, command, finding), `packetCaptureExecution.test.ts` (capture permission, fan-out, budget, uncertain hold, tool schema)
+- Diagnostics: `ping.test.ts`, `diagnosticConfig.test.ts`, `diagnostics.test.ts`, `diagnosticEapi.test.ts`, `diagnosticReservations.test.ts` (timed release, cancellation, late responses and visibility), `packetCapture.test.ts` (capture validation, command, finding), `packetCaptureExecution.test.ts` (capture permission, fan-out, budget, uncertain hold, tool schema), `traceroute.test.ts` (validation, command, output parsing, lifecycle, eAPI plan)
 - Response correlation: `eapiCorrelation.test.ts`
 - Server info and errors: `buildServerInfo.test.ts`, `errors.test.ts`, `errorTaxonomy.test.ts`
 - MCP adapters and stdio: `readToolsMcp.test.ts`, `probeDevicesTool.test.ts`, `listInventoryTool.test.ts`, `mcpStdioSmoke.test.ts`
 - Package/static policy: `packagePolicy.test.ts`, `packageSmoke.test.ts`
-- Optional cEOS integration (requires a configured lab): `integration.test.ts`, `pingIntegration.test.ts`, `pingMcpIntegration.test.ts`, `packetCaptureIntegration.test.ts`
+- Optional cEOS integration (requires a configured lab): `integration.test.ts`, `pingIntegration.test.ts`, `pingMcpIntegration.test.ts`, `packetCaptureIntegration.test.ts`, `tracerouteIntegration.test.ts`
 - Shared test helpers: `test/helpers.ts`
