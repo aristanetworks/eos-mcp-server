@@ -10,6 +10,8 @@ export interface PingRequest {
   count?: number;
   vrf?: string;
   source?: string;
+  /** Applies only to name destinations; literals keep their own family. */
+  address_family?: "ipv4" | "ipv6";
 }
 
 /** Field names follow the tool input, because the resolved request is echoed in results. */
@@ -22,7 +24,17 @@ export interface PacketCaptureRequest {
   window_seconds?: number;
 }
 
-export type DiagnosticRequest = PingRequest | PacketCaptureRequest;
+/** The command has no options beyond these; hop count, probes and wait are fixed by EOS (ADR 0013). */
+export interface TracerouteRequest {
+  kind: "traceroute";
+  destinations: string[];
+  vrf?: string;
+  source?: string;
+  /** Applies only to name destinations; literals keep their own family. */
+  address_family?: "ipv4" | "ipv6";
+}
+
+export type DiagnosticRequest = PingRequest | PacketCaptureRequest | TracerouteRequest;
 
 /** One ping execution: a single destination with the request's shared options. */
 export interface PingExecutionRequest extends Omit<PingRequest, "destinations"> {
@@ -41,7 +53,16 @@ export interface PreparedPacketCapture extends PacketCaptureRequest {
   window_seconds: number;
 }
 
-export type PreparedDiagnostic = PreparedPing | PreparedPacketCapture;
+/** One traceroute execution: a single destination with the request's shared options. */
+export interface TracerouteExecutionRequest extends Omit<TracerouteRequest, "destinations"> {
+  destination: string;
+}
+
+export interface PreparedTraceroute extends TracerouteExecutionRequest {
+  addressFamily: 4 | 6;
+}
+
+export type PreparedDiagnostic = PreparedPing | PreparedPacketCapture | PreparedTraceroute;
 
 /** How a dispatched execution ended on the device: it ran to its end with EOS's text output, or EOS's
  * own request timer stopped it (the Device Time Limit). EOS returns no output in that case, but its
@@ -60,6 +81,8 @@ export type DiagnosticOutcome =
 
 export interface PingFinding {
   kind: "ping";
+  /** The address EOS used, from its ping header; for a name destination, what the device resolved it to. */
+  resolved_address: string;
   reachability: "reachable" | "partial" | "unreachable";
   packets_sent: number;
   packets_received: number;
@@ -79,14 +102,48 @@ export interface PacketCaptureFinding {
   packets: string[];
 }
 
-export type DiagnosticFinding = PingFinding | PacketCaptureFinding;
+/** One probe's answer. `address` is a valid IP address as EOS printed it, keeping an IPv6 scope such as
+ * `fe80::1%Ethernet1`. `name` is present only when EOS's reverse lookup found one. `marker` is the Linux traceroute
+ * annotation after the RTT (`!N`, `!H`, `!X`, ...): the responder answered, but with an ICMP refusal.
+ */
+export interface TracerouteResponse {
+  address: string;
+  name?: string;
+  rtt_ms: number;
+  marker?: string;
+}
+
+/** `responses` holds one entry per probe in EOS's order, at most three: null for a probe with no answer (`*`), and
+ * different addresses within one hop when the path load-balances. Hops are numbered from 1 without gaps, up to
+ * the header's hop limit; output that is not is rejected as unrecognized.
+ */
+export interface TracerouteHop {
+  hop: number;
+  responses: Array<TracerouteResponse | null>;
+}
+
+/** `reached` means some probe of the last hop was answered by the Resolved Address, whatever its marker;
+ * `unreached` means the trace ended without that, always with the hops seen.
+ */
+export interface TracerouteFinding {
+  kind: "traceroute";
+  path: "reached" | "unreached";
+  resolved_address: string;
+  hops: TracerouteHop[];
+}
+
+export type DiagnosticFinding = PingFinding | PacketCaptureFinding | TracerouteFinding;
 
 /** The request echoed in results, with server defaults applied. */
-export type ResolvedDiagnosticRequest = (PingRequest & { count: number }) | PreparedPacketCapture;
+export type ResolvedDiagnosticRequest = (PingRequest & { count: number }) | PreparedPacketCapture | TracerouteRequest;
 
 /** How the eAPI runner sends one execution: the EOS command, its HTTP timeout, and EOS's own request timer, if any. */
 export interface EapiExecutionPlan {
   command: string;
+  /** Whether `enable` precedes the command. Each kind states it, so a role that may run a diagnostic but not
+   * enable is never refused for a privilege the command does not need.
+   */
+  enable: boolean;
   httpTimeoutMs: number;
   requestTimeoutSeconds?: number;
 }

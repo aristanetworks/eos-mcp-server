@@ -12,6 +12,7 @@ The server is a test-backed, read-only MCP service for Arista EOS eAPI. The prod
 - `eos_list_inventory`
 - `eos_probe_devices`
 - `eos_ping` (bounded active diagnostics to one or more destinations, enabled by default, inventory opt-out)
+- `eos_traceroute` (bounded path trace to one or more destinations, same permission as ping, own 45 s device timer)
 - `eos_packet_capture` (bounded control-plane capture on one interface, enabled by default, inventory opt-out)
 - `eos_run_show` (also runs `show event-monitor` queries in privileged mode via a server-controlled list, ADR 0011)
 - `eos_show_logging`
@@ -38,7 +39,7 @@ The server is a test-backed, read-only MCP service for Arista EOS eAPI. The prod
 - Configurable diagnostic budgets, in-memory per-server admission, independent timeouts, and uncertain reservations held for the command budget after unknown remote completion (ADR 0006).
 - JSON-RPC version/ID and result/error exclusivity validation precedes output interpretation or read-only fallback; unrelated acknowledgements cannot free diagnostic capacity.
 - Live sanitized capacity/reservation visibility in server info, including when each uncertain slot frees. A qualified native remote kill/deadline mechanism remains unimplemented; installed EOS requestTimeout is not an end-to-end termination guarantee.
-- No retries or shell/SSH fallback for ping. Non-configuring diagnostics are not passive reads; traceroute is not implemented.
+- No retries or shell/SSH fallback for ping. Non-configuring diagnostics are not passive reads; traceroute is a separate diagnostic with its own timer and budget (ADR 0013).
 - Sanitized result envelopes with stable machine-readable errors.
 
 ## Re-entry reading

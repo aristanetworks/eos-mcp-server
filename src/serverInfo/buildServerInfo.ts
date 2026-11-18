@@ -54,7 +54,11 @@ export function buildServerInfo(context: ServerRuntimeContext, diagnosticCapacit
         max_capture_window_seconds: context.config.diagnostics.maxCaptureWindowSeconds,
         max_capture_packets_per_request: context.config.diagnostics.maxCapturePacketsPerRequest,
         capture_device_concurrency: context.config.diagnostics.captureDeviceConcurrency,
-        capture_overall_operation_timeout_ms: context.config.diagnostics.captureOverallOperationTimeoutMs
+        capture_overall_operation_timeout_ms: context.config.diagnostics.captureOverallOperationTimeoutMs,
+        traceroute_timeout_ms: context.config.diagnostics.tracerouteTimeoutMs,
+        max_traceroute_destinations_per_request: context.config.diagnostics.maxTracerouteDestinationsPerRequest,
+        max_traces_per_request: context.config.diagnostics.maxTracesPerRequest,
+        traceroute_overall_operation_timeout_ms: context.config.diagnostics.tracerouteOverallOperationTimeoutMs
       }
     },
     diagnostics: {

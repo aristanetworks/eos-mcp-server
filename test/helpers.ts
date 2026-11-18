@@ -136,7 +136,7 @@ export function buildInventoryModel(hostOverrides: Partial<InventoryHostModel> =
 /** A ping whose three probes were all answered. */
 export const pingObservation: DiagnosticObservation = {
   end: "output",
-  output: "3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n"
+  output: "PING 127.0.0.1 (127.0.0.1) 72(100) bytes of data.\n\n3 packets transmitted, 3 received, 0% packet loss, time 2000ms\n"
 };
 
 /** Runner whose device never answers. A cancelled call never ends the request, so it stays pending (ADR 0006). */

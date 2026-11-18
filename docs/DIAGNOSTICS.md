@@ -1,10 +1,10 @@
 # Non-configuring network diagnostics
 
-`eos_ping` executes bounded ping commands **on EOS**, not on the MCP host. It never changes configuration. It generates network traffic and is not a passive read. `eos_packet_capture` runs a bounded `tcpdump` on EOS and returns the packets it saw; see [Packet capture](#packet-capture). Traceroute is a future tool, not an implemented capability.
+`eos_ping` executes bounded ping commands **on EOS**, not on the MCP host. It never changes configuration. It generates network traffic and is not a passive read. `eos_packet_capture` runs a bounded `tcpdump` on EOS and returns the packets it saw; see [Packet capture](#packet-capture). `eos_traceroute` traces the hop-by-hop path from EOS to destinations; see [Traceroute](#traceroute).
 
 ## Authorization and addressing
 
-A **Target** is an inventory host or group executing the diagnostic. A **Destination** is a literal IPv4/IPv6 address being tested and need not appear in inventory. DNS names and inventory-reference shorthand are not accepted as destinations. One request may name several destinations; each is tested from every resolved host.
+A **Target** is an inventory host or group executing the diagnostic. A **Destination** is an IPv4/IPv6 literal or a DNS host name being tested and need not appear in inventory. A name is resolved by the executing device's own resolver, never by this server (see [ADR 0012](adr/0012-dns-name-destinations.md)); inventory host names are not turned into destinations, and inventory-reference shorthand is not accepted. One request may name several destinations; each is tested from every resolved host.
 
 Diagnostic access defaults to allowed for every read-allowed EOS host. Opt out explicitly using inherited inventory variables:
 
@@ -35,7 +35,9 @@ Capture is on by default, so disable it on hosts where decoded traffic must not 
 
 Use EOS AAA to restrict the credential to the intended operational commands. Ping requires enable mode on the tested EOS version. There is no SSH, device-shell, or MCP-host-shell fallback. Diagnostics being enabled authorizes probes to arbitrary supported destinations reachable from the selected routing context; it is not a destination allowlist. Use network policy/ACLs if additional destination restrictions are required.
 
-Supported addresses are unicast IPv4/IPv6 literals, including loopback. Unspecified addresses, IPv4 0/8 and reserved/multicast ranges, limited broadcast, IPv6 multicast, and IPv6 link-local/scoped addresses are rejected. IPv4-mapped IPv6 cannot bypass IPv4 restrictions. A directed broadcast cannot reliably be identified from an address alone; no such detection is promised.
+Supported literals are unicast IPv4/IPv6 addresses, including loopback. Unspecified addresses, IPv4 0/8 and reserved/multicast ranges, limited broadcast, IPv6 multicast, and IPv6 link-local/scoped addresses are rejected. IPv4-mapped IPv6 cannot bypass IPv4 restrictions. A directed broadcast cannot reliably be identified from an address alone; no such detection is promised.
+
+These restrictions apply only to literals. A destination that is not a literal must be an RFC 1123 host name (LDH labels of 1-63 characters, at most 253 characters excluding an optional trailing dot, at least one letter, no underscores) that is not a legacy numeric IPv4 form. EOS hands names to glibc, which reads forms such as `0x7f000001`, `0x7f.1` or `0xe0.0.0.1` as IPv4 addresses without a DNS lookup (measured on cEOS 4.34.3M), so those are rejected rather than escaping the literal restrictions; anything else is `diagnostic_address_invalid`. The server cannot see what a name resolves to, so a name may resolve to an address a literal would have been refused. Every result reports `resolved_address`, parsed from EOS's ping header, so an unexpected resolution is visible; probe counts and budgets still bound the traffic. Resolution time is not budgeted: a failed lookup against an unanswering name server took about 10 s on cEOS 4.34.3M, and one that outlasts the device timer fails as `ping_device_time_limit_reached`.
 
 ## Tool inputs
 
@@ -46,19 +48,21 @@ Supported addresses are unicast IPv4/IPv6 literals, including loopback. Unspecif
   "count": 3,
   "vrf": "BLUE",
   "source": "2001:db8::11",
+  "address_family": "ipv6",
   "include_raw": false
 }
 ```
 
 - `target` and `destinations` are required. A single ping is a one-element `destinations` array.
-- `destinations` holds 1 to `maxDestinationsPerRequest` unique addresses. Duplicates are detected by canonical address, so different IPv6 spellings of one address (such as `::1` and `0:0:0:0:0:0:0:1`) count as duplicates, while an IPv4 address and its IPv4-mapped IPv6 form are distinct destinations. Every destination is validated before anything is dispatched, so one invalid or duplicate entry rejects the whole request. The former single `destination` field is rejected with guidance rather than ignored.
-- `count`, `vrf`, and `source` apply to every destination.
+- `destinations` holds 1 to `maxDestinationsPerRequest` unique destinations, each an IP literal or a host name. Literal duplicates are detected by canonical address, so different IPv6 spellings of one address (such as `::1` and `0:0:0:0:0:0:0:1`) count as duplicates, while an IPv4 address and its IPv4-mapped IPv6 form are distinct destinations. Names are duplicates when equal ignoring case and a trailing dot (`Example.com` and `example.com.`); a name and a literal, or two names resolving to the same address, are distinct. Every destination is validated before anything is dispatched, so one invalid or duplicate entry rejects the whole request. The former single `destination` field is rejected with guidance rather than ignored.
+- `count`, `vrf`, `source`, and `address_family` apply to every destination.
+- `address_family` (`ipv4` or `ipv6`) applies only to name destinations, selecting the `ip` or `ipv6` keyword EOS needs to resolve them; literals keep their own family. When `source` is set, names take its family and an `address_family` that disagrees with it is rejected (`diagnostic_address_family_conflict`). With neither, names use IPv4.
 - `count` defaults to the configured `defaultPingCount`; callers cannot exceed `maxPingCount`.
 - `vrf` is optional, a safe single identifier of up to 64 characters. Omission uses the EOS default routing context.
-- `source` is an optional IP literal in the same address family as every destination; mixing IPv4 and IPv6 destinations therefore requires omitting `source`. Source-interface selection is not supported.
+- `source` is an optional IP literal in the same address family as every destination; mixing IPv4 and IPv6 destinations therefore requires omitting `source`. Source-interface selection is not supported. `source` must always be an IP literal.
 - An invalid/unavailable VRF or source fails; it never falls back to another context.
 - `include_raw` defaults to false and exposes original EOS text only when true, including unrecognized output returned as a device failure.
-- Arbitrary CLI commands/options are not accepted. Pacing is explicitly fixed at one second; EOS packet `size` is fixed at 64. Flood/rapid modes, custom sizes, and DNS resolution are not exposed.
+- Arbitrary CLI commands/options are not accepted. Pacing is explicitly fixed at one second; EOS packet `size` is fixed at 64. Flood/rapid modes, custom sizes, and server-side DNS resolution are not exposed.
 
 ## Settings and defaults
 
@@ -84,6 +88,10 @@ diagnostics:
   maxCapturePacketsPerRequest: 2000
   captureDeviceConcurrency: 1
   captureOverallOperationTimeoutMs: 90000
+  tracerouteTimeoutMs: 45000
+  maxTracerouteDestinationsPerRequest: 4
+  maxTracesPerRequest: 16
+  tracerouteOverallOperationTimeoutMs: 120000
 ```
 
 | Setting | Meaning |
@@ -106,6 +114,10 @@ diagnostics:
 | `maxCapturePacketsPerRequest` | Maximum resolved host count × `packet_count` for one `eos_packet_capture` call |
 | `captureDeviceConcurrency` | Of a host's diagnostic slots, those packet captures may hold across all calls, counting active and uncertain captures; must not exceed `deviceConcurrency` |
 | `captureOverallOperationTimeoutMs` | Whole capture call deadline, including waiting for capacity; must exceed `maxCaptureWindowSeconds` |
+| `tracerouteTimeoutMs` | EOS request timer for every trace, always sent whatever `nativeRequestTimeout` says; a positive multiple of 1000 ms. The HTTP timeout is this plus 5 s, and an uncertain trace holds its slot for this long |
+| `maxTracerouteDestinationsPerRequest` | Maximum destinations in one `eos_traceroute` call; enforced independently of `maxTracesPerRequest` |
+| `maxTracesPerRequest` | Maximum resolved host count × destination count for one `eos_traceroute` call (each trace costs 1) |
+| `tracerouteOverallOperationTimeoutMs` | Whole traceroute call deadline, including waiting for capacity; must exceed `tracerouteTimeoutMs` |
 
 Diagnostic capacity is held in memory by each server process; nothing is written to disk. Several MCP servers (for example two chat sessions) can run against the same inventory at once, each with its own `deviceConcurrency` and `maxConcurrentDiagnostics`. The former `diagnostics.stateFile` setting is rejected with guidance; delete it. Ledger files left under `$XDG_STATE_HOME/eos-mcp-server/` (or `~/.local/state/eos-mcp-server/`) by earlier versions are no longer read and can be deleted. See [ADR 0006](adr/0006-in-memory-timed-diagnostic-capacity.md).
 
@@ -117,7 +129,7 @@ Numeric settings must be finite positive integers. The default count cannot exce
 maxPingCount * (pingReplyTimeoutMs + 1000) + 1000 ms
 ```
 
-The HTTP timeout must exceed the command budget by at least 1000 ms. For capture, the default packet count cannot exceed the maximum, the maximum cannot exceed `maxCapturePacketsPerRequest` or 10000, the default window cannot exceed the maximum, `captureDeviceConcurrency` cannot exceed `deviceConcurrency`, and `captureOverallOperationTimeoutMs` must exceed `maxCaptureWindowSeconds`. Individual settings must fit the supported timer range (2,147,483,647 ms), and so must the timers a capture derives from `maxCaptureWindowSeconds`: the window plus 5 s for HTTP and plus 2 s for an uncertain hold, so the largest accepted window is 2,147,478 s. There is no combined reservation-expiry timer. Unknown fields and contradictory settings fail config validation. Increasing count/reply-timeout ceilings may require increasing both command and HTTP budgets. The overall deadline may intentionally be shorter than device execution; that cancels the call, not necessarily the remote command.
+The HTTP timeout must exceed the command budget by at least 1000 ms. For capture, the default packet count cannot exceed the maximum, the maximum cannot exceed `maxCapturePacketsPerRequest` or 10000, the default window cannot exceed the maximum, `captureDeviceConcurrency` cannot exceed `deviceConcurrency`, and `captureOverallOperationTimeoutMs` must exceed `maxCaptureWindowSeconds`. For traceroute, `tracerouteOverallOperationTimeoutMs` must exceed `tracerouteTimeoutMs`, and `tracerouteTimeoutMs` plus its 5 s HTTP margin must fit the timer range. Individual settings must fit the supported timer range (2,147,483,647 ms), and so must the timers a capture derives from `maxCaptureWindowSeconds`: the window plus 5 s for HTTP and plus 2 s for an uncertain hold, so the largest accepted window is 2,147,478 s. There is no combined reservation-expiry timer. Unknown fields and contradictory settings fail config validation. Increasing count/reply-timeout ceilings may require increasing both command and HTTP budgets. The overall deadline may intentionally be shorter than device execution; that cancels the call, not necessarily the remote command.
 
 ## Execution and lifecycle
 
@@ -155,11 +167,12 @@ Ping requests now send `requestTimeout` equal to `commandTimeoutMs` (in seconds)
 Results use the existing target metadata and envelope with one entry per host and destination, ordered by host and then by requested destination. `resolved_devices` lists hosts; `summary` counts host/destination executions, not devices. Each entry carries `inventory_hostname`, `resolved_endpoint`, `destination`, and `status`. `request` echoes normalized intent, including `destinations` and the effective count. Each successful entry's `finding` contains:
 
 - `kind: "ping"`
+- `resolved_address`: the **Resolved Address** parsed from EOS's ping header, for literals too. EOS prints the address in parentheses, as in `PING localhost.localdomain (127.0.0.1) 72(100) bytes of data.` or `PING ::1(::1) 52 data bytes` (measured on cEOS 4.34.3M; the name shown may be the canonical name rather than the one sent). A missing or non-IP address is `diagnostic_output_unrecognized`
 - `reachability`: `reachable` (all replies), `partial` (some replies), or `unreachable` (no replies)
 - `packets_sent`, `packets_received`, and calculated `packet_loss_percent`
 - `rtt_ms: { min, avg, max }`, or null when unavailable
 
-Execution `status: "success"` means ping executed and its output was understood. Zero replies are a successful execution with an `unreachable` finding, not a failed tool operation and not a diagnosis of the cause. Authentication/transport errors, invalid VRF/source, and malformed/inconsistent output are execution failures with machine-readable error codes, reported on that host/destination entry without failing the others. Unknown output never becomes an invented reachability or loss result.
+Execution `status: "success"` means ping executed and its output was understood. Zero replies are a successful execution with an `unreachable` finding, not a failed tool operation and not a diagnosis of the cause. A name the device cannot resolve (`ping: <name>: Name or service not known`) is `diagnostic_destination_unresolved`, as is a name with no address of the requested family (`Address family for hostname not supported`, whose message suggests `address_family`); nothing was sent, so neither is an unreachable finding. A device with no route (`ping: connect: Network is unreachable`) is `diagnostic_destination_no_route` rather than the generic `diagnostic_command_failed`. Authentication/transport errors, invalid VRF/source, and malformed/inconsistent output are execution failures with machine-readable error codes, reported on that host/destination entry without failing the others. Unknown output never becomes an invented reachability or loss result.
 
 ## Packet capture
 
@@ -242,15 +255,62 @@ EOS does not check pcap-filter syntax. When tcpdump rejects the filter, or canno
 - Default tcpdump decode can print cleartext secrets such as SNMPv1/v2c community strings; see the permission section above.
 - Measured on cEOS 4.34.3M only.
 
+## Traceroute
+
+`eos_traceroute` runs EOS `traceroute [vrf <VRF>] ip|ipv6 <destination> [source <address>]` on the executing device, not on the MCP host, and changes no configuration ([ADR 0013](adr/0013-bounded-traceroute.md)). EOS fixes 30 hops, 3 probes per hop and 60-byte probes (80 for IPv6); there are no hop, probe, wait or `interface` options. It needs the same Diagnostic Permission as ping (`mcp_diagnostics_allowed` not `false`, `diagnostic_policy_denied` otherwise).
+
+```json
+{
+  "target": "leaf1",
+  "destinations": ["10.255.0.4"],
+  "vrf": "default",
+  "source": "10.255.0.3",
+  "address_family": "ipv4",
+  "include_raw": false
+}
+```
+
+`destinations` (1 to `maxTracerouteDestinationsPerRequest`), `vrf`, `source` and `address_family` follow the same parsing, duplicate and family rules as ping, including DNS names resolved by the device. Hosts × destinations must not exceed `maxTracesPerRequest` (`diagnostic_trace_limit_exceeded`). Set `source` to a loopback address when tracing between loopbacks: the default source is often an interface address that routers beyond the first hop have no route back to, so the trace goes silent after the first hop and runs to 30 hops (about 30 s).
+
+### Lifecycle
+
+Each execution is one text-mode eAPI request holding only the `traceroute` command. Unlike ping and packet capture, it is sent without `enable`, because EOS runs traceroute unprivileged; a role that may trace but not enable can therefore use it. Its device-timer reply is a correlated RPC error 1001 whose single entry is the trace's "Command exceeded its allowed time limit" (error 408). A trace that gets answers finishes in about 0.1 s, but a fully silent path takes about 30 s. Every trace sends `runCmds.requestTimeout` equal to `tracerouteTimeoutMs` (default 45 s) whatever `nativeRequestTimeout` says, because EOS reverse-resolves every responding hop address and a dead name server costs about 10 s per address. The HTTP timeout is `tracerouteTimeoutMs + 5000`. When the device timer fires, EOS returns none of the hops it found and the entry fails with `traceroute_device_time_limit_reached`, whose message names slow reverse DNS on the device as a likely cause when the path is short. That reply confirms the trace ended, so its slot is freed at once. Any other unknown completion holds the slot as uncertain for `tracerouteTimeoutMs`. Traces share `diagnostics.deviceConcurrency` and the device's eAPI slots with ping; there is no traceroute-specific per-device limit, so two silent traces can occupy both diagnostic slots of a device for up to 45 s. The call is bounded by `tracerouteOverallOperationTimeoutMs`.
+
+### Results
+
+One entry per host and destination, each naming its `destination`:
+
+```json
+{
+  "kind": "traceroute",
+  "path": "reached",
+  "resolved_address": "10.255.0.4",
+  "hops": [
+    { "hop": 1, "responses": [{ "address": "10.255.255.0", "rtt_ms": 0.033 }, { "address": "10.255.255.0", "rtt_ms": 0.006 }, { "address": "10.255.255.0", "rtt_ms": 0.005 }] },
+    { "hop": 2, "responses": [{ "address": "10.255.0.4", "rtt_ms": 1.452 }, { "address": "10.255.0.4", "rtt_ms": 1.474 }, { "address": "10.255.0.4", "rtt_ms": 1.666 }] }
+  ]
+}
+```
+
+- `path` is `reached` when any probe on the last hop was answered by `resolved_address`, whatever its marker, and `unreached` otherwise. Unreached does not say why the destination never answered, and it is not an execution failure. A trace that ends with `!X`, `!H` or similar from the destination itself is `reached`: it arrived and was refused, and the `marker` keeps that visible.
+- `hops[].responses` has one entry per probe, in EOS's order: `null` for a probe with no answer (`*`), otherwise `{ address, name?, rtt_ms, marker? }`. `name` appears only when EOS's reverse lookup found one. Different addresses within one hop are load-balanced (ECMP) responders. `marker` is the Linux traceroute annotation after the RTT (`!N`, `!H`, `!P`, `!S`, `!F-<n>`, `!X`, `!V`, `!C`, `!<n>`). A probe that EOS prints with only an RTT repeats the previous responder.
+- `resolved_address` comes from EOS's header line, as for ping. Raw EOS text is returned only with `include_raw`.
+- Every responder `address` must be a valid IP address, or the whole entry fails with `diagnostic_output_unrecognized`; it is never reported as unreached. An IPv6 scope is kept as printed (`fe80::1%Ethernet1`), and addresses are compared canonically with their scope, so the same link-local address on two links is two addresses.
+- Because `path` is judged by the last hop, the hops must be numbered 1, 2, 3, ... without gaps, up to the hop limit in EOS's header (30), each with one to three probes and finite probe times. Anything else fails with `diagnostic_output_unrecognized` rather than becoming a finding.
+- A trace may end before the header's hop limit only on a hop that got at least one reply, because Linux traceroute stops early only on a final reply (the destination answering, or an ICMP error marked like `!N`/`!H`). A silent last hop below the limit means truncated or foreign output and fails with `diagnostic_output_unrecognized`; a silent last hop at the limit is the normal silent trace and stays `unreached`.
+- Failures: an unresolvable name is `diagnostic_destination_unresolved` (with an `address_family` hint when the name has no address of the requested family), no route (`connect: Network is unreachable`) is `diagnostic_destination_no_route`, any other `%` error from EOS is `diagnostic_command_failed`, and unparseable output is `diagnostic_output_unrecognized`.
+
+Measured on cEOS 4.34.3M only.
+
 ## Extension seam
 
 `DiagnosticExecutor.execute` accepts typed diagnostic intent and owns authorization, aggregate budgets, and each execution's reservation; it runs through `runTargetOperation`, which owns Target resolution, the call deadline, cancellation, the response and its size limit, while the shared eAPI slots own fail-closed per-device and server-wide admission. `getCapacity()` exposes a detached snapshot; server-info obtains it at call time rather than caching startup state. `DiagnosticDeviceRunner.execute` accepts inventory identity and one prepared execution; the eAPI adapter owns connection resolution and a single command execution.
 
-Each diagnostic kind supplies a `DiagnosticDefinition`: `permission` names the inventory permission every resolved host needs and the error code when one lacks it, `prepare` validates the whole request before dispatch and returns the echoed request plus the executions every resolved host performs, `budget` declares each execution's cost and the setting that bounds cost × resolved hosts, which the executor checks, `deadline` gives the call deadline and the setting named when it fires, the optional `perDeviceLimit` caps how many of one host's diagnostic slots the kind may hold at once (capture's is `captureDeviceConcurrency`; the shared slots count by the kind name and attach no other meaning to it), `eapiExecution` gives each execution's EOS command, HTTP timeout and EOS request timer, `uncertainHoldMs` gives its uncertain hold, `resultIdentity` names the fields that tell a host's entries apart, and `interpret` turns an observation into a finding or throws an execution failure. An observation is either command output (`end: "output"`) or the runner's report that EOS's request timer stopped the command (`end: "device_time_limit"`), for any kind; the runner classifies device responses, and the definition decides what they mean: an unfilled finding for a capture, `ping_device_time_limit_reached` for a ping. The executor runs every prepared execution on every host and knows nothing kind-specific. Ping's definition, validation, compilation, and interpretation live in `src/diagnostics/ping.ts`; it prepares one execution per destination and identifies each entry by `destination`. Multiple destinations are therefore a property of ping's definition, not of the executor. Packet capture's lives in `src/diagnostics/packetCapture.ts`; it prepares one execution per host, with no identity fields. The eAPI adapter sends each kind's `eapiExecution` plan and has no kind-specific rules; shared validation such as the VRF check lives in `src/diagnostics/validation.ts`.
+Each diagnostic kind supplies a `DiagnosticDefinition`: `permission` names the inventory permission every resolved host needs and the error code when one lacks it, `prepare` validates the whole request before dispatch and returns the echoed request plus the executions every resolved host performs, `budget` declares each execution's cost and the setting that bounds cost × resolved hosts, which the executor checks, `deadline` gives the call deadline and the setting named when it fires, the optional `perDeviceLimit` caps how many of one host's diagnostic slots the kind may hold at once (capture's is `captureDeviceConcurrency`; the shared slots count by the kind name and attach no other meaning to it), `eapiExecution` gives each execution's EOS command, HTTP timeout and EOS request timer, `uncertainHoldMs` gives its uncertain hold, `resultIdentity` names the fields that tell a host's entries apart, and `interpret` turns an observation into a finding or throws an execution failure. An observation is either command output (`end: "output"`) or the runner's report that EOS's request timer stopped the command (`end: "device_time_limit"`), for any kind; the runner classifies device responses, and the definition decides what they mean: an unfilled finding for a capture, `ping_device_time_limit_reached` for a ping. The executor runs every prepared execution on every host and knows nothing kind-specific. Ping's definition, validation, compilation, and interpretation live in `src/diagnostics/ping.ts`; it prepares one execution per destination and identifies each entry by `destination`. Multiple destinations are therefore a property of ping's definition, not of the executor. Packet capture's lives in `src/diagnostics/packetCapture.ts`; it prepares one execution per host, with no identity fields. The eAPI adapter sends each kind's `eapiExecution` plan and has no kind-specific rules; shared validation such as the VRF check lives in `src/diagnostics/validation.ts`. Destination parsing (literal or host name, address restrictions, duplicate keys, and the family a name takes) lives in `src/diagnostics/destination.ts`, so other diagnostics can reuse it.
 
 Admission queueing is separate from reservation state transitions; shutdown rejects queued work with `diagnostic_server_stopping`. The runner never rejects: it returns a closed outcome, either an observation or `failed` with `remote: "not_dispatched"` (the request never left the server, so its slot frees at once) or `remote: "unknown"` (it may have reached EOS, so its slot turns uncertain), plus any raw EOS text as `evidence`, which becomes `raw_output` only with `include_raw`. One executor method turns that outcome into the reservation's end; a runner that throws anyway is treated as `unknown`. The runner's request takes only the server's shutdown signal, never the call's, so a cancelled call's late answer still frees its slot.
 
-The request and finding types are discriminated by `kind`: `ping` and `packet_capture`; observations carry no kind. Add other real operations at this seam without exposing arbitrary command strings. A destination-based operation such as traceroute can reuse multi-destination fan-out by preparing one execution per destination, although its much longer execution bound makes large requests hard to fit in the overall deadline.
+The request and finding types are discriminated by `kind`: `ping`, `packet_capture` and `traceroute`; observations carry no kind. Add other real operations at this seam without exposing arbitrary command strings. Traceroute (`src/diagnostics/traceroute.ts`) reuses multi-destination fan-out by preparing one execution per destination, with its own timer, budget (`maxTracesPerRequest`, cost 1 per execution) and deadline, and no `perDeviceLimit`.
 
 ## Verification
 
