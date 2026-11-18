@@ -65,9 +65,6 @@ export const diagnosticsConfigSchema = z.object({
     invalid("captureOverallOperationTimeoutMs", "Must exceed maxCaptureWindowSeconds");
   }
   // The window itself fits, but the timers derived from it add margins (ADR 0010).
-  if (config.maxTracerouteDestinationsPerRequest > config.maxTracesPerRequest) {
-    invalid("maxTracerouteDestinationsPerRequest", "Must not exceed maxTracesPerRequest");
-  }
   if (config.tracerouteOverallOperationTimeoutMs <= config.tracerouteTimeoutMs) {
     invalid("tracerouteOverallOperationTimeoutMs", "Must exceed tracerouteTimeoutMs");
   }

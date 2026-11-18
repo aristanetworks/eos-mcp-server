@@ -7,16 +7,69 @@ export type AddressFamilyChoice = "ipv4" | "ipv6";
 /** A Destination is an IP literal, restricted to unicast addresses, or an RFC 1123 host name that the executing
  * device resolves itself (ADR 0012). The server never resolves names, so address restrictions apply only to literals.
  */
-export type ParsedDestination =
+type ParsedDestination =
   | { kind: "literal"; address: string; addressFamily: AddressFamily }
   | { kind: "name"; name: string };
 
+/** The request fields every destination-based diagnostic shares with each of its Destinations. */
+export interface DestinationOptions {
+  source?: string | undefined;
+  address_family?: AddressFamilyChoice | undefined;
+}
+
+/** One Destination checked against its request's options: the family its command uses, and the key that
+ * identifies duplicates (literals by canonical address, names ignoring case and a trailing dot).
+ */
+export interface PreparedDestination {
+  destination: string;
+  addressFamily: AddressFamily;
+  key: string;
+}
+
 const MAX_NAME_LENGTH = 253;
 const HOST_LABEL_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
+// One part of an IPv4 address in the classic inet_aton syntax: decimal, octal with a leading 0, or hex with 0x.
+const LEGACY_IPV4_PART_PATTERN = /^(?:0x[0-9a-f]*|[0-9]+)$/i;
 
-export function parseDestination(destination: string): ParsedDestination {
+/** Validates every Destination of a request, and rejects duplicates, before any is dispatched. Ping and traceroute
+ * both prepare their Destinations here, so they apply the same parsing, family and uniqueness rules.
+ */
+export function prepareDestinations(destinations: readonly string[], options: DestinationOptions): PreparedDestination[] {
+  const preparedDestinations = destinations.map((destination) => prepareDestination(destination, options));
+  if (new Set(preparedDestinations.map((prepared) => prepared.key)).size !== preparedDestinations.length) {
+    throw new AppError("diagnostic_destination_duplicate", "Each destination may appear only once per request");
+  }
+  return preparedDestinations;
+}
+
+/** A name takes the source's family, else the requested `address_family`, else IPv4; a literal keeps its own.
+ * An `address_family` that contradicts the source, or a source of another family than the destination, is rejected.
+ */
+export function prepareDestination(destination: string, options: DestinationOptions): PreparedDestination {
+  const parsed = parseDestination(destination);
+  const sourceFamily = options.source === undefined ? undefined : validateAddress(options.source);
+  const requestedFamily = options.address_family === undefined ? undefined : options.address_family === "ipv6" ? 6 : 4;
+  if (requestedFamily !== undefined && sourceFamily !== undefined && requestedFamily !== sourceFamily) {
+    throw new AppError("diagnostic_address_family_conflict", "address_family conflicts with the address family of source");
+  }
+  const addressFamily = parsed.kind === "literal" ? parsed.addressFamily : sourceFamily ?? requestedFamily ?? 4;
+  if (sourceFamily !== undefined && sourceFamily !== addressFamily) {
+    throw new AppError("diagnostic_source_invalid", "Source and destination must use the same IP address family");
+  }
+  const key = parsed.kind === "literal"
+    ? `literal:${canonicalAddress(parsed.address, parsed.addressFamily)}`
+    : `name:${parsed.name.toLowerCase().replace(/\.$/, "")}`;
+  return { destination, addressFamily, key };
+}
+
+function parseDestination(destination: string): ParsedDestination {
   if (isIP(destination) !== 0 || destination.includes("%")) {
     return { kind: "literal", address: destination, addressFamily: validateAddress(destination) };
+  }
+  // EOS hands names to glibc, which reads forms such as 0x7f000001 or 0xe0.1 as IPv4 addresses without any DNS lookup
+  // (measured on cEOS 4.34.3M), so treating them as names would skip the literal restrictions.
+  if (isLegacyNumericIpv4(destination)) {
+    throw new AppError("diagnostic_address_invalid", "Use a dotted-decimal IPv4 literal; hex, octal and shortened IPv4 forms are not accepted");
   }
   if (!isHostName(destination)) {
     throw new AppError("diagnostic_address_invalid", "Destination must be an IPv4/IPv6 literal without interface scoping or a DNS host name");
@@ -24,42 +77,20 @@ export function parseDestination(destination: string): ParsedDestination {
   return { kind: "name", name: destination };
 }
 
+/** Whether the classic inet_aton parser would read the string as an IPv4 address: one to four numeric parts. */
+function isLegacyNumericIpv4(candidate: string): boolean {
+  const withoutTrailingDot = candidate.endsWith(".") ? candidate.slice(0, -1) : candidate;
+  const parts = withoutTrailingDot.split(".");
+  return parts.length <= 4 && parts.every((part) => LEGACY_IPV4_PART_PATTERN.test(part));
+}
+
 /** RFC 1123 host name: LDH labels of 1-63 characters, at most 253 characters (an optional trailing dot excluded),
  * and at least one letter so that numeric strings such as `10.1.1` are never mistaken for names.
  */
-export function isHostName(candidate: string): boolean {
+function isHostName(candidate: string): boolean {
   const withoutTrailingDot = candidate.endsWith(".") ? candidate.slice(0, -1) : candidate;
   if (withoutTrailingDot.length === 0 || withoutTrailingDot.length > MAX_NAME_LENGTH || !/[A-Za-z]/.test(withoutTrailingDot)) return false;
   return withoutTrailingDot.split(".").every((label) => HOST_LABEL_PATTERN.test(label));
-}
-
-/** Two Destinations are duplicates when their keys are equal: literals by canonical address, names ignoring case and
- * a trailing dot. A name and a literal never share a key.
- */
-export function destinationKey(destination: ParsedDestination): string {
-  return destination.kind === "literal"
-    ? `literal:${canonicalAddress(destination.address, destination.addressFamily)}`
-    : `name:${destination.name.toLowerCase().replace(/\.$/, "")}`;
-}
-
-/** The address family a request's Destination uses: a literal keeps its own; a name takes the source's family, else the
- * requested `address_family`, else IPv4. A requested family that contradicts the source is rejected.
- */
-export function resolveDestinationFamily(
-  destination: ParsedDestination,
-  options: { sourceFamily: AddressFamily | undefined; addressFamily: AddressFamilyChoice | undefined }
-): AddressFamily {
-  if (destination.kind === "literal") return destination.addressFamily;
-  if (options.sourceFamily !== undefined) return options.sourceFamily;
-  return options.addressFamily === "ipv6" ? 6 : 4;
-}
-
-/** Rejects an `address_family` that disagrees with the source address's family. */
-export function validateAddressFamilyAgainstSource(addressFamily: AddressFamilyChoice | undefined, sourceFamily: AddressFamily | undefined): void {
-  if (addressFamily === undefined || sourceFamily === undefined) return;
-  if ((addressFamily === "ipv6" ? 6 : 4) !== sourceFamily) {
-    throw new AppError("diagnostic_address_family_conflict", "address_family conflicts with the address family of source");
-  }
 }
 
 export function validateAddress(address: string): AddressFamily {

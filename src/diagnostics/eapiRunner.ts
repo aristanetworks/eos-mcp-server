@@ -24,7 +24,7 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
 
     try {
       const results = await this.runner.runTextCommands(connection, [plan.command], {
-        enable: true,
+        enable: plan.enable,
         // Only server shutdown or the HTTP timeout ends the request; see DiagnosticExecutionContext.
         signal: context.shutdownSignal,
         requestId: context.requestId,
@@ -37,7 +37,7 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
       return { end: "output", output };
     } catch (error) {
       // Each definition decides what the device timer means for its kind (a capture's expected end, a ping's failure).
-      if (isDeviceTimeLimitError(error)) {
+      if (isDeviceTimeLimitError(error, plan.enable)) {
         return { end: "device_time_limit" };
       }
       // After dispatch, an error is never proof that remote work has stopped.
@@ -63,15 +63,17 @@ export class EapiDiagnosticRunner implements DiagnosticDeviceRunner {
 const DEVICE_TIME_LIMIT_ERROR = "Command exceeded its allowed time limit";
 
 /** EOS's answer when runCmds.requestTimeout stops the diagnostic command: RPC error 1001 whose data holds
- * a successful `enable` result, then the command's result carrying the time-limit error (error 408).
- * Measured on cEOS 4.34.3M. A time limit hit during `enable` leaves one entry and means the command
- * never ran, so it is not the device timer ending the command.
+ * one entry per command sent, the last being the diagnostic's result carrying the time-limit error (error 408).
+ * With `enable`, the first entry must be a successful `enable`: a time limit hit during `enable` leaves one
+ * entry and means the command never ran, so it is not the device timer ending the command.
+ * Measured on cEOS 4.34.3M for both shapes (traceroute without `enable`, ping and tcpdump with it).
  */
-function isDeviceTimeLimitError(error: unknown): boolean {
+function isDeviceTimeLimitError(error: unknown, enableSent: boolean): boolean {
   if (!(error instanceof AppError) || error.details?.jsonRpcCode !== 1001) return false;
   const data = error.details.data;
-  if (!Array.isArray(data) || data.length !== 2) return false;
-  const [enableResult, commandResult] = data;
-  return isObject(enableResult) && enableResult.errors === undefined &&
-    isObject(commandResult) && Array.isArray(commandResult.errors) && commandResult.errors.includes(DEVICE_TIME_LIMIT_ERROR);
+  if (!Array.isArray(data) || data.length !== (enableSent ? 2 : 1)) return false;
+  const enableResult: unknown = enableSent ? data[0] : undefined;
+  const commandResult: unknown = data[data.length - 1];
+  if (enableSent && !(isObject(enableResult) && enableResult.errors === undefined)) return false;
+  return isObject(commandResult) && Array.isArray(commandResult.errors) && commandResult.errors.includes(DEVICE_TIME_LIMIT_ERROR);
 }

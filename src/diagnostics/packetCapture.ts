@@ -33,6 +33,8 @@ export const packetCaptureDiagnostic: DiagnosticDefinition<PacketCaptureRequest,
   // The device timer is what ends a capture short of its count, so it is never optional (ADR 0010).
   eapiExecution: (execution) => ({
     command: buildPacketCaptureCommand(execution),
+    // Older releases document tcpdump as privileged (ADR 0010).
+    enable: true,
     httpTimeoutMs: captureHttpTimeoutMs(execution.window_seconds),
     requestTimeoutSeconds: execution.window_seconds
   }),

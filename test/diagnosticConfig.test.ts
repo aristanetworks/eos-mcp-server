@@ -94,9 +94,17 @@ describe("diagnostic settings", () => {
 
   it.each([
     "tracerouteTimeoutMs: 45500", "tracerouteTimeoutMs: 0", "tracerouteOverallOperationTimeoutMs: 45000", "tracerouteOverallOperationTimeoutMs: 30000",
-    "maxTracerouteDestinationsPerRequest: 17", "maxTracesPerRequest: 0", "maxTracerouteDestinationsPerRequest: 0"
+    "maxTracesPerRequest: 0", "maxTracerouteDestinationsPerRequest: 0"
   ])("rejects unsafe or contradictory traceroute settings: %s", async (line) => {
     await expect(load(["diagnostics:", `  ${line}`])).rejects.toMatchObject({ code: "config_schema_invalid" });
+  });
+
+  it("lets operators set the trace cap and the destination cap independently", async () => {
+    // The executor enforces each limit on its own, so a low aggregate cap needs no matching destination cap (ADR 0013).
+    const lowTraceCap = await load(["diagnostics:", "  maxTracesPerRequest: 2"]);
+    expect(lowTraceCap.diagnostics).toMatchObject({ maxTracesPerRequest: 2, maxTracerouteDestinationsPerRequest: 4 });
+    const highDestinationCap = await load(["diagnostics:", "  maxTracerouteDestinationsPerRequest: 17"]);
+    expect(highDestinationCap.diagnostics).toMatchObject({ maxTracesPerRequest: 16, maxTracerouteDestinationsPerRequest: 17 });
   });
 
   it("keeps the traceroute timer plus its HTTP margin within Node's timer range", async () => {

@@ -2,7 +2,8 @@ import { isIP } from "node:net";
 import type { DiagnosticsConfig } from "../config/diagnostics.js";
 import { pingExecutionBoundMs } from "../config/diagnostics.js";
 import { AppError } from "../core/errors.js";
-import { destinationKey, throwOnDestinationFailure, parseDestination, resolveDestinationFamily, validateAddress, validateAddressFamilyAgainstSource } from "./destination.js";
+import { prepareDestination, prepareDestinations, throwOnDestinationFailure } from "./destination.js";
+import type { PreparedDestination } from "./destination.js";
 import { resolveBoundedInteger, validateVrf } from "./validation.js";
 import type { DiagnosticDefinition, PingExecutionRequest, PingFinding, PingRequest, PreparedPing } from "./types.js";
 
@@ -17,12 +18,8 @@ export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing> = {
     if (destinations.length === 0 || destinations.length > config.maxDestinationsPerRequest) {
       throw new AppError("diagnostic_destination_limit_exceeded", `Provide between 1 and ${config.maxDestinationsPerRequest} destinations`);
     }
-    // Every destination is validated before any is dispatched.
-    const executions = destinations.map((destination) => preparePing({ ...shared, destination }, config));
-    // Literals compare canonically (alternate IPv6 spellings); names ignore case and a trailing dot.
-    if (new Set(executions.map((execution) => destinationKey(parseDestination(execution.destination)))).size !== executions.length) {
-      throw new AppError("diagnostic_destination_duplicate", "Each destination may appear only once per request");
-    }
+    // Every destination is validated, and duplicates rejected, before any is dispatched.
+    const executions = prepareDestinations(destinations, shared).map((prepared) => buildPreparedPing(shared, prepared, config));
     const count = executions[0]?.count ?? config.defaultPingCount;
     return { request: { ...request, count }, executions };
   },
@@ -35,6 +32,8 @@ export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing> = {
   deadline: (config) => ({ ms: config.overallOperationTimeoutMs, settingName: "diagnostics.overallOperationTimeoutMs" }),
   eapiExecution: (execution, config) => ({
     command: buildPingCommand(execution),
+    // EOS refuses ping with options such as `repeat` outside privileged mode (measured on cEOS 4.34.3M).
+    enable: true,
     httpTimeoutMs: config.httpTimeoutMs,
     // Lets EOS stop the command itself at the same budget the server holds an uncertain slot for.
     ...(config.nativeRequestTimeout ? { requestTimeoutSeconds: config.commandTimeoutMs / 1000 } : {})
@@ -52,20 +51,19 @@ export const pingDiagnostic: DiagnosticDefinition<PingRequest, PreparedPing> = {
   }
 };
 
+/** One ping execution on its own, prepared exactly as a request's executions are. */
 export function preparePing(request: PingExecutionRequest, config: DiagnosticsConfig): PreparedPing {
-  const destination = parseDestination(request.destination);
-  const sourceFamily = request.source === undefined ? undefined : validateAddress(request.source);
-  validateAddressFamilyAgainstSource(request.address_family, sourceFamily);
-  const addressFamily = resolveDestinationFamily(destination, { sourceFamily, addressFamily: request.address_family });
-  const count = resolveBoundedInteger(request.count, config.defaultPingCount, config.maxPingCount, { code: "diagnostic_count_invalid", label: "Ping count" });
+  const { destination, ...shared } = request;
+  return buildPreparedPing(shared, prepareDestination(destination, shared), config);
+}
+
+function buildPreparedPing(shared: Omit<PingExecutionRequest, "destination">, prepared: PreparedDestination, config: DiagnosticsConfig): PreparedPing {
+  const count = resolveBoundedInteger(shared.count, config.defaultPingCount, config.maxPingCount, { code: "diagnostic_count_invalid", label: "Ping count" });
   if (pingExecutionBoundMs(count, config.pingReplyTimeoutMs) > config.commandTimeoutMs) {
     throw new AppError("diagnostic_command_budget_exceeded", "Ping exceeds the configured device command budget");
   }
-  if (request.vrf !== undefined) validateVrf(request.vrf);
-  if (sourceFamily !== undefined && sourceFamily !== addressFamily) {
-    throw new AppError("diagnostic_source_invalid", "Source and destination must use the same IP address family");
-  }
-  return { ...request, count, addressFamily, replyTimeoutSeconds: config.pingReplyTimeoutMs / 1000 };
+  if (shared.vrf !== undefined) validateVrf(shared.vrf);
+  return { ...shared, destination: prepared.destination, count, addressFamily: prepared.addressFamily, replyTimeoutSeconds: config.pingReplyTimeoutMs / 1000 };
 }
 
 /** Verified on cEOS 4.34.3M. `timeout` is per-reply, not a wall-clock deadline. */

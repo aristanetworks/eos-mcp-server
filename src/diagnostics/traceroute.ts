@@ -1,15 +1,8 @@
 import { isIP } from "node:net";
 import { tracerouteHttpTimeoutMs } from "../config/diagnostics.js";
 import { AppError } from "../core/errors.js";
-import {
-  canonicalAddress,
-  destinationKey,
-  parseDestination,
-  resolveDestinationFamily,
-  throwOnDestinationFailure,
-  validateAddress,
-  validateAddressFamilyAgainstSource
-} from "./destination.js";
+import { canonicalAddress, prepareDestination, prepareDestinations, throwOnDestinationFailure } from "./destination.js";
+import type { PreparedDestination } from "./destination.js";
 import { validateVrf } from "./validation.js";
 import type {
   DiagnosticDefinition,
@@ -33,11 +26,8 @@ export const tracerouteDiagnostic: DiagnosticDefinition<TracerouteRequest, Prepa
     if (destinations.length === 0 || destinations.length > config.maxTracerouteDestinationsPerRequest) {
       throw new AppError("diagnostic_destination_limit_exceeded", `Provide between 1 and ${config.maxTracerouteDestinationsPerRequest} destinations`);
     }
-    // Every destination is validated before any is dispatched.
-    const executions = destinations.map((destination) => prepareTraceroute({ ...shared, destination }));
-    if (new Set(executions.map((execution) => destinationKey(parseDestination(execution.destination)))).size !== executions.length) {
-      throw new AppError("diagnostic_destination_duplicate", "Each destination may appear only once per request");
-    }
+    // Every destination is validated, and duplicates rejected, before any is dispatched.
+    const executions = prepareDestinations(destinations, shared).map((prepared) => buildPreparedTraceroute(shared, prepared));
     return { request, executions };
   },
   budget: {
@@ -50,6 +40,8 @@ export const tracerouteDiagnostic: DiagnosticDefinition<TracerouteRequest, Prepa
   // The device timer is never optional: a silent path takes about 30 s and a dead name server can hold a trace for minutes (ADR 0013).
   eapiExecution: (execution, config) => ({
     command: buildTracerouteCommand(execution),
+    // EOS runs traceroute unprivileged, so a role without enable can still trace (measured on cEOS 4.34.3M).
+    enable: false,
     httpTimeoutMs: tracerouteHttpTimeoutMs(config.tracerouteTimeoutMs),
     requestTimeoutSeconds: config.tracerouteTimeoutMs / 1000
   }),
@@ -67,15 +59,13 @@ export const tracerouteDiagnostic: DiagnosticDefinition<TracerouteRequest, Prepa
 };
 
 export function prepareTraceroute(request: TracerouteExecutionRequest): PreparedTraceroute {
-  const destination = parseDestination(request.destination);
-  const sourceFamily = request.source === undefined ? undefined : validateAddress(request.source);
-  validateAddressFamilyAgainstSource(request.address_family, sourceFamily);
-  const addressFamily = resolveDestinationFamily(destination, { sourceFamily, addressFamily: request.address_family });
-  if (request.vrf !== undefined) validateVrf(request.vrf);
-  if (sourceFamily !== undefined && sourceFamily !== addressFamily) {
-    throw new AppError("diagnostic_source_invalid", "Source and destination must use the same IP address family");
-  }
-  return { ...request, addressFamily };
+  const { destination, ...shared } = request;
+  return buildPreparedTraceroute(shared, prepareDestination(destination, shared));
+}
+
+function buildPreparedTraceroute(shared: Omit<TracerouteExecutionRequest, "destination">, prepared: PreparedDestination): PreparedTraceroute {
+  if (shared.vrf !== undefined) validateVrf(shared.vrf);
+  return { ...shared, destination: prepared.destination, addressFamily: prepared.addressFamily };
 }
 
 /** Verified on cEOS 4.34.3M. EOS fixes hop count, probes and wait; `vrf` goes before the family. */
@@ -113,7 +103,7 @@ export function parseTracerouteOutput(output: string): TracerouteFinding {
 /** `traceroute to <name> (<address>), 30 hops max, 60 byte packets`; only the parenthesized address is used. */
 function parseResolvedAddress(headerLine: string | undefined): string {
   const candidate = headerLine === undefined ? undefined : /^traceroute to \S+ \(([^()\s]+)\),/.exec(headerLine)?.[1];
-  if (candidate === undefined || isIP(candidate) === 0) {
+  if (candidate === undefined || addressComparisonKey(candidate) === undefined) {
     throw new AppError("diagnostic_output_unrecognized", "EOS traceroute output did not contain a recognized resolved address");
   }
   return candidate;
@@ -144,6 +134,10 @@ function parseHopLine(line: string): TracerouteHop {
       continue;
     }
     if (hostLabel !== undefined && hostAddress !== undefined) {
+      // An invalid responder address must never become an unreached finding.
+      if (addressComparisonKey(hostAddress) === undefined) {
+        throw new AppError("diagnostic_output_unrecognized", "EOS traceroute output contained a responder address that is not a valid IP address");
+      }
       // EOS prints the address itself in place of a name when the reverse lookup finds none.
       previous = { address: hostAddress, ...(hostLabel === hostAddress ? {} : { name: hostLabel }) };
     }
@@ -158,9 +152,24 @@ function parseHopLine(line: string): TracerouteHop {
   return { hop: hopNumber, responses };
 }
 
+/** Both addresses were validated while parsing, so an undefined key cannot match. */
 function sameAddress(left: string, right: string): boolean {
-  const leftFamily = isIP(left);
-  const rightFamily = isIP(right);
-  if (leftFamily === 0 || leftFamily !== rightFamily) return false;
-  return leftFamily === 6 ? canonicalAddress(left, 6) === canonicalAddress(right, 6) : left === right;
+  const leftKey = addressComparisonKey(left);
+  return leftKey !== undefined && leftKey === addressComparisonKey(right);
+}
+
+// An IPv6 scope (zone) identifier as Linux prints it: an interface name or index.
+const ZONE_PATTERN = /^[A-Za-z0-9_.:/-]+$/;
+
+/** A printed address's identity, or undefined when it is not a valid IP address. IPv6 is compared canonically
+ * and keeps its scope (`fe80::1%Ethernet1`), since the same link-local address on two links is two addresses.
+ * A scope is only valid on IPv6; the URL-based canonicalization rejects scopes, so it is split off first.
+ */
+function addressComparisonKey(printedAddress: string): string | undefined {
+  const scopeStart = printedAddress.indexOf("%");
+  const address = scopeStart === -1 ? printedAddress : printedAddress.slice(0, scopeStart);
+  const zone = scopeStart === -1 ? undefined : printedAddress.slice(scopeStart + 1);
+  const family = isIP(address);
+  if (family === 0 || (zone !== undefined && (family !== 6 || !ZONE_PATTERN.test(zone)))) return undefined;
+  return family === 6 ? `${canonicalAddress(address, 6)}${zone === undefined ? "" : `%${zone}`}` : address;
 }

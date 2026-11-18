@@ -175,6 +175,26 @@ describe("traceroute output interpretation", () => {
     expect(parse("traceroute to 10.0.0.9 (10.0.0.9), 30 hops max, 60 byte packets\n 1  10.0.0.1 (10.0.0.1)  1 ms !H  1 ms !H  1 ms !H\n").path).toBe("unreached");
   });
 
+  it.each(["not-an-ip", "10.0.0.999", "fe80::1%", "10.0.0.1%Ethernet1", "fe80::1%Ethernet 1"])(
+    "fails a responder address %j that is not a valid IP as unrecognized, never as an unreached finding", (address) => {
+      const output = `traceroute to 10.0.0.9 (10.0.0.9), 30 hops max, 60 byte packets\n 1  r1 (${address})  1 ms  1 ms  1 ms\n`;
+      expect(failureOf(output)).toMatchObject({ code: "diagnostic_output_unrecognized" });
+    });
+
+  it("keeps a scoped IPv6 responder as printed and compares scoped addresses without throwing", () => {
+    const viaLinkLocal = parse("traceroute to 2001:db8::9 (2001:db8::9), 30 hops max, 80 byte packets\n" +
+      " 1  fe80::1%Ethernet1 (fe80::1%Ethernet1)  1 ms  1 ms  1 ms\n 2  2001:db8::9 (2001:db8::9)  2 ms  2 ms  2 ms\n");
+    expect(viaLinkLocal.path).toBe("reached");
+    expect(viaLinkLocal.hops[0]?.responses[0]).toEqual({ address: "fe80::1%Ethernet1", rtt_ms: 1 });
+    // A scoped last hop is a different address from an unscoped destination, so the path is unreached, not a crash.
+    expect(parse("traceroute to 2001:db8::9 (2001:db8::9), 30 hops max, 80 byte packets\n 1  fe80::1%Ethernet1 (fe80::1%Ethernet1)  1 ms\n").path)
+      .toBe("unreached");
+    expect(parse("traceroute to fe80::9%Ethernet1 (fe80::9%Ethernet1), 30 hops max, 80 byte packets\n 1  fe80:0::9%Ethernet1 (fe80:0::9%Ethernet1)  1 ms\n").path)
+      .toBe("reached");
+    expect(parse("traceroute to fe80::9%Ethernet1 (fe80::9%Ethernet1), 30 hops max, 80 byte packets\n 1  fe80::9%Ethernet2 (fe80::9%Ethernet2)  1 ms\n").path)
+      .toBe("unreached");
+  });
+
   it("accepts CRLF output", () => {
     expect(parse(answeringPath.replaceAll("\n", "\r\n")).path).toBe("reached");
   });
@@ -358,7 +378,7 @@ describe("traceroute eAPI plan", () => {
   const host = buildHost({ effectiveVars: { ansible_user: "admin", ansible_password: "test-password" } });
   const context = () => ({ shutdownSignal: new AbortController().signal, requestId: "unit-rpc-id" });
   const okTransport = (postJson: ReturnType<typeof vi.fn<EapiTransport["postJson"]>>) =>
-    postJson.mockImplementation(async () => ({ ok: true, status: 200, json: async () => ({ result: [{ output: "" }, { output: answeringPath }] }), text: async () => "" }));
+    postJson.mockImplementation(async () => ({ ok: true, status: 200, json: async () => ({ result: [{ output: answeringPath }] }), text: async () => "" }));
 
   it.each([true, false])("always sends tracerouteTimeoutMs as the EOS request timeout and outlasts it by 5 s (nativeRequestTimeout %s)", async (nativeRequestTimeout) => {
     const postJson = vi.fn<EapiTransport["postJson"]>();
@@ -371,7 +391,7 @@ describe("traceroute eAPI plan", () => {
     const [connection, body] = postJson.mock.calls[0] ?? [];
     expect(connection).toMatchObject({ timeoutMs: 50_000 });
     expect(JSON.parse(String(body)).params).toEqual({
-      version: 1, format: "text", cmds: ["enable", "traceroute vrf default ip 10.255.0.4 source 10.255.0.3"], requestTimeout: 45
+      version: 1, format: "text", cmds: ["traceroute vrf default ip 10.255.0.4 source 10.255.0.3"], requestTimeout: 45
     });
   });
 
@@ -387,24 +407,32 @@ describe("traceroute eAPI plan", () => {
     expect(JSON.parse(String(body)).params.requestTimeout).toBe(60);
   });
 
-  it("recognizes EOS's device-time-limit reply (RPC 1001, enable then the timed-out command)", async () => {
-    const postJson = vi.fn<EapiTransport["postJson"]>(async () => ({
-      ok: true, status: 200, text: async () => "",
-      json: async () => ({ error: {
-        code: 1001, message: "CLI command 2 of 2 'traceroute ip 10.255.0.4' failed: unexpected error 408",
-        data: [{ output: "" }, { errors: ["Command exceeded its allowed time limit"] }]
-      } })
-    }));
+  // Measured on cEOS 4.34.3M: traceroute sent alone and stopped by its timer answers with one entry.
+  const timeLimitReply = (data: unknown[]) => vi.fn<EapiTransport["postJson"]>(async () => ({
+    ok: true, status: 200, text: async () => "",
+    json: async () => ({ error: { code: 1001, message: "CLI command 1 of 1 'traceroute ip 10.255.0.4' failed: unexpected error 408", data } })
+  }));
+
+  it("recognizes EOS's device-time-limit reply for the unprivileged command (RPC 1001, the timed-out command alone)", async () => {
     const config = buildConfig();
+    const postJson = timeLimitReply([{ errors: ["Command exceeded its allowed time limit"] }]);
     const runner = new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson })));
     expect(await runner.execute(host, prepared(), context())).toEqual({ end: "device_time_limit" });
+    expect(JSON.parse(String(postJson.mock.calls[0]?.[1])).params.cmds).toEqual(["traceroute ip 10.255.0.4"]);
+  });
+
+  it("treats a timer reply shaped for a different command sequence as unknown completion", async () => {
+    const config = buildConfig();
+    const postJson = timeLimitReply([{ output: "" }, { errors: ["Command exceeded its allowed time limit"] }]);
+    const runner = new EapiDiagnosticRunner(config, new EapiClient(echoRpcTransport({ postJson })));
+    expect(await runner.execute(host, prepared(), context())).toMatchObject({ end: "failed", remote: "unknown" });
   });
 
   it("runs end to end through the executor, naming the failure for a device timer", async () => {
     setTestPasswordEnv();
     const postJson = vi.fn<EapiTransport["postJson"]>(async () => ({
       ok: true, status: 200, text: async () => "",
-      json: async () => ({ error: { code: 1001, message: "unexpected error 408", data: [{ output: "" }, { errors: ["Command exceeded its allowed time limit"] }] } })
+      json: async () => ({ error: { code: 1001, message: "unexpected error 408", data: [{ errors: ["Command exceeded its allowed time limit"] }] } })
     }));
     const config = buildConfig();
     const executor = new DiagnosticExecutor(buildInventoryModel({ diagnosticsAllowed: true, effectiveVars: host.effectiveVars }), config,

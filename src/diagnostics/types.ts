@@ -102,7 +102,8 @@ export interface PacketCaptureFinding {
   packets: string[];
 }
 
-/** One probe's answer. `name` is present only when EOS's reverse lookup found one. `marker` is the Linux traceroute
+/** One probe's answer. `address` is a valid IP address as EOS printed it, keeping an IPv6 scope such as
+ * `fe80::1%Ethernet1`. `name` is present only when EOS's reverse lookup found one. `marker` is the Linux traceroute
  * annotation after the RTT (`!N`, `!H`, `!X`, ...): the responder answered, but with an ICMP refusal.
  */
 export interface TracerouteResponse {
@@ -139,6 +140,10 @@ export type ResolvedDiagnosticRequest = (PingRequest & { count: number }) | Prep
 /** How the eAPI runner sends one execution: the EOS command, its HTTP timeout, and EOS's own request timer, if any. */
 export interface EapiExecutionPlan {
   command: string;
+  /** Whether `enable` precedes the command. Each kind states it, so a role that may run a diagnostic but not
+   * enable is never refused for a privilege the command does not need.
+   */
+  enable: boolean;
   httpTimeoutMs: number;
   requestTimeoutSeconds?: number;
 }

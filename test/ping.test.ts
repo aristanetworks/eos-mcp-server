@@ -27,6 +27,18 @@ describe("ping validation and command compilation", () => {
     expect(() => preparePing({ kind: "ping", destination }, settings)).toThrow(expect.objectContaining({ code: "diagnostic_address_invalid" }));
   });
 
+  // EOS hands names to glibc, which reads these as IPv4 (0x7f000001 traced to 127.0.0.1 on cEOS 4.34.3M),
+  // so they would otherwise bypass the literal restrictions, as 0xe0000001 (224.0.0.1) would.
+  it.each(["0x7f000001", "0x7f.1", "0x7f.0.0.1", "0xe0000001", "0XE0.0.0.1", "0x7f.0.0.1.", "0x", "1.0x2.3"])(
+    "rejects legacy numeric IPv4 form %j instead of treating it as a name", (destination) => {
+      expect(() => preparePing({ kind: "ping", destination }, settings))
+        .toThrow(expect.objectContaining({ code: "diagnostic_address_invalid", message: expect.stringContaining("dotted-decimal") }));
+    });
+
+  it.each(["deadbeef", "0xcafe.example.com", "1.2.3.4.example", "a0x1"])("still accepts host name %s that only looks numeric in part", (destination) => {
+    expect(preparePing({ kind: "ping", destination }, settings).addressFamily).toBe(4);
+  });
+
   it.each(["leaf1", "example.com", "example.com.", "Leaf-1.Example.COM", "a1", "x".repeat(63) + ".com", `${"a".repeat(63)}.${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(61)}`])(
     "accepts host name %s without applying address restrictions", (destination) => {
       expect(preparePing({ kind: "ping", destination }, settings).addressFamily).toBe(4);
