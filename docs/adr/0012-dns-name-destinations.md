@@ -1,6 +1,6 @@
 # Accept DNS names as diagnostic Destinations, resolved by the executing device
 
-**Status: accepted; implemented for ping (traceroute pending).** Amends [ADR 0001](0001-non-configuring-diagnostics.md), which allowed only literal IP addresses as destinations. Applies to ping and to traceroute.
+**Status: implemented (ping and traceroute).** Amends [ADR 0001](0001-non-configuring-diagnostics.md), which allowed only literal IP addresses as destinations. Applies to ping and to traceroute.
 
 A **Destination** may now be a DNS name as well as an IP literal. The executing EOS device resolves it with its own resolver, because the point of a diagnostic is the device's view of the network: split-horizon DNS, per-VRF name servers and the device's cache can all differ from the server's. The server never resolves names, not even to pre-check the address, since a server-side answer can disagree with the one the device then uses. Inventory host names are never turned into Destinations: inventory does not know hosts' data-plane addresses, and doing so would blur **Target** and **Destination**.
 

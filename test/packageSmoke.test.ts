@@ -173,7 +173,8 @@ describe("packaged CLI smoke test", () => {
             "eos_ping",
             "eos_probe_devices",
             "eos_run_show",
-            "eos_show_logging"
+            "eos_show_logging",
+            "eos_traceroute"
           ]);
         } catch (error) {
           throw new Error(`${error instanceof Error ? error.message : String(error)}\nSTDERR:\n${stderrOutput}`);

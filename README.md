@@ -45,6 +45,7 @@ Implemented MCP tools:
 - `eos_list_inventory`
 - `eos_probe_devices`
 - `eos_ping`
+- `eos_traceroute`
 - `eos_packet_capture`
 - `eos_run_show`
 - `eos_show_logging`
@@ -62,7 +63,7 @@ Implemented local CLI commands:
 
 - Node.js 24+
 - Arista EOS devices reachable via eAPI over HTTPS
-- EOS 4.20 or later for existing read operations; `eos_ping` and `eos_packet_capture` are qualified on cEOS 4.34.3M
+- EOS 4.20 or later for existing read operations; `eos_ping`, `eos_traceroute` and `eos_packet_capture` are qualified on cEOS 4.34.3M
 - Inventory in one of the supported YAML formats
 
 ## Install and get started
@@ -206,7 +207,7 @@ For read tools, `readTimeoutMs` applies to each device eAPI request. `overallOpe
 
 `eos_run_show` runs unprivileged, except for a request made up entirely of Privileged Show Commands, which runs with `enable`. The server alone holds that list (currently `show event-monitor`, matched on whole words, case-insensitively), and `privilegedShowCommands` can only narrow it. Each result in a privileged request carries `privileged: true`, and `eos_get_server_info` reports the setting under `capabilities.privileged_show_commands`. See [ADR 0011](docs/adr/0011-event-monitor-queries.md).
 
-`eos_ping` and `eos_packet_capture` use their own configurable `diagnostics` timeouts and concurrency (per device, under a per-server ceiling), while sharing `maxReadTargets` and `maxResponseSizeBytes`. Omitted diagnostic settings retain the defaults shown above; invalid or contradictory settings fail validation. Ping is enabled by default for read-allowed EOS hosts; `mcp_diagnostics_allowed: false` denies it. Ping has no automatic retries. Response IDs and protocol envelopes are validated before output is accepted. When a ping's remote completion is unknown (timeout, cancellation, lost connection), its slot is held for `commandTimeoutMs` and then freed automatically; inspect the running server's `eos_get_server_info.diagnostics.capacity`. Capacity lives in memory, so several MCP servers can use the same inventory at once. An uncertain packet capture is held for its own window plus 2 s instead. See [Network diagnostics](docs/DIAGNOSTICS.md), including the distinction between a reply timeout, command budget, and remote process termination.
+`eos_ping`, `eos_traceroute` and `eos_packet_capture` use their own configurable `diagnostics` timeouts and concurrency (per device, under a per-server ceiling), while sharing `maxReadTargets` and `maxResponseSizeBytes`. Omitted diagnostic settings retain the defaults shown above; invalid or contradictory settings fail validation. Ping is enabled by default for read-allowed EOS hosts; `mcp_diagnostics_allowed: false` denies it. Ping has no automatic retries. Response IDs and protocol envelopes are validated before output is accepted. When a ping's remote completion is unknown (timeout, cancellation, lost connection), its slot is held for `commandTimeoutMs` and then freed automatically; inspect the running server's `eos_get_server_info.diagnostics.capacity`. Capacity lives in memory, so several MCP servers can use the same inventory at once. An uncertain packet capture is held for its own window plus 2 s instead, and an uncertain traceroute for `tracerouteTimeoutMs`. See [Network diagnostics](docs/DIAGNOSTICS.md), including the distinction between a reply timeout, command budget, and remote process termination.
 
 `actor` and `logFile` remain sanitized runtime metadata and do not enable a general tool-call audit log.
 
@@ -301,7 +302,7 @@ args = ["-y", "@aristanetworks/eos-mcp-server", "serve", "--config", "/absolute/
 env_vars = ["EOS_MCP_PASSWORD"]
 ```
 
-Every EOS tool, including `eos_ping` and `eos_packet_capture`, advertises the MCP `readOnlyHint`
+Every EOS tool, including `eos_ping`, `eos_traceroute` and `eos_packet_capture`, advertises the MCP `readOnlyHint`
 annotation, so Codex and Claude Code can run independent tool calls
 concurrently without further configuration. With older server versions, which
 omit the annotation, add `supports_parallel_tool_calls = true` under
@@ -449,7 +450,7 @@ still using their individual credentials.
   - `mcp_platform: arista_eos`
 - `mcp_read_allowed` defaults to `true` for eligible EOS hosts. Set it to `false` — inherited like any other variable — to explicitly deny read access to a host or group.
 - Read operations fail closed if the resolved target contains ineligible or read-denied hosts.
-- `mcp_diagnostics_allowed` defaults to `true`. Set this inherited boolean to `false` to deny `eos_ping`; read denial still vetoes diagnostics. A mixed-permission group fails before any dispatch.
+- `mcp_diagnostics_allowed` defaults to `true`. Set this inherited boolean to `false` to deny `eos_ping` and `eos_traceroute`; read denial still vetoes diagnostics. A mixed-permission group fails before any dispatch.
 - `mcp_packet_capture_allowed` defaults to `true`. Set this inherited boolean to `false` to deny `eos_packet_capture`. It is the top of a permission ladder: a host is capture-allowed only when it is read-allowed and neither `mcp_diagnostics_allowed` nor `mcp_packet_capture_allowed` is `false`. Captures return decoded packets and can reveal cleartext secrets in those protocols, such as SNMPv1/v2c community strings. See [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md).
 - A diagnostic destination is distinct from the inventory target and may be an address outside inventory.
 
@@ -665,7 +666,21 @@ Runs bounded ping from an inventory host or group to one or more destinations, r
 }
 ```
 
-`count`, `vrf`, `source`, and `include_raw` are optional. Results contain one entry per host and destination, each naming its `destination`; `summary` counts those entries. Results separate execution status from `reachable`/`partial`/`unreachable` findings and include loss/RTT measurements. Zero replies do not establish a cause. See [Network diagnostics](docs/DIAGNOSTICS.md) for all limits, address restrictions, lifecycle caveats, and result semantics. Traceroute is not yet implemented.
+`count`, `vrf`, `source`, and `include_raw` are optional. Results contain one entry per host and destination, each naming its `destination`; `summary` counts those entries. Results separate execution status from `reachable`/`partial`/`unreachable` findings and include loss/RTT measurements. Zero replies do not establish a cause. See [Network diagnostics](docs/DIAGNOSTICS.md) for all limits, address restrictions, lifecycle caveats, and result semantics.
+
+### `eos_traceroute`
+
+Traces the layer-3 path from an inventory host or group to one or more destinations, running EOS `traceroute` on the device (not on the MCP host) and changing no configuration. It needs the same permission as ping (`mcp_diagnostics_allowed` not `false`). Destinations, `vrf`, `source` and `address_family` follow the ping rules, including DNS names resolved by the device. EOS fixes 30 hops and 3 probes per hop. Set `source` to a loopback address when tracing between loopbacks: the default source is often an interface address with no return route, which makes every hop `* * *`.
+
+```json
+{
+  "target": "leaf1",
+  "destinations": ["10.255.0.4"],
+  "source": "10.255.0.3"
+}
+```
+
+`vrf`, `source`, `address_family` and `include_raw` are optional. Results contain one entry per host and destination with `path` `reached` (the destination itself answered the last hop, even with a marker such as `!X`) or `unreached`, the `resolved_address`, and `hops`, each with one response per probe (`null` for `*`; different addresses within a hop are ECMP responders). An unresolvable name or missing route is an execution failure, not an unreached finding. A silent path takes about 30 s; each trace gets a 45 s device timer (`diagnostics.tracerouteTimeoutMs`), and when it fires the entry fails with `traceroute_device_time_limit_reached` and no hops, most likely because of slow reverse DNS on the device. Limits: 4 destinations per call and 16 traces (hosts × destinations) by default. See [Network diagnostics](docs/DIAGNOSTICS.md#traceroute).
 
 ### `eos_packet_capture`
 
@@ -834,7 +849,7 @@ This means the target resolved to at least one host that is either not marked as
 
 The read-path tools have been validated against EOS 4.34.3M. The minimum supported EOS version for read operations is 4.20, which is when eAPI JSON-RPC became stable and `show` commands reliably produce structured JSON output.
 
-`eos_ping` and `eos_packet_capture` have separately been validated on cEOS 4.34.3M. Older EOS versions and physical platforms have not been qualified for these tools.
+`eos_ping`, `eos_traceroute` and `eos_packet_capture` have separately been validated on cEOS 4.34.3M. Older EOS versions and physical platforms have not been qualified for these tools.
 
 ## Design notes
 

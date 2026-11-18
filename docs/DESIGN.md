@@ -12,6 +12,7 @@ EOS MCP Server is an ESM TypeScript MCP server that provides inventory-scoped, r
 | `eos_list_inventory` | Eligible hosts and groups |
 | `eos_probe_devices` | Connectivity, authentication, and harmless command check |
 | `eos_ping` | Bounded active ping diagnostics on EOS to one or more destinations, enabled by default with inventory opt-out |
+| `eos_traceroute` | Bounded hop-by-hop path trace on EOS to one or more destinations, same permission as ping, returning a reached/unreached Path Finding with per-probe hops |
 | `eos_packet_capture` | Bounded control-plane packet capture on one interface, enabled by default with inventory opt-out, returning tcpdump's line per packet |
 | `eos_run_show` | Validated single-line `show` commands, including `show event-monitor` queries |
 | `eos_show_logging` | Bounded logging retrieval |
@@ -64,14 +65,16 @@ A ping request names one or more destinations and sends exactly one text-mode eA
 
 Literal destinations must be unicast; scoped/link-local IPv6, multicast, unspecified, and limited broadcast literals are rejected. Host names are accepted if they are valid RFC 1123 names and are resolved by the device, so these restrictions do not apply to what a name resolves to (ADR 0012). Optional VRF/source selection must not fall back. Directed-broadcast detection is not guaranteed from an address alone.
 
+`eos_traceroute` runs one text-mode `traceroute [vrf <VRF>] ip|ipv6 <DEST> [source <ADDR>]` per host and destination, always with EOS `requestTimeout` equal to `tracerouteTimeoutMs` (45000 ms; HTTP timeout 5 s longer, uncertain hold equal to it). It allows 4 destinations and 16 traces per call (hosts × destinations) and a 120000 ms overall timeout, shares the diagnostic slots with ping with no per-kind limit, and fails with `traceroute_device_time_limit_reached` when the device timer fires ([ADR 0013](adr/0013-bounded-traceroute.md)).
+
 `eos_packet_capture` runs one text-mode `tcpdump interface <INTF> [vrf <VRF>] packet-count <N> [filter <FILTER>]` per resolved host, filter last, and always sends EOS `requestTimeout` equal to the capture window. Its settings are packet count 10/max 1000, window 10 s/max 60 s, hosts × packet count at most 2000, and overall timeout 90000 ms. It shares the diagnostic slots with ping; an uncertain capture holds its slot for its window plus 2 s. Captures see only control-plane traffic ([ADR 0010](adr/0010-bounded-synchronous-packet-capture.md)).
 
 ## Result and error model
 
 Every eAPI response must identify JSON-RPC 2.0, match its request ID exactly, and contain exactly one result/error member before interpretation. Missing or mismatched identity is `eapi_response_uncorrelated`, not completion evidence. Each diagnostic execution's reservation ID is its wire ID. Correlation IDs do not provide an EOS job lookup, cancellation, or idempotency facility.
 
-Device-facing tools return target metadata, resolved devices, summary counts, and per-device results. Request-level failures and known device failures use `AppError` machine-readable codes. Supported read tools expose raw eAPI payloads only through an explicit `include_raw` option. Ping separates successful execution from a reachability finding and returns normalized loss/RTT measurements; original EOS text is opt-in. A packet capture's finding carries tcpdump's lines verbatim, with no protocol parsing. Unrecognized output is an explicit device failure, never an invented finding.
+Device-facing tools return target metadata, resolved devices, summary counts, and per-device results. Request-level failures and known device failures use `AppError` machine-readable codes. Supported read tools expose raw eAPI payloads only through an explicit `include_raw` option. Ping separates successful execution from a reachability finding and returns normalized loss/RTT measurements; original EOS text is opt-in. Traceroute returns a reached/unreached finding with per-hop, per-probe responses. A packet capture's finding carries tcpdump's lines verbatim, with no protocol parsing. Unrecognized output is an explicit device failure, never an invented finding.
 
 ## Compatibility and validation
 
-The read surface is validated against cEOS 4.34.3M. EOS 4.20 is the documented minimum for supported read operations. Ping and packet capture are separately qualified on cEOS 4.34.3M; their compatibility with older EOS versions or physical platforms is not established by the existing read-path minimum. Traceroute remains future work requiring its own capability and lifecycle decisions. Changes must preserve strict TypeScript checks and pass the unit, stdio smoke, and package-policy test suites.
+The read surface is validated against cEOS 4.34.3M. EOS 4.20 is the documented minimum for supported read operations. Ping, traceroute and packet capture are separately qualified on cEOS 4.34.3M; their compatibility with older EOS versions or physical platforms is not established by the existing read-path minimum. Changes must preserve strict TypeScript checks and pass the unit, stdio smoke, and package-policy test suites.

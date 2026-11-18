@@ -20,7 +20,8 @@ describe("diagnostic settings", () => {
       defaultPingCount: 3, maxPingCount: 10, maxProbesPerRequest: 100, maxDestinationsPerRequest: 16, deviceConcurrency: 2, maxConcurrentDiagnostics: 32,
       pingReplyTimeoutMs: 1000, commandTimeoutMs: 30_000, httpTimeoutMs: 35_000, overallOperationTimeoutMs: 60_000, nativeRequestTimeout: true,
       defaultCapturePacketCount: 10, maxCapturePacketCount: 1000, defaultCaptureWindowSeconds: 10, maxCaptureWindowSeconds: 60,
-      maxCapturePacketsPerRequest: 2000, captureDeviceConcurrency: 1, captureOverallOperationTimeoutMs: 90_000
+      maxCapturePacketsPerRequest: 2000, captureDeviceConcurrency: 1, captureOverallOperationTimeoutMs: 90_000,
+      tracerouteTimeoutMs: 45_000, maxTracerouteDestinationsPerRequest: 4, maxTracesPerRequest: 16, tracerouteOverallOperationTimeoutMs: 120_000
     });
     expect(config).toMatchObject({ deviceConcurrency: 3, readFanOut: 10 });
   });
@@ -48,12 +49,14 @@ describe("diagnostic settings", () => {
       "  pingReplyTimeoutMs: 2000", "  commandTimeoutMs: 65000", "  httpTimeoutMs: 70000", "  overallOperationTimeoutMs: 90000",
       "  nativeRequestTimeout: false", "  defaultCapturePacketCount: 5", "  maxCapturePacketCount: 500", "  defaultCaptureWindowSeconds: 5",
       "  maxCaptureWindowSeconds: 30", "  maxCapturePacketsPerRequest: 1500", "  captureDeviceConcurrency: 2",
-      "  captureOverallOperationTimeoutMs: 45000"
+      "  captureOverallOperationTimeoutMs: 45000",
+      "  tracerouteTimeoutMs: 40000", "  maxTracerouteDestinationsPerRequest: 2", "  maxTracesPerRequest: 6", "  tracerouteOverallOperationTimeoutMs: 80000"
     ]);
     expect(config.diagnostics).toEqual({ defaultPingCount: 4, maxPingCount: 20, maxProbesPerRequest: 200, maxDestinationsPerRequest: 8, deviceConcurrency: 2,
       maxConcurrentDiagnostics: 12, pingReplyTimeoutMs: 2000, commandTimeoutMs: 65000, httpTimeoutMs: 70000, overallOperationTimeoutMs: 90000, nativeRequestTimeout: false,
       defaultCapturePacketCount: 5, maxCapturePacketCount: 500, defaultCaptureWindowSeconds: 5, maxCaptureWindowSeconds: 30,
-      maxCapturePacketsPerRequest: 1500, captureDeviceConcurrency: 2, captureOverallOperationTimeoutMs: 45000 });
+      maxCapturePacketsPerRequest: 1500, captureDeviceConcurrency: 2, captureOverallOperationTimeoutMs: 45000,
+      tracerouteTimeoutMs: 40_000, maxTracerouteDestinationsPerRequest: 2, maxTracesPerRequest: 6, tracerouteOverallOperationTimeoutMs: 80_000 });
   });
 
   it("validates HTTP timeouts independently rather than inventing a combined release timer", async () => {
@@ -86,6 +89,23 @@ describe("diagnostic settings", () => {
     await expect(load(["diagnostics:", "  maxCaptureWindowSeconds: 2147479", largestOverall])).rejects.toMatchObject({
       code: "config_schema_invalid",
       message: expect.stringContaining("diagnostics.maxCaptureWindowSeconds")
+    });
+  });
+
+  it.each([
+    "tracerouteTimeoutMs: 45500", "tracerouteTimeoutMs: 0", "tracerouteOverallOperationTimeoutMs: 45000", "tracerouteOverallOperationTimeoutMs: 30000",
+    "maxTracerouteDestinationsPerRequest: 17", "maxTracesPerRequest: 0", "maxTracerouteDestinationsPerRequest: 0"
+  ])("rejects unsafe or contradictory traceroute settings: %s", async (line) => {
+    await expect(load(["diagnostics:", `  ${line}`])).rejects.toMatchObject({ code: "config_schema_invalid" });
+  });
+
+  it("keeps the traceroute timer plus its HTTP margin within Node's timer range", async () => {
+    const largestOverall = "  tracerouteOverallOperationTimeoutMs: 2147483647";
+    const largest = await load(["diagnostics:", "  tracerouteTimeoutMs: 2147478000", largestOverall]);
+    expect(largest.diagnostics.tracerouteTimeoutMs).toBe(2_147_478_000);
+    await expect(load(["diagnostics:", "  tracerouteTimeoutMs: 2147479000", largestOverall])).rejects.toMatchObject({
+      code: "config_schema_invalid",
+      message: expect.stringContaining("diagnostics.tracerouteTimeoutMs")
     });
   });
 });

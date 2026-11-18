@@ -25,7 +25,11 @@ export const diagnosticsConfigSchema = z.object({
   maxCaptureWindowSeconds: positiveInteger.default(60),
   maxCapturePacketsPerRequest: positiveInteger.default(2000),
   captureDeviceConcurrency: positiveInteger.default(1),
-  captureOverallOperationTimeoutMs: positiveInteger.default(90_000)
+  captureOverallOperationTimeoutMs: positiveInteger.default(90_000),
+  tracerouteTimeoutMs: positiveInteger.multipleOf(1000).default(45_000),
+  maxTracerouteDestinationsPerRequest: positiveInteger.default(4),
+  maxTracesPerRequest: positiveInteger.default(16),
+  tracerouteOverallOperationTimeoutMs: positiveInteger.default(120_000)
 }).strict().superRefine((config, context) => {
   const invalid = (path: string, message: string): void => {
     context.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
@@ -61,6 +65,15 @@ export const diagnosticsConfigSchema = z.object({
     invalid("captureOverallOperationTimeoutMs", "Must exceed maxCaptureWindowSeconds");
   }
   // The window itself fits, but the timers derived from it add margins (ADR 0010).
+  if (config.maxTracerouteDestinationsPerRequest > config.maxTracesPerRequest) {
+    invalid("maxTracerouteDestinationsPerRequest", "Must not exceed maxTracesPerRequest");
+  }
+  if (config.tracerouteOverallOperationTimeoutMs <= config.tracerouteTimeoutMs) {
+    invalid("tracerouteOverallOperationTimeoutMs", "Must exceed tracerouteTimeoutMs");
+  }
+  if (tracerouteHttpTimeoutMs(config.tracerouteTimeoutMs) > MAX_TIMER_MS) {
+    invalid("tracerouteTimeoutMs", `Timer plus its HTTP margin must not exceed ${MAX_TIMER_MS} ms`);
+  }
   if (Math.max(captureHttpTimeoutMs(config.maxCaptureWindowSeconds), captureUncertainHoldMs(config.maxCaptureWindowSeconds)) > MAX_TIMER_MS) {
     invalid("maxCaptureWindowSeconds", `Window plus its HTTP and uncertainty margins must not exceed ${MAX_TIMER_MS} ms`);
   }
@@ -79,6 +92,11 @@ export function captureHttpTimeoutMs(windowSeconds: number): number {
 /** An uncertain capture holds its slot this much past its window, since the device timer has stopped it by then. */
 export function captureUncertainHoldMs(windowSeconds: number): number {
   return windowSeconds * 1000 + 2000;
+}
+
+/** The device timer ends a trace at `tracerouteTimeoutMs`; the HTTP request waits this much longer for the answer. */
+export function tracerouteHttpTimeoutMs(tracerouteTimeoutMs: number): number {
+  return tracerouteTimeoutMs + 5000;
 }
 
 export type DiagnosticsConfig = z.infer<typeof diagnosticsConfigSchema>;

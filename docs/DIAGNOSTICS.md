@@ -1,6 +1,6 @@
 # Non-configuring network diagnostics
 
-`eos_ping` executes bounded ping commands **on EOS**, not on the MCP host. It never changes configuration. It generates network traffic and is not a passive read. `eos_packet_capture` runs a bounded `tcpdump` on EOS and returns the packets it saw; see [Packet capture](#packet-capture). Traceroute is a future tool, not an implemented capability.
+`eos_ping` executes bounded ping commands **on EOS**, not on the MCP host. It never changes configuration. It generates network traffic and is not a passive read. `eos_packet_capture` runs a bounded `tcpdump` on EOS and returns the packets it saw; see [Packet capture](#packet-capture). `eos_traceroute` traces the hop-by-hop path from EOS to destinations; see [Traceroute](#traceroute).
 
 ## Authorization and addressing
 
@@ -88,6 +88,10 @@ diagnostics:
   maxCapturePacketsPerRequest: 2000
   captureDeviceConcurrency: 1
   captureOverallOperationTimeoutMs: 90000
+  tracerouteTimeoutMs: 45000
+  maxTracerouteDestinationsPerRequest: 4
+  maxTracesPerRequest: 16
+  tracerouteOverallOperationTimeoutMs: 120000
 ```
 
 | Setting | Meaning |
@@ -110,6 +114,10 @@ diagnostics:
 | `maxCapturePacketsPerRequest` | Maximum resolved host count × `packet_count` for one `eos_packet_capture` call |
 | `captureDeviceConcurrency` | Of a host's diagnostic slots, those packet captures may hold across all calls, counting active and uncertain captures; must not exceed `deviceConcurrency` |
 | `captureOverallOperationTimeoutMs` | Whole capture call deadline, including waiting for capacity; must exceed `maxCaptureWindowSeconds` |
+| `tracerouteTimeoutMs` | EOS request timer for every trace, always sent whatever `nativeRequestTimeout` says; a positive multiple of 1000 ms. The HTTP timeout is this plus 5 s, and an uncertain trace holds its slot for this long |
+| `maxTracerouteDestinationsPerRequest` | Maximum destinations in one `eos_traceroute` call; must not exceed `maxTracesPerRequest` |
+| `maxTracesPerRequest` | Maximum resolved host count × destination count for one `eos_traceroute` call (each trace costs 1) |
+| `tracerouteOverallOperationTimeoutMs` | Whole traceroute call deadline, including waiting for capacity; must exceed `tracerouteTimeoutMs` |
 
 Diagnostic capacity is held in memory by each server process; nothing is written to disk. Several MCP servers (for example two chat sessions) can run against the same inventory at once, each with its own `deviceConcurrency` and `maxConcurrentDiagnostics`. The former `diagnostics.stateFile` setting is rejected with guidance; delete it. Ledger files left under `$XDG_STATE_HOME/eos-mcp-server/` (or `~/.local/state/eos-mcp-server/`) by earlier versions are no longer read and can be deleted. See [ADR 0006](adr/0006-in-memory-timed-diagnostic-capacity.md).
 
@@ -121,7 +129,7 @@ Numeric settings must be finite positive integers. The default count cannot exce
 maxPingCount * (pingReplyTimeoutMs + 1000) + 1000 ms
 ```
 
-The HTTP timeout must exceed the command budget by at least 1000 ms. For capture, the default packet count cannot exceed the maximum, the maximum cannot exceed `maxCapturePacketsPerRequest` or 10000, the default window cannot exceed the maximum, `captureDeviceConcurrency` cannot exceed `deviceConcurrency`, and `captureOverallOperationTimeoutMs` must exceed `maxCaptureWindowSeconds`. Individual settings must fit the supported timer range (2,147,483,647 ms), and so must the timers a capture derives from `maxCaptureWindowSeconds`: the window plus 5 s for HTTP and plus 2 s for an uncertain hold, so the largest accepted window is 2,147,478 s. There is no combined reservation-expiry timer. Unknown fields and contradictory settings fail config validation. Increasing count/reply-timeout ceilings may require increasing both command and HTTP budgets. The overall deadline may intentionally be shorter than device execution; that cancels the call, not necessarily the remote command.
+The HTTP timeout must exceed the command budget by at least 1000 ms. For capture, the default packet count cannot exceed the maximum, the maximum cannot exceed `maxCapturePacketsPerRequest` or 10000, the default window cannot exceed the maximum, `captureDeviceConcurrency` cannot exceed `deviceConcurrency`, and `captureOverallOperationTimeoutMs` must exceed `maxCaptureWindowSeconds`. For traceroute, `maxTracerouteDestinationsPerRequest` cannot exceed `maxTracesPerRequest`, `tracerouteOverallOperationTimeoutMs` must exceed `tracerouteTimeoutMs`, and `tracerouteTimeoutMs` plus its 5 s HTTP margin must fit the timer range. Individual settings must fit the supported timer range (2,147,483,647 ms), and so must the timers a capture derives from `maxCaptureWindowSeconds`: the window plus 5 s for HTTP and plus 2 s for an uncertain hold, so the largest accepted window is 2,147,478 s. There is no combined reservation-expiry timer. Unknown fields and contradictory settings fail config validation. Increasing count/reply-timeout ceilings may require increasing both command and HTTP budgets. The overall deadline may intentionally be shorter than device execution; that cancels the call, not necessarily the remote command.
 
 ## Execution and lifecycle
 
@@ -247,6 +255,50 @@ EOS does not check pcap-filter syntax. When tcpdump rejects the filter, or canno
 - Default tcpdump decode can print cleartext secrets such as SNMPv1/v2c community strings; see the permission section above.
 - Measured on cEOS 4.34.3M only.
 
+## Traceroute
+
+`eos_traceroute` runs EOS `traceroute [vrf <VRF>] ip|ipv6 <destination> [source <address>]` on the executing device, not on the MCP host, and changes no configuration ([ADR 0013](adr/0013-bounded-traceroute.md)). EOS fixes 30 hops, 3 probes per hop and 60-byte probes (80 for IPv6); there are no hop, probe, wait or `interface` options. It needs the same Diagnostic Permission as ping (`mcp_diagnostics_allowed` not `false`, `diagnostic_policy_denied` otherwise).
+
+```json
+{
+  "target": "leaf1",
+  "destinations": ["10.255.0.4"],
+  "vrf": "default",
+  "source": "10.255.0.3",
+  "address_family": "ipv4",
+  "include_raw": false
+}
+```
+
+`destinations` (1 to `maxTracerouteDestinationsPerRequest`), `vrf`, `source` and `address_family` follow the same parsing, duplicate and family rules as ping, including DNS names resolved by the device. Hosts × destinations must not exceed `maxTracesPerRequest` (`diagnostic_trace_limit_exceeded`). Set `source` to a loopback address when tracing between loopbacks: the default source is often an interface address the destination has no return route to, so every hop prints `* * *`.
+
+### Lifecycle
+
+A trace that gets answers finishes in about 0.1 s, but a fully silent path takes about 30 s. Every trace sends `runCmds.requestTimeout` equal to `tracerouteTimeoutMs` (default 45 s) whatever `nativeRequestTimeout` says, because EOS reverse-resolves every responding hop address and a dead name server costs about 10 s per address. The HTTP timeout is `tracerouteTimeoutMs + 5000`. When the device timer fires, EOS returns none of the hops it found and the entry fails with `traceroute_device_time_limit_reached`, whose message names slow reverse DNS on the device as a likely cause when the path is short. That reply confirms the trace ended, so its slot is freed at once. Any other unknown completion holds the slot as uncertain for `tracerouteTimeoutMs`. Traces share `diagnostics.deviceConcurrency` and the device's eAPI slots with ping; there is no traceroute-specific per-device limit, so two silent traces can occupy both diagnostic slots of a device for up to 45 s. The call is bounded by `tracerouteOverallOperationTimeoutMs`.
+
+### Results
+
+One entry per host and destination, each naming its `destination`:
+
+```json
+{
+  "kind": "traceroute",
+  "path": "reached",
+  "resolved_address": "10.255.0.4",
+  "hops": [
+    { "hop": 1, "responses": [{ "address": "10.255.255.0", "rtt_ms": 0.033 }, { "address": "10.255.255.0", "rtt_ms": 0.006 }, { "address": "10.255.255.0", "rtt_ms": 0.005 }] },
+    { "hop": 2, "responses": [{ "address": "10.255.0.4", "rtt_ms": 1.452 }, { "address": "10.255.0.4", "rtt_ms": 1.474 }, { "address": "10.255.0.4", "rtt_ms": 1.666 }] }
+  ]
+}
+```
+
+- `path` is `reached` when any probe on the last hop was answered by `resolved_address`, whatever its marker, and `unreached` otherwise. Unreached does not say why the destination never answered, and it is not an execution failure. A trace that ends with `!X`, `!H` or similar from the destination itself is `reached`: it arrived and was refused, and the `marker` keeps that visible.
+- `hops[].responses` has one entry per probe, in EOS's order: `null` for a probe with no answer (`*`), otherwise `{ address, name?, rtt_ms, marker? }`. `name` appears only when EOS's reverse lookup found one. Different addresses within one hop are load-balanced (ECMP) responders. `marker` is the Linux traceroute annotation after the RTT (`!N`, `!H`, `!P`, `!S`, `!F-<n>`, `!X`, `!V`, `!C`, `!<n>`). A probe that EOS prints with only an RTT repeats the previous responder. Hop numbers are kept as EOS prints them.
+- `resolved_address` comes from EOS's header line, as for ping. Raw EOS text is returned only with `include_raw`.
+- Failures: an unresolvable name is `diagnostic_destination_unresolved` (with an `address_family` hint when the name has no address of the requested family), no route (`connect: Network is unreachable`) is `diagnostic_destination_no_route`, any other `%` error from EOS is `diagnostic_command_failed`, and unparseable output is `diagnostic_output_unrecognized`.
+
+Measured on cEOS 4.34.3M only.
+
 ## Extension seam
 
 `DiagnosticExecutor.execute` accepts typed diagnostic intent and owns authorization, aggregate budgets, and each execution's reservation; it runs through `runTargetOperation`, which owns Target resolution, the call deadline, cancellation, the response and its size limit, while the shared eAPI slots own fail-closed per-device and server-wide admission. `getCapacity()` exposes a detached snapshot; server-info obtains it at call time rather than caching startup state. `DiagnosticDeviceRunner.execute` accepts inventory identity and one prepared execution; the eAPI adapter owns connection resolution and a single command execution.
@@ -255,7 +307,7 @@ Each diagnostic kind supplies a `DiagnosticDefinition`: `permission` names the i
 
 Admission queueing is separate from reservation state transitions; shutdown rejects queued work with `diagnostic_server_stopping`. The runner never rejects: it returns a closed outcome, either an observation or `failed` with `remote: "not_dispatched"` (the request never left the server, so its slot frees at once) or `remote: "unknown"` (it may have reached EOS, so its slot turns uncertain), plus any raw EOS text as `evidence`, which becomes `raw_output` only with `include_raw`. One executor method turns that outcome into the reservation's end; a runner that throws anyway is treated as `unknown`. The runner's request takes only the server's shutdown signal, never the call's, so a cancelled call's late answer still frees its slot.
 
-The request and finding types are discriminated by `kind`: `ping` and `packet_capture`; observations carry no kind. Add other real operations at this seam without exposing arbitrary command strings. A destination-based operation such as traceroute can reuse multi-destination fan-out by preparing one execution per destination, although its much longer execution bound makes large requests hard to fit in the overall deadline.
+The request and finding types are discriminated by `kind`: `ping`, `packet_capture` and `traceroute`; observations carry no kind. Add other real operations at this seam without exposing arbitrary command strings. Traceroute (`src/diagnostics/traceroute.ts`) reuses multi-destination fan-out by preparing one execution per destination, with its own timer, budget (`maxTracesPerRequest`, cost 1 per execution) and deadline, and no `perDeviceLimit`.
 
 ## Verification
 

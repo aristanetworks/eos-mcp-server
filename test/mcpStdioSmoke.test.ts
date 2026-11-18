@@ -54,7 +54,8 @@ describe("stdio MCP smoke test", () => {
           "eos_ping",
           "eos_probe_devices",
           "eos_run_show",
-          "eos_show_logging"
+          "eos_show_logging",
+          "eos_traceroute"
         ]);
 
         // Regression: every tool that takes arguments must advertise a non-empty
@@ -69,7 +70,8 @@ describe("stdio MCP smoke test", () => {
           "eos_ping",
           "eos_probe_devices",
           "eos_run_show",
-          "eos_show_logging"
+          "eos_show_logging",
+          "eos_traceroute"
         ];
         for (const name of toolsWithArgs) {
           const tool = tools.tools.find((entry) => entry.name === name);
@@ -87,7 +89,7 @@ describe("stdio MCP smoke test", () => {
         const annotationsByTool = Object.fromEntries(tools.tools.map((tool) => [tool.name, tool.annotations]));
         for (const name of toolNames) {
           expect(annotationsByTool[name]?.readOnlyHint, `${name} must advertise readOnlyHint`).toBe(true);
-          expect(annotationsByTool[name]?.openWorldHint, `${name} openWorldHint`).toBe(name === "eos_ping");
+          expect(annotationsByTool[name]?.openWorldHint, `${name} openWorldHint`).toBe(name === "eos_ping" || name === "eos_traceroute");
         }
 
         const deniedPing = await client.callTool({

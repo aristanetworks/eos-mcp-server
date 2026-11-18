@@ -13,6 +13,7 @@ import { DiagnosticExecutor } from "../diagnostics/executor.js";
 import { EapiSlots, eapiSlotLimits } from "../operations/eapiSlots.js";
 import { buildPacketCaptureToolResult, packetCaptureInputSchema } from "./tools/packetCapture.js";
 import { buildPingToolResult, pingInputSchema } from "./tools/ping.js";
+import { buildTracerouteToolResult, tracerouteInputSchema } from "./tools/traceroute.js";
 import type { InventoryModel } from "../inventory/types.js";
 import type { ServerRuntimeContext } from "../serverInfo/types.js";
 import { buildGetFactsToolResult, getFactsInputSchema } from "./tools/getFacts.js";
@@ -27,7 +28,7 @@ import { buildShowLoggingToolResult, showLoggingInputSchema } from "./tools/show
 // calls concurrently; server-side limits still bound diagnostics (ADR 0008).
 // Most tools, packet capture included, reach only inventory devices.
 const closedWorldReadOnly: ToolAnnotations = { readOnlyHint: true, openWorldHint: false };
-// Ping destinations need not be in inventory.
+// Ping and traceroute destinations need not be in inventory.
 const openWorldReadOnly: ToolAnnotations = { readOnlyHint: true, openWorldHint: true };
 
 interface McpRuntimeDependencies {
@@ -63,10 +64,17 @@ function buildToolDefinitions(deps: McpRuntimeDependencies) {
     },
     {
       name: "eos_ping",
-      description: "Run bounded, non-configuring ping diagnostics from an inventory host or group to one or more destinations concurrently. Enabled by default for read-allowed EOS hosts; mcp_diagnostics_allowed: false denies ping. Destinations are unicast IP literals. Returns one result per host and destination; execution success is separate from reachability, and no replies do not identify a cause.",
+      description: "Run bounded, non-configuring ping diagnostics from an inventory host or group to one or more destinations concurrently. Enabled by default for read-allowed EOS hosts; mcp_diagnostics_allowed: false denies ping. Destinations are unicast IP literals or DNS names the device resolves. Returns one result per host and destination; execution success is separate from reachability, and no replies do not identify a cause.",
       inputSchema: pingInputSchema,
       annotations: openWorldReadOnly,
       handler: async (args: z.infer<typeof pingInputSchema>, extra: { signal: AbortSignal }) => buildPingToolResult(args, deps.diagnostics, extra.signal)
+    },
+    {
+      name: "eos_traceroute",
+      description: "Trace the layer-3 path hop by hop from an inventory host or group to one or more destinations (IP literals or DNS names the device resolves). The trace runs on the EOS device, not on the MCP host, using EOS's fixed settings of 30 hops, 3 probes per hop. Enabled by default for read-allowed EOS hosts; mcp_diagnostics_allowed: false denies it. Returns one result per host and destination with path \"reached\" (the destination itself answered the last hop, even if with a marker such as !X) or \"unreached\", and the hops seen, with several responders in one hop when the path load-balances and null for a silent probe. When tracing between loopbacks, set source to a loopback address: the default source is often an interface address the destination has no return route to, so every hop prints * * * . A silent path takes about 30 s. If a host fails with traceroute_device_time_limit_reached on a short path, slow reverse DNS on the device is the likely cause, since EOS looks up every responding hop and returns no hops when its timer fires. No route to the destination or an unresolvable name is an execution failure, not an unreached finding.",
+      inputSchema: tracerouteInputSchema,
+      annotations: openWorldReadOnly,
+      handler: async (args: z.infer<typeof tracerouteInputSchema>, extra: { signal: AbortSignal }) => buildTracerouteToolResult(args, deps.diagnostics, extra.signal)
     },
     {
       name: "eos_packet_capture",

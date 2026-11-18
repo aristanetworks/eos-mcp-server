@@ -79,13 +79,13 @@ Shared type-narrowing utilities (`isObject`, `readString`, `readBoolean`, `readN
 ## Diagnostic Execution
 
 - `src/diagnostics/executor.ts`: typed diagnostic orchestration, the per-kind inventory permission and aggregate budget checks, existing result envelopes, and cancellation. One executor is created per server instance.
-- `src/operations/eapiSlots.ts`: in-memory admission shared by every eAPI request in one server process. Reads and diagnostics share each device's slots; diagnostics also have a per-device share and a server-wide ceiling, and a kind may bring its own per-device limit with each request. Slots count diagnostics by the kind name the executor passes and attach no other meaning to it. It also owns the capacity snapshot types reported by server info. `EapiDeviceReader` holds a read slot per request. Waiters are served oldest first, skipping those that cannot run yet. Unknown completion holds a slot for that execution's own budget (`commandTimeoutMs` for ping, window plus 2 s for a packet capture), then a timer frees it; a late confirmed response frees it sooner. Shutdown rejects queued work; cancelled waiters are removed.
+- `src/operations/eapiSlots.ts`: in-memory admission shared by every eAPI request in one server process. Reads and diagnostics share each device's slots; diagnostics also have a per-device share and a server-wide ceiling, and a kind may bring its own per-device limit with each request. Slots count diagnostics by the kind name the executor passes and attach no other meaning to it. It also owns the capacity snapshot types reported by server info. `EapiDeviceReader` holds a read slot per request. Waiters are served oldest first, skipping those that cannot run yet. Unknown completion holds a slot for that execution's own budget (`commandTimeoutMs` for ping, `tracerouteTimeoutMs` for traceroute, window plus 2 s for a packet capture), then a timer frees it; a late confirmed response frees it sooner. Shutdown rejects queued work; cancelled waiters are removed.
 - `src/diagnostics/eapiRunner.ts`: connection resolution followed by one text eAPI attempt in enable mode, sending the command, HTTP timeout, and EOS request timer from the kind's `eapiExecution` plan. Separate error paths distinguish local rejection before dispatch from uncertain RPC, transport, or malformed-result failures after dispatch; there is no mutable dispatch flag or retry.
 - `src/diagnostics/definitions.ts`: the table of `DiagnosticDefinition`s by kind, shared by the executor and the eAPI runner.
 - `src/diagnostics/validation.ts`: validation shared by diagnostic kinds: the VRF identifier check and bounded integer settings.
 - `src/diagnostics/ping.ts`: literal-address/VRF/source/count validation, finite ping command construction, and loss/RTT interpretation. A no-reply finding is not an execution failure.
 - `src/diagnostics/packetCapture.ts`: interface/VRF/filter/count/window validation, `tcpdump` command construction with the filter last, the packet budget, the window-based uncertain hold, and the complete **Capture Finding** carrying tcpdump's lines verbatim.
-- `src/diagnostics/types.ts`: request, prepared intent, and finding types discriminated by diagnostic kind (`ping`, `packet_capture`), the kind-free observation (command output, or the device time limit), the `DiagnosticDefinition` seam, and the `DiagnosticDeviceRunner` seam. There are no capture sessions.
+- `src/diagnostics/types.ts`: request, prepared intent, and finding types discriminated by diagnostic kind (`ping`, `packet_capture`, `traceroute`), the kind-free observation (command output, or the device time limit), the `DiagnosticDefinition` seam, and the `DiagnosticDeviceRunner` seam. There are no capture sessions.
 
 Diagnostic execution reuses read-operation orchestration with independent settings and per-device admission under a server-wide ceiling. Unknown completion holds capacity for the execution's own budget; HTTP abort is not a remote kill signal. Each server-info call reads `DiagnosticExecutor.getCapacity()` afresh; the standalone CLI reports no live snapshot.
 
@@ -93,7 +93,7 @@ Capacity lives in memory per server process, so several servers can run against 
 
 ## MCP Layer
 
-The MCP server is assembled in `src/mcp/createServer.ts`. It creates the official SDK `McpServer`, registers nine non-configuring tools, and connects over stdio. Ping and packet capture forward the MCP cancellation signal into diagnostic execution.
+The MCP server is assembled in `src/mcp/createServer.ts`. It creates the official SDK `McpServer`, registers ten non-configuring tools, and connects over stdio. Ping, traceroute and packet capture forward the MCP cancellation signal into diagnostic execution.
 
 Tool adapters live under `src/mcp/tools/`:
 

@@ -60,6 +60,10 @@ export interface ServerInfo {
       max_capture_packets_per_request: number;
       capture_device_concurrency: number;
       capture_overall_operation_timeout_ms: number;
+      traceroute_timeout_ms: number;
+      max_traceroute_destinations_per_request: number;
+      max_traces_per_request: number;
+      traceroute_overall_operation_timeout_ms: number;
     };
   };
   diagnostics: {

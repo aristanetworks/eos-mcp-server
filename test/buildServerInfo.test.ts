@@ -51,4 +51,15 @@ describe("buildServerInfo", () => {
       capture_overall_operation_timeout_ms: 90_000
     });
   });
+
+  it("reports traceroute limits under limits.diagnostics", () => {
+    const info = buildServerInfo({ instanceId: "instance-1", startedAt: "2026-04-23T00:00:00.000Z", config: buildConfig() });
+
+    expect(info.limits.diagnostics).toMatchObject({
+      traceroute_timeout_ms: 45_000,
+      max_traceroute_destinations_per_request: 4,
+      max_traces_per_request: 16,
+      traceroute_overall_operation_timeout_ms: 120_000
+    });
+  });
 });
