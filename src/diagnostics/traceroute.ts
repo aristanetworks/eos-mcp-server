@@ -103,6 +103,11 @@ export function parseTracerouteOutput(output: string): TracerouteFinding {
     throw new AppError("diagnostic_output_unrecognized", `EOS traceroute output did not number its hops 1, 2, 3, ... up to at most ${maxHops}`);
   }
   const lastHop = hops[hops.length - 1];
+  // Traceroute ends before its hop limit only when a probe got a final reply (the destination, or an ICMP error such as !N/!H);
+  // a hop with no replies can never end a trace, so this output is truncated or not traceroute's.
+  if (hops.length < maxHops && lastHop?.responses.every((response) => response === null) === true) {
+    throw new AppError("diagnostic_output_unrecognized", "EOS traceroute output ended on a silent hop before its hop limit");
+  }
   const reached = lastHop?.responses.some((response) => response !== null && sameAddress(response.address, resolvedAddress)) === true;
   return { kind: "traceroute", path: reached ? "reached" : "unreached", resolved_address: resolvedAddress, hops };
 }

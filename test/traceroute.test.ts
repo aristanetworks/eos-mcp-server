@@ -172,8 +172,8 @@ describe("traceroute output interpretation", () => {
     expect(parse("traceroute to 10.0.0.9 (10.0.0.9), 30 hops max, 60 byte packets\n 1  10.0.0.5 (10.0.0.5)  1 ms * 10.0.0.9 (10.0.0.9)  2 ms\n").path).toBe("reached");
   });
 
-  it("is unreached when only an earlier hop was the destination or the last hop is another router", () => {
-    expect(parse("traceroute to 10.0.0.9 (10.0.0.9), 30 hops max, 60 byte packets\n 1  10.0.0.9 (10.0.0.9)  1 ms  1 ms  1 ms\n 2  * * *\n").path).toBe("unreached");
+  it("is unreached when the trace runs to its limit without the destination, or ends on another router's marker", () => {
+    expect(parse("traceroute to 10.0.0.9 (10.0.0.9), 2 hops max, 60 byte packets\n 1  10.0.0.1 (10.0.0.1)  1 ms  1 ms  1 ms\n 2  10.0.0.2 (10.0.0.2)  1 ms  1 ms  1 ms\n").path).toBe("unreached");
     expect(parse("traceroute to 10.0.0.9 (10.0.0.9), 30 hops max, 60 byte packets\n 1  10.0.0.1 (10.0.0.1)  1 ms !H  1 ms !H  1 ms !H\n").path).toBe("unreached");
   });
 
@@ -206,9 +206,15 @@ describe("traceroute output interpretation", () => {
     ["with a gap", `${header}${answeredHop(1)}${answeredHop(3, "10.0.0.9")}`],
     ["repeated", `${header}${answeredHop(1)}${answeredHop(1, "10.0.0.9")}`],
     ["beyond the header's hop limit", `traceroute to 10.0.0.9 (10.0.0.9), 2 hops max, 60 byte packets\n${answeredHop(1)}${answeredHop(2)}${answeredHop(3, "10.0.0.9")}`],
-    ["numbered 0", `${header} 0  * * *\n`]
+    ["numbered 0", `${header} 0  * * *\n`],
+    ["ending on a silent hop before the hop limit, which traceroute only does after a final reply", `${header}${answeredHop(1)} 2  * * *\n`],
+    ["of a single silent hop under a 30-hop limit", `${header} 1  * * *\n`]
   ])("fails hops %s as unrecognized, never as a finding", (_case, output) => {
     expect(failureOf(output)).toMatchObject({ code: "diagnostic_output_unrecognized" });
+  });
+
+  it("is unreached when the last hop is silent but the trace used its whole hop limit", () => {
+    expect(parse("traceroute to 10.0.0.9 (10.0.0.9), 2 hops max, 60 byte packets\n 1  10.0.0.1 (10.0.0.1)  1 ms  1 ms  1 ms\n 2  * * *\n").path).toBe("unreached");
   });
 
   it("accepts a trace that uses every hop up to the header's limit", () => {

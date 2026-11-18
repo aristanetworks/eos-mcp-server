@@ -670,7 +670,7 @@ Runs bounded ping from an inventory host or group to one or more destinations, r
 
 ### `eos_traceroute`
 
-Traces the layer-3 path from an inventory host or group to one or more destinations, running EOS `traceroute` on the device (not on the MCP host) and changing no configuration. It needs the same permission as ping (`mcp_diagnostics_allowed` not `false`). Destinations, `vrf`, `source` and `address_family` follow the ping rules, including DNS names resolved by the device. EOS fixes 30 hops and 3 probes per hop. Set `source` to a loopback address when tracing between loopbacks: the default source is often an interface address with no return route, which makes every hop `* * *`.
+Traces the layer-3 path from an inventory host or group to one or more destinations, running EOS `traceroute` on the device (not on the MCP host) and changing no configuration. It needs the same permission as ping (`mcp_diagnostics_allowed` not `false`). Destinations, `vrf`, `source` and `address_family` follow the ping rules, including DNS names resolved by the device. EOS fixes 30 hops and 3 probes per hop. Set `source` to a loopback address when tracing between loopbacks: the default source is often an interface address that routers beyond the first hop have no route back to, so the trace goes silent after the first hop and runs to 30 hops (about 30 s).
 
 ```json
 {

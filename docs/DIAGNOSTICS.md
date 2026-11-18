@@ -270,7 +270,7 @@ EOS does not check pcap-filter syntax. When tcpdump rejects the filter, or canno
 }
 ```
 
-`destinations` (1 to `maxTracerouteDestinationsPerRequest`), `vrf`, `source` and `address_family` follow the same parsing, duplicate and family rules as ping, including DNS names resolved by the device. Hosts × destinations must not exceed `maxTracesPerRequest` (`diagnostic_trace_limit_exceeded`). Set `source` to a loopback address when tracing between loopbacks: the default source is often an interface address the destination has no return route to, so every hop prints `* * *`.
+`destinations` (1 to `maxTracerouteDestinationsPerRequest`), `vrf`, `source` and `address_family` follow the same parsing, duplicate and family rules as ping, including DNS names resolved by the device. Hosts × destinations must not exceed `maxTracesPerRequest` (`diagnostic_trace_limit_exceeded`). Set `source` to a loopback address when tracing between loopbacks: the default source is often an interface address that routers beyond the first hop have no route back to, so the trace goes silent after the first hop and runs to 30 hops (about 30 s).
 
 ### Lifecycle
 
@@ -297,6 +297,7 @@ One entry per host and destination, each naming its `destination`:
 - `resolved_address` comes from EOS's header line, as for ping. Raw EOS text is returned only with `include_raw`.
 - Every responder `address` must be a valid IP address, or the whole entry fails with `diagnostic_output_unrecognized`; it is never reported as unreached. An IPv6 scope is kept as printed (`fe80::1%Ethernet1`), and addresses are compared canonically with their scope, so the same link-local address on two links is two addresses.
 - Because `path` is judged by the last hop, the hops must be numbered 1, 2, 3, ... without gaps, up to the hop limit in EOS's header (30), each with one to three probes and finite probe times. Anything else fails with `diagnostic_output_unrecognized` rather than becoming a finding.
+- A trace may end before the header's hop limit only on a hop that got at least one reply, because Linux traceroute stops early only on a final reply (the destination answering, or an ICMP error marked like `!N`/`!H`). A silent last hop below the limit means truncated or foreign output and fails with `diagnostic_output_unrecognized`; a silent last hop at the limit is the normal silent trace and stays `unreached`.
 - Failures: an unresolvable name is `diagnostic_destination_unresolved` (with an `address_family` hint when the name has no address of the requested family), no route (`connect: Network is unreachable`) is `diagnostic_destination_no_route`, any other `%` error from EOS is `diagnostic_command_failed`, and unparseable output is `diagnostic_output_unrecognized`.
 
 Measured on cEOS 4.34.3M only.
